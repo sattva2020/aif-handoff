@@ -155,6 +155,7 @@ export function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         event: "request_replanning",
       });
       resetReplanModal();
+      onClose();
     } catch (error) {
       console.error("[task-detail] failed to request replanning", error);
     }
@@ -238,6 +239,7 @@ export function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                             }
                             if (action.event) {
                               taskEvent.mutate({ id: task.id, event: action.event });
+                              onClose();
                             }
                           }}
                           disabled={taskEvent.isPending || createTaskComment.isPending}

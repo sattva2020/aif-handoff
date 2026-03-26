@@ -71,22 +71,43 @@ export function createActivityLogger(taskId: string): HookCallback {
 
     log.debug({ taskId, toolName }, "Agent tool use logged");
 
-    try {
-      const db = getDb();
-      const task = db.select().from(tasks).where(eq(tasks.id, taskId)).get();
-      const currentLog = task?.agentActivityLog ?? "";
-      const updatedLog = currentLog ? `${currentLog}\n${entry}` : entry;
-
-      db.update(tasks)
-        .set({ agentActivityLog: updatedLog, updatedAt: new Date().toISOString() })
-        .where(eq(tasks.id, taskId))
-        .run();
-    } catch (err) {
-      log.error({ err, taskId }, "Failed to update agent activity log");
-    }
-
+    appendToActivityLog(taskId, entry);
     return {};
   };
+}
+
+/**
+ * Creates a SubagentStart hook callback that logs when a subagent is spawned.
+ * This provides visibility into which .claude/agents/ definitions are actually invoked.
+ */
+export function createSubagentLogger(taskId: string): HookCallback {
+  return async (input, _toolUseId, _options) => {
+    const agentType = (input as any).agent_type ?? "unknown";
+    const agentId = (input as any).agent_id ?? "unknown";
+    const timestamp = new Date().toISOString();
+    const entry = `[${timestamp}] SubagentStart: ${agentType} (id: ${agentId})`;
+
+    log.info({ taskId, agentType, agentId }, "Subagent started");
+
+    appendToActivityLog(taskId, entry);
+    return {};
+  };
+}
+
+function appendToActivityLog(taskId: string, entry: string): void {
+  try {
+    const db = getDb();
+    const task = db.select().from(tasks).where(eq(tasks.id, taskId)).get();
+    const currentLog = task?.agentActivityLog ?? "";
+    const updatedLog = currentLog ? `${currentLog}\n${entry}` : entry;
+
+    db.update(tasks)
+      .set({ agentActivityLog: updatedLog, updatedAt: new Date().toISOString() })
+      .where(eq(tasks.id, taskId))
+      .run();
+  } catch (err) {
+    log.error({ err, taskId }, "Failed to update agent activity log");
+  }
 }
 
 /**

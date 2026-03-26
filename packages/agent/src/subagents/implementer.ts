@@ -1,7 +1,7 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { eq } from "drizzle-orm";
 import { getDb, tasks, logger } from "@aif/shared";
-import { createActivityLogger, flushActivityLog, getClaudePath } from "../hooks.js";
+import { createActivityLogger, createSubagentLogger, flushActivityLog, getClaudePath } from "../hooks.js";
 import {
   createClaudeStderrCollector,
   explainClaudeFailure,
@@ -62,7 +62,7 @@ export async function runImplementer(taskId: string, projectRoot: string): Promi
 
   log.info({ taskId, title: task.title }, "Starting implement-worker agent");
 
-  const prompt = `Implement the following task:
+  const prompt = `Implement the following task according to the plan.
 
 Title: ${task.title}
 Description: ${task.description}
@@ -72,7 +72,7 @@ ${formatTaskAttachmentsForPrompt(task.attachments)}
 Plan:
 ${task.plan ?? "No plan available — use your best judgment."}
 
-Implement the task, verify it works, then return a summary of what was done.`;
+Execute all plan tasks using parallel workers where possible, run quality sidecars (review, security, best-practices), and verify the result.`;
 
   let resultText = "";
   const stderrCollector = createClaudeStderrCollector();
@@ -85,15 +85,18 @@ Implement the task, verify it works, then return a summary of what was done.`;
         env: process.env,
         pathToClaudeCodeExecutable: getClaudePath(),
         settingSources: ["project"],
-        systemPrompt: { type: "preset", preset: "claude_code" },
-        allowedTools: ["Read", "Write", "Edit", "Glob", "Grep", "Bash"],
-        maxTurns: 16,
-        maxBudgetUsd: 2.0,
+        extraArgs: { agent: "implement-coordinator" },
+        allowedTools: ["Agent", "Read", "Write", "Edit", "Glob", "Grep", "Bash"],
+        maxTurns: 30,
+        maxBudgetUsd: 3.0,
         permissionMode: "acceptEdits",
         stderr: stderrCollector.onStderr,
         hooks: {
           PostToolUse: [
             { hooks: [createActivityLogger(taskId)] },
+          ],
+          SubagentStart: [
+            { hooks: [createSubagentLogger(taskId)] },
           ],
         },
       },

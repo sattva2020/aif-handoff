@@ -18,7 +18,7 @@ Built on top of [AI Factory](https://github.com/lee-to/ai-factory) workflow and 
 git clone https://github.com/lee-to/aif-handoff.git
 cd aif-handoff
 npm install
-npm run db:setup
+npm run init
 npm run dev
 ```
 
@@ -80,6 +80,8 @@ All agents are loaded via `settingSources: ["project"]` from `.claude/agents/*.m
 | `npm run dev` | Start all services with hot reload |
 | `npm run build` | Build all packages |
 | `npm test` | Run all tests (Vitest) |
+| `npm run init` | Run AI Factory init and database setup |
+| `npm run aif:init` | Initialize AI Factory context in this project |
 | `npm run db:setup` | Create data directory and push schema |
 | `npm run db:push` | Push schema changes via drizzle-kit |
 

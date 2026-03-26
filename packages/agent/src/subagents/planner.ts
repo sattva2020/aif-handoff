@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { getDb, tasks, taskComments, logger } from "@aif/shared";
-import { createActivityLogger, flushActivityLog, getClaudePath } from "../hooks.js";
+import { createActivityLogger, createSubagentLogger, flushActivityLog, getClaudePath } from "../hooks.js";
 import {
   createClaudeStderrCollector,
   explainClaudeFailure,
@@ -145,8 +145,12 @@ export async function runPlanner(taskId: string, projectRoot: string): Promise<v
 
   log.info({ taskId, title: task.title }, "Starting plan-polisher agent");
 
-  const prompt = `Plan the implementation for the following task.
-Mode: fast, tests: no, docs: no.
+  const hasComments = comments.length > 0;
+  const isReplanning = hasComments || (task.plan && task.plan.trim().length > 0);
+
+  const prompt = isReplanning
+    ? `Refine and improve the existing plan for the following task.
+Mode: fast, tests: no, docs: no, max_iterations: 3.
 
 Title: ${task.title}
 Description: ${task.description}
@@ -155,7 +159,21 @@ ${formatTaskAttachmentsForPrompt(task.attachments)}
 User comments and replanning feedback:
 ${formatCommentsForPrompt(comments)}
 
-Create a concrete, implementation-ready plan. Write it to .ai-factory/PLAN.md then return the plan text.`;
+Previous plan:
+${task.plan ?? "(no previous plan)"}
+
+Iterate on the plan using plan-polisher: critique the existing plan, address the feedback above, and refine until implementation-ready.`
+    : `Plan the implementation for the following task.
+Mode: fast, tests: no, docs: no, max_iterations: 3.
+
+Title: ${task.title}
+Description: ${task.description}
+Task attachments:
+${formatTaskAttachmentsForPrompt(task.attachments)}
+User comments and replanning feedback:
+${formatCommentsForPrompt(comments)}
+
+Create a concrete, implementation-ready plan using iterative refinement via plan-polisher.`;
 
   let resultText = "";
   const stderrCollector = createClaudeStderrCollector();
@@ -168,15 +186,18 @@ Create a concrete, implementation-ready plan. Write it to .ai-factory/PLAN.md th
         env: process.env,
         pathToClaudeCodeExecutable: getClaudePath(),
         settingSources: ["project"],
-        systemPrompt: { type: "preset", preset: "claude_code" },
-        allowedTools: ["Read", "Write", "Edit", "Glob", "Grep", "Bash"],
-        maxTurns: 12,
-        maxBudgetUsd: 1.0,
+        extraArgs: { agent: "plan-coordinator" },
+        allowedTools: ["Agent", "Read", "Write", "Edit", "Glob", "Grep", "Bash"],
+        maxTurns: 30,
+        maxBudgetUsd: 2.0,
         permissionMode: "acceptEdits",
         stderr: stderrCollector.onStderr,
         hooks: {
           PostToolUse: [
             { hooks: [createActivityLogger(taskId)] },
+          ],
+          SubagentStart: [
+            { hooks: [createSubagentLogger(taskId)] },
           ],
         },
       },

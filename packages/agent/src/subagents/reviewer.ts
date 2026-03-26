@@ -1,7 +1,7 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { eq } from "drizzle-orm";
 import { getDb, tasks, logger } from "@aif/shared";
-import { createActivityLogger, flushActivityLog, getClaudePath } from "../hooks.js";
+import { createActivityLogger, createSubagentLogger, flushActivityLog, getClaudePath } from "../hooks.js";
 import {
   createClaudeStderrCollector,
   explainClaudeFailure,
@@ -55,6 +55,7 @@ async function runSidecar(
   prompt: string,
   taskId: string,
   projectRoot: string,
+  agentName: string,
 ): Promise<string> {
   let resultText = "";
   const stderrCollector = createClaudeStderrCollector();
@@ -67,7 +68,7 @@ async function runSidecar(
         env: process.env,
         pathToClaudeCodeExecutable: getClaudePath(),
         settingSources: ["project"],
-        systemPrompt: { type: "preset", preset: "claude_code" },
+        extraArgs: { agent: agentName },
         allowedTools: ["Read", "Glob", "Grep"],
         maxTurns: 6,
         maxBudgetUsd: 0.5,
@@ -76,6 +77,9 @@ async function runSidecar(
         hooks: {
           PostToolUse: [
             { hooks: [createActivityLogger(taskId)] },
+          ],
+          SubagentStart: [
+            { hooks: [createSubagentLogger(taskId)] },
           ],
         },
       },
@@ -135,8 +139,8 @@ Focus on auth, validation, secrets, injection, and unsafe shell/file handling in
   try {
     // Run review and security in parallel
     const [reviewResult, securityResult] = await Promise.all([
-      runSidecar(reviewPrompt, taskId, projectRoot),
-      runSidecar(securityPrompt, taskId, projectRoot),
+      runSidecar(reviewPrompt, taskId, projectRoot, "review-sidecar"),
+      runSidecar(securityPrompt, taskId, projectRoot, "security-sidecar"),
     ]);
 
     log.info({ taskId }, "Review and security sidecars completed");

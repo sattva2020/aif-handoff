@@ -194,8 +194,9 @@ describe("TaskDetail", () => {
   });
 
   it("should trigger start_ai event from backlog action", () => {
+    const onClose = vi.fn();
     render(
-      <TaskDetail taskId="detail-backlog" onClose={vi.fn()} />,
+      <TaskDetail taskId="detail-backlog" onClose={onClose} />,
       { wrapper: Wrapper }
     );
 
@@ -204,11 +205,13 @@ describe("TaskDetail", () => {
       id: "detail-backlog",
       event: "start_ai",
     });
+    expect(onClose).toHaveBeenCalled();
   });
 
   it("should trigger retry_from_blocked event from blocked action", () => {
+    const onClose = vi.fn();
     render(
-      <TaskDetail taskId="detail-blocked" onClose={vi.fn()} />,
+      <TaskDetail taskId="detail-blocked" onClose={onClose} />,
       { wrapper: Wrapper }
     );
 
@@ -217,11 +220,13 @@ describe("TaskDetail", () => {
       id: "detail-blocked",
       event: "retry_from_blocked",
     });
+    expect(onClose).toHaveBeenCalled();
   });
 
   it("should trigger start_implementation for manual plan_ready", () => {
+    const onClose = vi.fn();
     render(
-      <TaskDetail taskId="detail-plan-ready-manual" onClose={vi.fn()} />,
+      <TaskDetail taskId="detail-plan-ready-manual" onClose={onClose} />,
       { wrapper: Wrapper }
     );
 
@@ -230,6 +235,7 @@ describe("TaskDetail", () => {
       id: "detail-plan-ready-manual",
       event: "start_implementation",
     });
+    expect(onClose).toHaveBeenCalled();
   });
 
   it("should render request replanning action for manual plan_ready", () => {
@@ -242,8 +248,9 @@ describe("TaskDetail", () => {
   });
 
   it("should submit replanning request and move task to planning", async () => {
+    const onClose = vi.fn();
     render(
-      <TaskDetail taskId="detail-plan-ready-manual" onClose={vi.fn()} />,
+      <TaskDetail taskId="detail-plan-ready-manual" onClose={onClose} />,
       { wrapper: Wrapper }
     );
 
@@ -264,6 +271,7 @@ describe("TaskDetail", () => {
         id: "detail-plan-ready-manual",
         event: "request_replanning",
       });
+      expect(onClose).toHaveBeenCalled();
     });
   });
 

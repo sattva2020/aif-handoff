@@ -101,6 +101,11 @@ data/                    # SQLite database files (gitignored)
   - Wrong: `git checkout main && git pull`
   - Right: Two separate Bash tool calls — first `git checkout main`, then `git pull`
 
+- **AIF Workflow Required:** All subagents in `packages/agent/src/subagents/` MUST use `.claude/agents/` definitions via `extraArgs: { agent: "<agent-name>" }`. Never use raw `query()` with a generic prompt — always select the appropriate agent definition so the full AIF workflow is invoked (iterative refinement, quality sidecars, etc.). Exception: simple validation tasks (like `planChecker.ts`) that have no corresponding agent definition and require only a single-pass check.
+  - `planner.ts` → `plan-coordinator` (spawns `plan-polisher` for iterative refinement)
+  - `implementer.ts` → `implement-coordinator` (spawns `implement-worker` + quality sidecars)
+  - `reviewer.ts` → `review-sidecar` + `security-sidecar` (parallel review)
+
 ## Project Rules
 
 - Every package must maintain at least 70% test coverage (measured by @vitest/coverage-v8)
