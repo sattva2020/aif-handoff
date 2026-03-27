@@ -84,6 +84,11 @@ function isFastRetryableFailure(err: unknown): boolean {
   );
 }
 
+function isChecklistIncompleteFailure(err: unknown): boolean {
+  const text = err instanceof Error ? err.message : String(err);
+  return text.toLowerCase().includes("plan checklist incomplete after implementation sync");
+}
+
 export function getCoordinatorRuntimeCounters(): Readonly<typeof runtimeCounters> {
   return { ...runtimeCounters };
 }
@@ -332,7 +337,26 @@ export async function pollAndProcess(): Promise<void> {
         "Status transition (success)"
       );
     } catch (err) {
-      if (isFastRetryableFailure(err)) {
+      if (isChecklistIncompleteFailure(err) && stage.label === "implementer") {
+        const reason = err instanceof Error ? err.message : String(err);
+        db.update(tasks)
+          .set({
+            status: "implementing",
+            blockedReason: reason,
+            blockedFromStatus: null,
+            retryAfter: null,
+            lastHeartbeatAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          })
+          .where(eq(tasks.id, task.id))
+          .run();
+        void notifyTaskBroadcast(task.id, "task:moved");
+
+        log.warn(
+          { taskId: task.id, stage: stage.label, reason },
+          "Checklist guard kept task in implementing"
+        );
+      } else if (isFastRetryableFailure(err)) {
         const reason = err instanceof Error ? err.message : String(err);
         runtimeCounters.fastRetryStreamInterruptions += 1;
 

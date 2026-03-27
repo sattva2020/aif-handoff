@@ -1,7 +1,7 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { asc, eq } from "drizzle-orm";
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { getDb, projects, taskComments, tasks, logger, incrementTaskTokenUsage } from "@aif/shared";
 import { createActivityLogger, createSubagentLogger, logActivity, getClaudePath } from "../hooks.js";
 import { writeQueryAudit } from "../queryAudit.js";
@@ -16,6 +16,7 @@ const log = logger("implementer");
 const AGENT_NAME = "implement-coordinator";
 const FIX_PLAN_PATH = ".ai-factory/FIX_PLAN.md";
 const PLAN_PATH = ".ai-factory/PLAN.md";
+const CHECKLIST_INCOMPLETE_ERROR = "Plan checklist incomplete after implementation sync";
 const PROJECT_SCOPE_SYSTEM_APPEND =
   "Project scope rule: work strictly inside the current working directory (project root). " +
   "Do not inspect or modify files in the orchestrator monorepo or in parent/sibling directories " +
@@ -107,6 +108,116 @@ function readCanonicalPlan(task: { isFix: boolean }, projectRoot: string): strin
   }
 
   return null;
+}
+
+function resolveCanonicalPlanPath(task: { isFix: boolean }, projectRoot: string): string {
+  const preferredPath = resolve(projectRoot, task.isFix ? FIX_PLAN_PATH : PLAN_PATH);
+  if (existsSync(preferredPath)) return preferredPath;
+  const fallbackPath = resolve(projectRoot, task.isFix ? PLAN_PATH : FIX_PLAN_PATH);
+  if (existsSync(fallbackPath)) return fallbackPath;
+  return preferredPath;
+}
+
+function persistCanonicalPlan(task: { isFix: boolean }, projectRoot: string, content: string): void {
+  const canonicalPath = resolveCanonicalPlanPath(task, projectRoot);
+  mkdirSync(dirname(canonicalPath), { recursive: true });
+  writeFileSync(canonicalPath, `${content.trimEnd()}\n`, "utf8");
+}
+
+function getChecklistProgress(planText: string | null): { parsedTaskCount: number; pendingTaskCount: number } {
+  if (!planText) return { parsedTaskCount: 0, pendingTaskCount: 0 };
+  const parsed = computePlanLayers(planText);
+  const pending = computePendingPlanLayers(planText);
+  return {
+    parsedTaskCount: parsed.tasks.length,
+    pendingTaskCount: pending.tasks.length,
+  };
+}
+
+function extractHeadings(markdown: string): string[] {
+  return markdown
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => /^#{1,6}\s+/.test(line))
+    .map((line) => line.replace(/^#{1,6}\s+/, "").toLowerCase());
+}
+
+function looksLikeFullPlanUpdate(previousPlan: string, updatedPlan: string): boolean {
+  const prev = previousPlan.trim();
+  const next = updatedPlan.trim();
+  if (!prev) return next.length > 0;
+  if (!next) return false;
+  const minLength = prev.length < 120
+    ? Math.max(10, Math.floor(prev.length * 0.6))
+    : Math.max(80, Math.floor(prev.length * 0.5));
+  if (next.length < minLength) return false;
+
+  const prevHeadings = extractHeadings(prev);
+  if (prev.length < 400 || prevHeadings.length === 0) return true;
+  const nextHeadings = new Set(extractHeadings(next));
+  return prevHeadings.some((heading) => nextHeadings.has(heading));
+}
+
+async function runChecklistSyncQuery(input: {
+  task: typeof tasks.$inferSelect;
+  projectRoot: string;
+  planText: string;
+  implementationResult: string;
+}): Promise<string> {
+  let resultText = "";
+  const prompt = `You are finalizing task checklist state in a markdown implementation plan.
+
+TASK TITLE:
+${input.task.title}
+
+TASK DESCRIPTION:
+${input.task.description}
+
+IMPLEMENTATION RESULT LOG (source of truth for what was done):
+${input.implementationResult}
+
+CURRENT PLAN MARKDOWN:
+<<<CURRENT_PLAN
+${input.planText}
+CURRENT_PLAN
+
+Requirements:
+1) Return the FULL updated plan markdown.
+2) Update only checkbox states ("- [ ]" / "- [x]") to reflect implemented work from the log.
+3) Do not rewrite structure, titles, ordering, prose, or dependencies.
+4) Preserve all unchecked tasks that are not completed yet.
+5) Output markdown only.
+6) Do not use tools or subagents.`;
+
+  for await (const message of query({
+    prompt,
+    options: {
+      cwd: input.projectRoot,
+      settingSources: ["project"],
+      model: "haiku",
+      maxThinkingTokens: 1024,
+      systemPrompt: {
+        type: "preset",
+        preset: "claude_code",
+        append: "Do not use tools or subagents. Reply directly with markdown only.",
+      },
+    },
+  })) {
+    if (message.type !== "result") continue;
+    incrementTaskTokenUsage(input.task.id, {
+      ...message.usage,
+      total_cost_usd: message.total_cost_usd,
+    });
+    if (message.subtype !== "success") {
+      throw new Error(`Checklist sync failed: ${message.subtype}`);
+    }
+    resultText = message.result.trim();
+  }
+
+  if (!resultText) {
+    throw new Error("Checklist sync did not return plan markdown");
+  }
+  return resultText;
 }
 
 function formatParsedPlanTasksForPrompt(
@@ -331,13 +442,50 @@ Execution rules:
       resultText = `${resultText}\n\n[warning] No implement-worker dispatch detected for pending parallel layers. Execution was accepted in fallback mode.`;
     }
 
-    const syncedPlan = readCanonicalPlan(task, projectRoot);
+    let syncedPlan = readCanonicalPlan(task, projectRoot) ?? task.plan;
+    let checklistAutoSynced = false;
+    const checklistBeforeSync = getChecklistProgress(syncedPlan);
+
+    if (syncedPlan && checklistBeforeSync.parsedTaskCount > 0 && checklistBeforeSync.pendingTaskCount > 0) {
+      const repairedPlan = await runChecklistSyncQuery({
+        task,
+        projectRoot,
+        planText: syncedPlan,
+        implementationResult: resultText,
+      });
+      if (looksLikeFullPlanUpdate(syncedPlan, repairedPlan)) {
+        syncedPlan = repairedPlan;
+        persistCanonicalPlan(task, projectRoot, repairedPlan);
+        checklistAutoSynced = true;
+      } else {
+        log.warn({ taskId }, "Checklist auto-sync returned non-plan-like response, keeping original plan");
+      }
+    }
+
+    const checklistAfterSync = getChecklistProgress(syncedPlan);
+    if (syncedPlan && checklistAfterSync.parsedTaskCount > 0 && checklistAfterSync.pendingTaskCount > 0) {
+      const failureLog = `${resultText}\n\n[warning] Checklist remains incomplete after auto-sync: ${checklistAfterSync.pendingTaskCount} pending task(s).`;
+      db.update(tasks)
+        .set({
+          plan: syncedPlan,
+          implementationLog: failureLog,
+          lastHeartbeatAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(tasks.id, taskId))
+        .run();
+      throw new Error(CHECKLIST_INCOMPLETE_ERROR);
+    }
+
+    const finalResultText = checklistAutoSynced
+      ? `${resultText}\n\n[note] Plan checklist auto-synced after implementation.`
+      : resultText;
 
     // Save implementation log (+ synced plan snapshot when available)
     db.update(tasks)
       .set({
         ...(syncedPlan ? { plan: syncedPlan } : {}),
-        implementationLog: resultText,
+        implementationLog: finalResultText,
         reworkRequested: false,
         lastHeartbeatAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -348,6 +496,12 @@ Execution rules:
     logActivity(taskId, "Agent", `${AGENT_NAME} complete`);
     log.debug({ taskId }, "Implementation log saved to task");
   } catch (err) {
+    if (err instanceof Error && err.message.includes(CHECKLIST_INCOMPLETE_ERROR)) {
+      logActivity(taskId, "Agent", `${AGENT_NAME} failed — ${err.message}`);
+      log.warn({ taskId, err }, "Implementer checklist guard triggered");
+      throw err;
+    }
+
     let detail = stderrCollector.getTail();
     if (!detail) {
       detail = await probeClaudeCliFailure(projectRoot, getClaudePath());

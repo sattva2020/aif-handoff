@@ -374,6 +374,24 @@ describe("coordinator", () => {
     expect(getCoordinatorRuntimeCounters().fastRetryStreamInterruptions).toBe(1);
   });
 
+  it("should keep task in implementing when checklist guard fails", async () => {
+    const db = testDb.current;
+    db.insert(tasks)
+      .values({ id: "task-impl-checklist", projectId: "test-project", title: "Checklist guard", status: "plan_ready" })
+      .run();
+
+    vi.mocked(runImplementer).mockRejectedValueOnce(
+      new Error("Plan checklist incomplete after implementation sync")
+    );
+
+    await pollAndProcess();
+
+    const task = db.select().from(tasks).where(eq(tasks.id, "task-impl-checklist")).get();
+    expect(task!.status).toBe("implementing");
+    expect(task!.blockedReason).toContain("Plan checklist incomplete after implementation sync");
+    expect(task!.retryAfter).toBeNull();
+  });
+
   it("should revert status on plan checker failure", async () => {
     const db = testDb.current;
     db.insert(tasks)
