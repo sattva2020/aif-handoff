@@ -65,9 +65,19 @@ tasksRouter.post("/", zValidator("json", createTaskSchema), async (c) => {
     priority: body.priority,
     autoMode: body.autoMode,
     isFix: body.isFix,
+    roadmapAlias: body.roadmapAlias,
+    tags: body.tags,
   });
   if (!created) return c.json({ error: "Failed to create task" }, 500);
-  log.debug({ taskId: created.id, title: body.title }, "Task created");
+  log.debug(
+    {
+      taskId: created.id,
+      title: body.title,
+      roadmapAlias: body.roadmapAlias,
+      tagCount: body.tags?.length,
+    },
+    "Task created",
+  );
 
   broadcast({ type: "task:created", payload: toTaskResponse(created) });
   // Wake coordinator when a new task is created (may need immediate processing)
@@ -151,10 +161,13 @@ tasksRouter.put("/:id", zValidator("json", updateTaskSchema), async (c) => {
     return c.json({ error: "Task not found" }, 404);
   }
 
-  const { attachments, ...restBody } = body;
+  const { attachments, tags, ...restBody } = body;
   const updatePayload: Record<string, unknown> = { ...restBody };
   if (attachments) {
     updatePayload.attachments = JSON.stringify(attachments);
+  }
+  if (tags) {
+    updatePayload.tags = JSON.stringify(tags);
   }
 
   const hasPlanUpdate = Object.prototype.hasOwnProperty.call(restBody, "plan");

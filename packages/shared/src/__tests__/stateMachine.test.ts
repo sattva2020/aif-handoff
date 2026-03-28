@@ -21,6 +21,8 @@ function makeTask(status: Task["status"]): Task {
     blockedFromStatus: null,
     retryAfter: null,
     retryCount: 0,
+    roadmapAlias: null,
+    tags: [],
     reworkRequested: false,
     lastHeartbeatAt: null,
     createdAt: "2026-01-01T00:00:00.000Z",
@@ -81,7 +83,7 @@ describe("task state machine", () => {
   it("allows start_implementation from plan_ready when autoMode=false", () => {
     const result = applyHumanTaskEvent(
       { ...makeTask("plan_ready"), autoMode: false },
-      "start_implementation"
+      "start_implementation",
     );
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -92,7 +94,7 @@ describe("task state machine", () => {
   it("rejects start_implementation for autoMode=true", () => {
     const result = applyHumanTaskEvent(
       { ...makeTask("plan_ready"), autoMode: true },
-      "start_implementation"
+      "start_implementation",
     );
     expect(result.ok).toBe(false);
   });
@@ -100,7 +102,7 @@ describe("task state machine", () => {
   it("allows request_replanning from plan_ready", () => {
     const result = applyHumanTaskEvent(
       { ...makeTask("plan_ready"), autoMode: false },
-      "request_replanning"
+      "request_replanning",
     );
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -114,10 +116,7 @@ describe("task state machine", () => {
   });
 
   it("allows fast_fix from plan_ready without changing status", () => {
-    const result = applyHumanTaskEvent(
-      { ...makeTask("plan_ready"), autoMode: false },
-      "fast_fix"
-    );
+    const result = applyHumanTaskEvent({ ...makeTask("plan_ready"), autoMode: false }, "fast_fix");
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.patch.status).toBe("plan_ready");

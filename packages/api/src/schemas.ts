@@ -25,6 +25,8 @@ export const createTaskSchema = z.object({
   priority: z.number().int().min(0).max(5).default(0),
   autoMode: z.boolean().default(true),
   isFix: z.boolean().default(false),
+  roadmapAlias: z.string().max(200).optional(),
+  tags: z.array(z.string().max(100)).max(50).default([]),
 });
 
 export const updateTaskSchema = z.object({
@@ -42,6 +44,8 @@ export const updateTaskSchema = z.object({
   blockedFromStatus: z.enum(TASK_STATUSES).nullable().optional(),
   retryAfter: z.string().nullable().optional(),
   retryCount: z.number().int().min(0).optional(),
+  roadmapAlias: z.string().max(200).nullable().optional(),
+  tags: z.array(z.string().max(100)).max(50).optional(),
   reworkRequested: z.boolean().optional(),
   lastHeartbeatAt: z.string().nullable().optional(),
 });

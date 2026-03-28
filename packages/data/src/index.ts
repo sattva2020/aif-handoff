@@ -23,8 +23,22 @@ export type CoordinatorStage = "planner" | "plan-checker" | "implementer" | "rev
 export { logger, formatAttachmentsForPrompt, looksLikeFullPlanUpdate };
 
 export function toTaskResponse(task: TaskRow): Task {
-  const { attachments, ...rest } = task;
-  return { ...rest, attachments: parseAttachments(attachments) };
+  const { attachments, tags, ...rest } = task;
+  return {
+    ...rest,
+    attachments: parseAttachments(attachments),
+    tags: parseTags(tags),
+  };
+}
+
+function parseTags(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((t): t is string => typeof t === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
 export function toCommentResponse(comment: CommentRow) {
@@ -63,6 +77,8 @@ export function createTask(input: {
   priority?: number;
   autoMode?: boolean;
   isFix?: boolean;
+  roadmapAlias?: string;
+  tags?: string[];
 }): TaskRow | undefined {
   const db = getDb();
   const id = crypto.randomUUID();
@@ -78,6 +94,8 @@ export function createTask(input: {
       priority: input.priority,
       autoMode: input.autoMode,
       isFix: input.isFix,
+      roadmapAlias: input.roadmapAlias ?? null,
+      tags: JSON.stringify(input.tags ?? []),
       reworkRequested: false,
       status: "backlog",
       position: 1000.0,

@@ -62,6 +62,8 @@ export interface Task {
   tokenOutput?: number;
   tokenTotal?: number;
   costUsd?: number;
+  roadmapAlias: string | null;
+  tags: string[];
   reworkRequested: boolean;
   lastHeartbeatAt: string | null;
   createdAt: string;
@@ -91,6 +93,8 @@ export interface CreateTaskInput {
   priority?: number;
   autoMode?: boolean;
   isFix?: boolean;
+  roadmapAlias?: string;
+  tags?: string[];
 }
 
 /** PUT /tasks/:id body */
@@ -113,6 +117,8 @@ export interface UpdateTaskInput {
   tokenOutput?: number;
   tokenTotal?: number;
   costUsd?: number;
+  roadmapAlias?: string | null;
+  tags?: string[];
   reworkRequested?: boolean;
   lastHeartbeatAt?: string | null;
 }

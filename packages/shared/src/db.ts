@@ -76,6 +76,8 @@ function ensureTables(sqlite: Database.Database): void {
       token_output INTEGER NOT NULL DEFAULT 0,
       token_total INTEGER NOT NULL DEFAULT 0,
       cost_usd REAL NOT NULL DEFAULT 0,
+      roadmap_alias TEXT,
+      tags TEXT NOT NULL DEFAULT '[]',
       rework_requested INTEGER NOT NULL DEFAULT 0,
       last_heartbeat_at TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -105,6 +107,8 @@ function ensureTables(sqlite: Database.Database): void {
   ensureColumn(sqlite, "tasks", "last_heartbeat_at", "last_heartbeat_at TEXT");
   ensureColumn(sqlite, "tasks", "auto_mode", "auto_mode INTEGER NOT NULL DEFAULT 1");
   ensureColumn(sqlite, "tasks", "is_fix", "is_fix INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(sqlite, "tasks", "roadmap_alias", "roadmap_alias TEXT");
+  ensureColumn(sqlite, "tasks", "tags", "tags TEXT NOT NULL DEFAULT '[]'");
   ensureColumn(sqlite, "tasks", "attachments", "attachments TEXT NOT NULL DEFAULT '[]'");
   ensureColumn(sqlite, "projects", "planner_max_budget_usd", "planner_max_budget_usd REAL");
   ensureColumn(

@@ -18,12 +18,12 @@ Created: 2026-03-28
 
 ### Phase 1: Data Model and Contracts
 
-- [ ] Task 1: Extend task data model to support roadmap grouping metadata and tags.
+- [x] Task 1: Extend task data model to support roadmap grouping metadata and tags.
   Deliverable: add `roadmapAlias` and `tags` to task storage and shared types so tasks can be grouped and filtered.
   Files: `packages/shared/src/schema.ts`, `packages/shared/src/types.ts`, `packages/shared/src/db.ts`, `packages/shared/src/index.ts`, `packages/shared/src/browser.ts`.
   Logging: in DB bootstrap log when new columns are ensured (DEBUG with column/table names), and log migration completion summary (INFO).
 
-- [ ] Task 2: Extend API DTO validation and repository mapping for new roadmap fields.
+- [x] Task 2: Extend API DTO validation and repository mapping for new roadmap fields.
   Deliverable: support reading/writing `roadmapAlias` and `tags` in create/update/list task APIs with strict zod validation and normalization.
   Files: `packages/api/src/schemas.ts`, `packages/api/src/repositories/tasks.ts`, `packages/api/src/routes/tasks.ts`.
   Logging: log normalized roadmap metadata on task create/update (DEBUG), and validation failure context for roadmap payloads (WARN).

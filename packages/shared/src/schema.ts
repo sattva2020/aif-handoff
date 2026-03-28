@@ -48,6 +48,8 @@ export const tasks = sqliteTable("tasks", {
   tokenOutput: integer("token_output").notNull().default(0),
   tokenTotal: integer("token_total").notNull().default(0),
   costUsd: real("cost_usd").notNull().default(0),
+  roadmapAlias: text("roadmap_alias"),
+  tags: text("tags").notNull().default("[]"),
   reworkRequested: integer("rework_requested", { mode: "boolean" }).notNull().default(false),
   lastHeartbeatAt: text("last_heartbeat_at"),
   createdAt: text("created_at")
