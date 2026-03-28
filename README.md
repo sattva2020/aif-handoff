@@ -26,11 +26,13 @@ npm run dev
 
 This starts three services in parallel via Turborepo:
 
-| Service   | URL                     | Description                           |
-| --------- | ----------------------- | ------------------------------------- |
-| **API**   | `http://localhost:3001` | Hono REST + WebSocket server          |
-| **Web**   | `http://localhost:5173` | React Kanban UI                       |
-| **Agent** | _(background)_          | Polls every 30s, dispatches subagents |
+| Service   | URL                     | Description                                  |
+| --------- | ----------------------- | -------------------------------------------- |
+| **API**   | `http://localhost:3001` | Hono REST + WebSocket server                 |
+| **Web**   | `http://localhost:5173` | React Kanban UI                              |
+| **Agent** | _(background)_          | Event-driven + polling, dispatches subagents |
+
+The agent coordinator reacts to task events via WebSocket in near real-time and falls back to 30-second polling. Activity logging can be switched to batch mode (`ACTIVITY_LOG_MODE=batch`) to reduce DB write amplification. See [Configuration](docs/configuration.md) for all tuning options.
 
 ### Authentication
 

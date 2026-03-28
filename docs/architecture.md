@@ -49,7 +49,7 @@ No cross-dependencies between `api`, `web`, and `agent`. Runtime integration is:
 
 ## Agent Pipeline
 
-The coordinator (`packages/agent/src/coordinator.ts`) polls every 30 seconds via `node-cron` and delegates to `.claude/agents/` definitions:
+The coordinator (`packages/agent/src/coordinator.ts`) uses a dual-trigger model: it polls via `node-cron` every 30 seconds as a fallback and also reacts to real-time events from the API WebSocket (task creation, moves, and explicit `agent:wake` signals). Duplicate wakes are debounced. If the WebSocket is unavailable, the coordinator falls back to polling-only mode. It delegates to `.claude/agents/` definitions:
 
 ```
 Backlog ──[start_ai]──► Planning ──► Plan Ready ──► Implementing ──► Review ──► Done ──► Verified
@@ -119,8 +119,16 @@ The API broadcasts events via WebSocket (`/ws` endpoint) on every state change:
 | `task:updated` | Task fields updated                   |
 | `task:moved`   | Task status changed via state machine |
 | `task:deleted` | Task deleted                          |
+| `agent:wake`   | Coordinator should check for work     |
 
-The web UI connects via `useWebSocket` hook and invalidates React Query caches on incoming events.
+The web UI connects via `useWebSocket` hook and invalidates React Query caches on incoming events. The agent coordinator also subscribes to this WebSocket to receive wake signals for immediate task processing (see Agent Pipeline above).
+
+### Activity Logging
+
+Agent tool events are tracked in each task's `agentActivityLog` field. Two modes are supported (configured via `ACTIVITY_LOG_MODE`):
+
+- **sync** (default): Each event writes immediately to the database.
+- **batch**: Events are buffered in an in-memory queue per task and flushed when the batch size, max age timer, or stage boundary is reached. Shutdown handlers ensure buffered entries are persisted on `SIGINT`/`SIGTERM`.
 
 ## Database
 
@@ -131,6 +139,17 @@ Three tables:
 - **tasks** — task data, status, plan, implementation log, review comments, agent activity, heartbeat metadata
 - **task_comments** — human/agent comments with optional attachments
 - **projects** — project metadata (name, root path, agent budgets)
+
+### Indexes
+
+Runtime index bootstrap creates the following indexes via `CREATE INDEX IF NOT EXISTS` at startup:
+
+- `idx_tasks_status` — coordinator stage filtering
+- `idx_tasks_retry_after` — blocked-task retry scans
+- `idx_tasks_project_id` — project-scoped task lists
+- `idx_tasks_status_retry` — composite for coordinator retry queries
+- `idx_tasks_project_status` — composite for ordered task-list queries
+- `idx_task_comments_task_id` — comment lookups by task
 
 ## See Also
 

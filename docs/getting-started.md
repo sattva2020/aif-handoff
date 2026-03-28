@@ -67,11 +67,11 @@ npm run dev
 
 This runs three processes in parallel via Turborepo:
 
-| Service   | URL                     | Description                           |
-| --------- | ----------------------- | ------------------------------------- |
-| **API**   | `http://localhost:3001` | REST + WebSocket server               |
-| **Web**   | `http://localhost:5173` | Kanban board UI                       |
-| **Agent** | _(background)_          | Polls every 30s, dispatches subagents |
+| Service   | URL                     | Description                                               |
+| --------- | ----------------------- | --------------------------------------------------------- |
+| **API**   | `http://localhost:3001` | REST + WebSocket server                                   |
+| **Web**   | `http://localhost:5173` | Kanban board UI                                           |
+| **Agent** | _(background)_          | Polls every 30s + event-driven wake, dispatches subagents |
 
 ## Verify It Works
 
