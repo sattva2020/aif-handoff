@@ -382,7 +382,7 @@ export function Header({
         <DialogContent>
           <DialogClose onClose={() => setRoadmapOpen(false)} />
           <DialogHeader>
-            <DialogTitle>Import Roadmap Tasks</DialogTitle>
+            <DialogTitle>Generate Roadmap Tasks</DialogTitle>
           </DialogHeader>
           {roadmapResult ? (
             <div className="space-y-3">
