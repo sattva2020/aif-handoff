@@ -365,6 +365,21 @@ export function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                         P{task.priority}
                       </Badge>
                     )}
+                    {task.roadmapAlias && (
+                      <Badge className="text-[10px] border-violet-500/35 bg-violet-500/15 text-violet-300">
+                        {task.roadmapAlias}
+                      </Badge>
+                    )}
+                    {task.tags
+                      ?.filter((t) => !t.startsWith("rm:") && t !== "roadmap")
+                      .map((tag) => (
+                        <Badge
+                          key={tag}
+                          className="text-[10px] border-slate-500/35 bg-slate-500/15 text-slate-300"
+                        >
+                          {tag}
+                        </Badge>
+                      ))}
                     <span className="ml-auto max-w-[52%] truncate font-mono text-[10px] text-muted-foreground">
                       {task.id}
                     </span>
