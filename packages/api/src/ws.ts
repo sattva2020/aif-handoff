@@ -9,6 +9,13 @@ const log = logger("ws");
 let clients: Set<WebSocket> = new Set();
 let injectWebSocketFn: ReturnType<typeof createNodeWebSocket>["injectWebSocket"];
 
+function getRawWebSocket(ws: unknown): WebSocket | null {
+  if (!ws || typeof ws !== "object") return null;
+  const candidate = (ws as { raw?: unknown }).raw;
+  if (!candidate || typeof candidate !== "object") return null;
+  return candidate as WebSocket;
+}
+
 export function setupWebSocket(app: Hono) {
   const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
   injectWebSocketFn = injectWebSocket;
@@ -16,20 +23,22 @@ export function setupWebSocket(app: Hono) {
   app.get(
     "/ws",
     upgradeWebSocket(() => ({
-      onOpen(_event: Event, ws: any) {
-        const raw = ws.raw as WebSocket;
+      onOpen(_event: Event, ws: unknown) {
+        const raw = getRawWebSocket(ws);
+        if (!raw) return;
         clients.add(raw);
         log.debug({ clientCount: clients.size }, "WebSocket client connected");
       },
-      onClose(_event: Event, ws: any) {
-        const raw = ws.raw as WebSocket;
+      onClose(_event: Event, ws: unknown) {
+        const raw = getRawWebSocket(ws);
+        if (!raw) return;
         clients.delete(raw);
         log.debug({ clientCount: clients.size }, "WebSocket client disconnected");
       },
       onError(error: Event) {
         log.error({ error }, "WebSocket error");
       },
-    }))
+    })),
   );
 
   return { injectWebSocket, upgradeWebSocket };

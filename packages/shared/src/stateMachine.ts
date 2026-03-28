@@ -5,30 +5,27 @@ type TransitionPatch = Pick<
   "blockedReason" | "blockedFromStatus" | "retryAfter" | "retryCount" | "reworkRequested"
 > & { status: TaskStatus };
 
-type TransitionResult =
-  | { ok: true; patch: TransitionPatch }
-  | { ok: false; error: string };
+type TransitionResult = { ok: true; patch: TransitionPatch } | { ok: false; error: string };
+
+/** Default reset values applied when transitioning out of blocked/retry states. */
+export const CLEAN_STATE_RESET = {
+  blockedReason: null,
+  blockedFromStatus: null,
+  retryAfter: null,
+  retryCount: 0,
+  reworkRequested: false,
+} as const satisfies Omit<TransitionPatch, "status">;
 
 export function applyHumanTaskEvent(
   task: Pick<Task, "status" | "autoMode" | "blockedFromStatus">,
-  event: TaskEvent
+  event: TaskEvent,
 ): TransitionResult {
   switch (event) {
     case "start_ai": {
       if (task.status !== "backlog") {
         return { ok: false, error: "start_ai is only allowed from backlog" };
       }
-      return {
-        ok: true,
-        patch: {
-          status: "planning",
-          blockedReason: null,
-          blockedFromStatus: null,
-          retryAfter: null,
-          retryCount: 0,
-          reworkRequested: false,
-        },
-      };
+      return { ok: true, patch: { ...CLEAN_STATE_RESET, status: "planning" } };
     }
     case "start_implementation": {
       if (task.status !== "plan_ready") {
@@ -37,49 +34,19 @@ export function applyHumanTaskEvent(
       if (task.autoMode) {
         return { ok: false, error: "start_implementation is not needed when autoMode=true" };
       }
-      return {
-        ok: true,
-        patch: {
-          status: "implementing",
-          blockedReason: null,
-          blockedFromStatus: null,
-          retryAfter: null,
-          retryCount: 0,
-          reworkRequested: false,
-        },
-      };
+      return { ok: true, patch: { ...CLEAN_STATE_RESET, status: "implementing" } };
     }
     case "request_replanning": {
       if (task.status !== "plan_ready") {
         return { ok: false, error: "request_replanning is only allowed from plan_ready" };
       }
-      return {
-        ok: true,
-        patch: {
-          status: "planning",
-          blockedReason: null,
-          blockedFromStatus: null,
-          retryAfter: null,
-          retryCount: 0,
-          reworkRequested: false,
-        },
-      };
+      return { ok: true, patch: { ...CLEAN_STATE_RESET, status: "planning" } };
     }
     case "fast_fix": {
       if (task.status !== "plan_ready") {
         return { ok: false, error: "fast_fix is only allowed from plan_ready" };
       }
-      return {
-        ok: true,
-        patch: {
-          status: "plan_ready",
-          blockedReason: null,
-          blockedFromStatus: null,
-          retryAfter: null,
-          retryCount: 0,
-          reworkRequested: false,
-        },
-      };
+      return { ok: true, patch: { ...CLEAN_STATE_RESET, status: "plan_ready" } };
     }
     case "approve_done": {
       if (task.status !== "done") {
@@ -93,14 +60,7 @@ export function applyHumanTaskEvent(
       }
       return {
         ok: true,
-        patch: {
-          status: "implementing",
-          blockedReason: null,
-          blockedFromStatus: null,
-          retryAfter: null,
-          retryCount: 0,
-          reworkRequested: true,
-        },
+        patch: { ...CLEAN_STATE_RESET, status: "implementing", reworkRequested: true },
       };
     }
     case "retry_from_blocked": {
@@ -110,17 +70,7 @@ export function applyHumanTaskEvent(
       if (!task.blockedFromStatus) {
         return { ok: false, error: "blockedFromStatus is missing for retry_from_blocked" };
       }
-      return {
-        ok: true,
-        patch: {
-          status: task.blockedFromStatus,
-          blockedReason: null,
-          blockedFromStatus: null,
-          retryAfter: null,
-          retryCount: 0,
-          reworkRequested: false,
-        },
-      };
+      return { ok: true, patch: { ...CLEAN_STATE_RESET, status: task.blockedFromStatus } };
     }
     default:
       return { ok: false, error: "Unknown task event" };

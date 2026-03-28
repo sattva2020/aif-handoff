@@ -10,16 +10,19 @@ cp .env.example .env
 
 ## Environment Variables
 
-| Variable | Type | Default | Description |
-|----------|------|---------|-------------|
-| `ANTHROPIC_API_KEY` | string | *(optional)* | Anthropic API key. The Agent SDK uses `~/.claude/` credentials by default, so this is only needed if you want to use a separate key |
-| `PORT` | number | `3001` | API server port |
-| `POLL_INTERVAL_MS` | number | `30000` | How often the agent coordinator polls for tasks (milliseconds) |
-| `AGENT_STAGE_STALE_TIMEOUT_MS` | number | `1200000` | Watchdog timeout for stale agent stages (planning/implementing/review) before auto-recovery is triggered |
-| `AGENT_STAGE_STALE_MAX_RETRY` | number | `3` | Maximum automatic stale recoveries before task is quarantined in `blocked_external` |
-| `DATABASE_URL` | string | `./data/aif.sqlite` | Path to the SQLite database file |
-| `AGENT_QUERY_AUDIT_ENABLED` | boolean | `true` | Enable/disable writing agent query audit logs to `logs/*.log` |
-| `LOG_LEVEL` | string | `debug` | Pino log level: `fatal`, `error`, `warn`, `info`, `debug`, `trace` |
+| Variable                           | Type    | Default             | Description                                                                                                                         |
+| ---------------------------------- | ------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`                | string  | _(optional)_        | Anthropic API key. The Agent SDK uses `~/.claude/` credentials by default, so this is only needed if you want to use a separate key |
+| `PORT`                             | number  | `3001`              | API server port                                                                                                                     |
+| `POLL_INTERVAL_MS`                 | number  | `30000`             | How often the agent coordinator polls for tasks (milliseconds)                                                                      |
+| `AGENT_STAGE_STALE_TIMEOUT_MS`     | number  | `1200000`           | Watchdog timeout for stale agent stages (planning/implementing/review) before auto-recovery is triggered                            |
+| `AGENT_STAGE_STALE_MAX_RETRY`      | number  | `3`                 | Maximum automatic stale recoveries before task is quarantined in `blocked_external`                                                 |
+| `AGENT_STAGE_RUN_TIMEOUT_MS`       | number  | `900000`            | Per-stage hard timeout (planner/plan-checker/implementer/reviewer) before the coordinator treats it as failed                       |
+| `AGENT_QUERY_START_TIMEOUT_MS`     | number  | `45000`             | Timeout waiting for the first message from Claude query stream before treating startup as hung                                      |
+| `AGENT_QUERY_START_RETRY_DELAY_MS` | number  | `1000`              | Delay before one automatic retry after `query_start_timeout`                                                                        |
+| `DATABASE_URL`                     | string  | `./data/aif.sqlite` | Path to the SQLite database file                                                                                                    |
+| `AGENT_QUERY_AUDIT_ENABLED`        | boolean | `true`              | Enable/disable writing agent query audit logs to `logs/*.log`                                                                       |
+| `LOG_LEVEL`                        | string  | `debug`             | Pino log level: `fatal`, `error`, `warn`, `info`, `debug`, `trace`                                                                  |
 
 Environment validation is handled by Zod in `packages/shared/src/env.ts`. The application will fail to start with a descriptive error if required variables are invalid.
 
@@ -29,6 +32,14 @@ The Agent SDK supports two authentication methods:
 
 1. **Default (recommended):** Uses your active Claude subscription credentials from `~/.claude/`. No configuration needed.
 2. **API Key:** Set `ANTHROPIC_API_KEY` in `.env` to use a dedicated key.
+
+### Runtime Readiness Check
+
+API exposes `GET /agent/readiness` to verify auth state at runtime:
+
+- `ready=true`: agent can run AI stages.
+- `ready=false`: neither `ANTHROPIC_API_KEY` nor Claude profile auth was detected.
+- The web app shows a warning banner when `ready=false`.
 
 ## Database
 
@@ -50,14 +61,14 @@ npm run db:setup
 
 Pino structured JSON logging is used throughout. Set `LOG_LEVEL` to control verbosity:
 
-| Level | Use Case |
-|-------|----------|
-| `trace` | Very verbose, includes all internal details |
+| Level   | Use Case                                                          |
+| ------- | ----------------------------------------------------------------- |
+| `trace` | Very verbose, includes all internal details                       |
 | `debug` | Development default — shows DB queries, WS events, agent activity |
-| `info` | Production — key events only |
-| `warn` | Warnings and deprecations |
-| `error` | Errors only |
-| `fatal` | Application crashes |
+| `info`  | Production — key events only                                      |
+| `warn`  | Warnings and deprecations                                         |
+| `error` | Errors only                                                       |
+| `fatal` | Application crashes                                               |
 
 Each package creates a named logger:
 
@@ -74,6 +85,14 @@ Agent query audit logs are controlled by `AGENT_QUERY_AUDIT_ENABLED`. When enabl
 The coordinator checks for actionable tasks every `POLL_INTERVAL_MS` milliseconds (default: 30 seconds). Lower values mean faster task processing but more CPU usage.
 
 For development, 30 seconds is a good default. In production, adjust based on your workload.
+
+### Query Startup Timeout
+
+Subagent query startup has a dedicated guard:
+
+- If no first stream message arrives within `AGENT_QUERY_START_TIMEOUT_MS`, the run is marked as `query_start_timeout`.
+- The coordinator performs one automatic retry after `AGENT_QUERY_START_RETRY_DELAY_MS`.
+- If the second attempt also times out, normal error handling applies (stage failure path).
 
 ### Stale Task Watchdog
 

@@ -10,11 +10,10 @@ import { useTasks } from "./hooks/useTasks";
 import { useTheme } from "./hooks/useTheme";
 import { Button } from "./components/ui/button";
 import { calculateTaskMetrics } from "./lib/taskMetrics";
+import { api } from "./lib/api";
+import { readStorage, writeStorage, removeStorage } from "./lib/storage";
+import { STORAGE_KEYS } from "./lib/storageKeys";
 import type { Project } from "@aif/shared/browser";
-
-const STORAGE_KEY = "aif-selected-project";
-const DENSITY_KEY = "aif-density";
-const VIEW_MODE_KEY = "aif-view-mode";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -29,37 +28,41 @@ function AppContent() {
   useWebSocket();
   const { theme, toggleTheme } = useTheme();
   const { data: projects } = useProjects();
+  const [agentReadiness, setAgentReadiness] = useState<{
+    ready: boolean;
+    hasApiKey: boolean;
+    hasClaudeAuth: boolean;
+    authSource: "api_key" | "claude_profile" | "both" | "none";
+    detectedPath: string | null;
+    message: string;
+    checkedAt: string;
+  } | null>(null);
   const [project, setProject] = useState<Project | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [commandOpen, setCommandOpen] = useState(false);
   const [density, setDensity] = useState<"comfortable" | "compact">(() => {
-    if (typeof window === "undefined") return "comfortable";
-    const saved = localStorage.getItem(DENSITY_KEY);
+    const saved = readStorage(STORAGE_KEYS.DENSITY);
     return saved === "compact" ? "compact" : "comfortable";
   });
   const [viewMode, setViewMode] = useState<"kanban" | "list">(() => {
-    if (typeof window === "undefined") return "kanban";
-    const saved = localStorage.getItem(VIEW_MODE_KEY);
+    const saved = readStorage(STORAGE_KEYS.VIEW_MODE);
     return saved === "list" ? "list" : "kanban";
   });
   const { data: projectTasks } = useTasks(project?.id ?? null);
-  const taskMetrics = useMemo(
-    () => calculateTaskMetrics(projectTasks ?? []),
-    [projectTasks]
-  );
+  const taskMetrics = useMemo(() => calculateTaskMetrics(projectTasks ?? []), [projectTasks]);
 
   useEffect(() => {
-    localStorage.setItem(DENSITY_KEY, density);
+    writeStorage(STORAGE_KEYS.DENSITY, density);
   }, [density]);
 
   useEffect(() => {
-    localStorage.setItem(VIEW_MODE_KEY, viewMode);
+    writeStorage(STORAGE_KEYS.VIEW_MODE, viewMode);
   }, [viewMode]);
 
   useEffect(() => {
     if (!projects?.length) return;
     if (project) return;
-    const savedId = localStorage.getItem(STORAGE_KEY);
+    const savedId = readStorage(STORAGE_KEYS.SELECTED_PROJECT);
     if (savedId) {
       const found = projects.find((p) => p.id === savedId);
       if (found) setProject(found);
@@ -78,9 +81,33 @@ function AppContent() {
     return () => document.removeEventListener("keydown", handler);
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchReadiness = async () => {
+      try {
+        const status = await api.getAgentReadiness();
+        if (cancelled) return;
+        setAgentReadiness(status);
+      } catch (error) {
+        if (cancelled) return;
+        setAgentReadiness(null);
+        console.debug("[app] Agent readiness check failed:", error);
+      }
+    };
+
+    void fetchReadiness();
+    const intervalId = window.setInterval(fetchReadiness, 60_000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
   const handleSelectProject = useCallback((p: Project) => {
     setProject(p);
-    localStorage.setItem(STORAGE_KEY, p.id);
+    writeStorage(STORAGE_KEYS.SELECTED_PROJECT, p.id);
   }, []);
 
   const handleTaskOpen = useCallback((taskId: string) => {
@@ -99,7 +126,7 @@ function AppContent() {
         onDeselectProject={() => {
           setProject(null);
           setSelectedTaskId(null);
-          localStorage.removeItem(STORAGE_KEY);
+          removeStorage(STORAGE_KEYS.SELECTED_PROJECT);
         }}
         onOpenCommandPalette={() => setCommandOpen(true)}
         density={density}
@@ -109,7 +136,15 @@ function AppContent() {
         taskMetrics={taskMetrics}
       />
 
-      <main className={`mx-auto w-full max-w-[1680px] ${density === "compact" ? "p-4 md:p-5" : "p-6 md:p-8"}`}>
+      <main
+        className={`mx-auto w-full max-w-[1680px] ${density === "compact" ? "p-4 md:p-5" : "p-6 md:p-8"}`}
+      >
+        {agentReadiness && !agentReadiness.ready ? (
+          <div className="mb-4 border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
+            Claude auth is not configured. Set <code>ANTHROPIC_API_KEY</code> in <code>.env</code>{" "}
+            or sign in via Claude Code profile (<code>~/.claude</code>) to run AI stages.
+          </div>
+        ) : null}
         {project ? (
           <Board
             projectId={project.id}

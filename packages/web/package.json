@@ -1,6 +1,8 @@
 {
   "name": "@aif/web",
   "version": "0.1.0",
+  "description": "React Kanban board UI for AIF Handoff",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "scripts": {
@@ -29,6 +31,7 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.0",
+    "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.6.0",
     "@testing-library/react": "^16.2.0",
     "@types/react": "^19.0.0",

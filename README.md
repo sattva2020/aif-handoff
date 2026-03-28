@@ -2,7 +2,7 @@
 
 > Autonomous Kanban board where AI agents plan, implement, and review your tasks — fully hands-off.
 
-Built on top of [AI Factory](https://github.com/lee-to/ai-factory) workflow and powered by [Claude Agent SDK](https://docs.anthropic.com/en/docs/agents/claude-agent-sdk) subagents. Tasks flow through stages automatically: **Backlog → Planning → Plan Ready → Implementing → Review → Done** — each stage orchestrated by specialized AI subagents following the AIF methodology.
+Built on top of [AI Factory](https://github.com/lee-to/ai-factory) workflow and powered by [Claude Agent SDK](https://docs.anthropic.com/en/docs/agents/claude-agent-sdk) subagents. Tasks flow through stages automatically: **Backlog → Planning → Plan Ready → Implementing → Review → Done** — each stage orchestrated by specialized AI subagents following the AIF methodology. In auto mode, review feedback can also trigger an automatic rework loop: **Review → request_changes → Implementing**.
 
 ## Key Features
 
@@ -26,11 +26,11 @@ npm run dev
 
 This starts three services in parallel via Turborepo:
 
-| Service | URL | Description |
-|---------|-----|-------------|
-| **API** | `http://localhost:3001` | Hono REST + WebSocket server |
-| **Web** | `http://localhost:5173` | React Kanban UI |
-| **Agent** | *(background)* | Polls every 30s, dispatches subagents |
+| Service   | URL                     | Description                           |
+| --------- | ----------------------- | ------------------------------------- |
+| **API**   | `http://localhost:3001` | Hono REST + WebSocket server          |
+| **Web**   | `http://localhost:5173` | React Kanban UI                       |
+| **Agent** | _(background)_          | Polls every 30s, dispatches subagents |
 
 ### Authentication
 
@@ -52,11 +52,11 @@ packages/
 
 The coordinator polls every 30 seconds and delegates to `.claude/agents/` definitions:
 
-| Stage | Agent | What it does |
-|-------|-------|-------------|
-| Backlog → Planning → Plan Ready | `plan-coordinator` | Iterative plan refinement via `plan-polisher` |
-| Plan Ready → Implementing → Review | `implement-coordinator` | Parallel task execution with worktrees + quality sidecars |
-| Review → Done | `review-sidecar` + `security-sidecar` | Code review and security audit in parallel |
+| Stage                                                   | Agent                                                                     | What it does                                                                                                      |
+| ------------------------------------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Backlog → Planning → Plan Ready                         | `plan-coordinator`                                                        | Iterative plan refinement via `plan-polisher`                                                                     |
+| Plan Ready → Implementing → Review                      | `implement-coordinator`                                                   | Parallel task execution with worktrees + quality sidecars                                                         |
+| Review → Done / Review → request_changes → Implementing | `review-sidecar` + `security-sidecar` (+ auto review gate in coordinator) | Code review and security audit in parallel; in auto mode, detected fix items automatically restart implementation |
 
 ### Fault Tolerance
 
@@ -68,41 +68,41 @@ All agents are loaded via `settingSources: ["project"]` from `.claude/agents/*.m
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Runtime | Node.js + TypeScript |
-| Monorepo | Turborepo |
-| Database | SQLite (better-sqlite3 + drizzle-orm) |
-| API | Hono + @hono/node-server + WebSocket |
-| Validation | zod + @hono/zod-validator |
-| Frontend | React + Vite + TailwindCSS |
-| Drag & Drop | @dnd-kit |
-| Server State | @tanstack/react-query |
-| Agent SDK | @anthropic-ai/claude-agent-sdk |
-| Scheduler | node-cron |
+| Layer        | Technology                            |
+| ------------ | ------------------------------------- |
+| Runtime      | Node.js + TypeScript                  |
+| Monorepo     | Turborepo                             |
+| Database     | SQLite (better-sqlite3 + drizzle-orm) |
+| API          | Hono + @hono/node-server + WebSocket  |
+| Validation   | zod + @hono/zod-validator             |
+| Frontend     | React + Vite + TailwindCSS            |
+| Drag & Drop  | @dnd-kit                              |
+| Server State | @tanstack/react-query                 |
+| Agent SDK    | @anthropic-ai/claude-agent-sdk        |
+| Scheduler    | node-cron                             |
 
 ## Scripts
 
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Start all services with hot reload |
-| `npm run build` | Build all packages |
-| `npm test` | Run all tests (Vitest) |
-| `npm run init` | Run AI Factory init and database setup |
+| Command            | Description                                   |
+| ------------------ | --------------------------------------------- |
+| `npm run dev`      | Start all services with hot reload            |
+| `npm run build`    | Build all packages                            |
+| `npm test`         | Run all tests (Vitest)                        |
+| `npm run init`     | Run AI Factory init and database setup        |
 | `npm run aif:init` | Initialize AI Factory context in this project |
-| `npm run db:setup` | Create data directory and push schema |
-| `npm run db:push` | Push schema changes via drizzle-kit |
+| `npm run db:setup` | Create data directory and push schema         |
+| `npm run db:push`  | Push schema changes via drizzle-kit           |
 
 ---
 
 ## Documentation
 
-| Guide | Description |
-|-------|-------------|
-| [Getting Started](docs/getting-started.md) | Installation, setup, first steps |
-| [Architecture](docs/architecture.md) | Agent pipeline, state machine, data flow |
-| [API Reference](docs/api.md) | REST endpoints, WebSocket events |
-| [Configuration](docs/configuration.md) | Environment variables, logging, auth |
+| Guide                                      | Description                              |
+| ------------------------------------------ | ---------------------------------------- |
+| [Getting Started](docs/getting-started.md) | Installation, setup, first steps         |
+| [Architecture](docs/architecture.md)       | Agent pipeline, state machine, data flow |
+| [API Reference](docs/api.md)               | REST endpoints, WebSocket events         |
+| [Configuration](docs/configuration.md)     | Environment variables, logging, auth     |
 
 ## Contributing
 

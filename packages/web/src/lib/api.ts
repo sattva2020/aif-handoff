@@ -16,7 +16,7 @@ const FAST_FIX_TIMEOUT_MS = 120000;
 async function request<T>(
   url: string,
   options?: RequestInit,
-  timeoutMs = REQUEST_TIMEOUT_MS
+  timeoutMs = REQUEST_TIMEOUT_MS,
 ): Promise<T> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -46,6 +46,19 @@ async function request<T>(
 }
 
 export const api = {
+  getAgentReadiness(): Promise<{
+    ready: boolean;
+    hasApiKey: boolean;
+    hasClaudeAuth: boolean;
+    authSource: "api_key" | "claude_profile" | "both" | "none";
+    detectedPath: string | null;
+    message: string;
+    checkedAt: string;
+  }> {
+    console.debug("[api] GET /agent/readiness");
+    return request("/agent/readiness");
+  },
+
   // Projects
   listProjects(): Promise<Project[]> {
     console.debug("[api] GET /projects");
@@ -114,10 +127,14 @@ export const api = {
   taskEvent(id: string, event: TaskEvent): Promise<Task> {
     console.debug("[api] POST /tasks/%s/events →", id, event);
     const timeoutMs = event === "fast_fix" ? FAST_FIX_TIMEOUT_MS : REQUEST_TIMEOUT_MS;
-    return request<Task>(`${API_BASE}/${id}/events`, {
-      method: "POST",
-      body: JSON.stringify({ event }),
-    }, timeoutMs);
+    return request<Task>(
+      `${API_BASE}/${id}/events`,
+      {
+        method: "POST",
+        body: JSON.stringify({ event }),
+      },
+      timeoutMs,
+    );
   },
 
   listTaskComments(id: string): Promise<TaskComment[]> {

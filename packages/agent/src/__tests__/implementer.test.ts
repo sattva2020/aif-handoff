@@ -43,24 +43,29 @@ describe("runImplementer rework behavior", () => {
     queryMock.mockReturnValue(streamSuccess("Implementation done"));
     projectRoot = mkdtempSync(join(tmpdir(), "aif-implementer-test-"));
 
-    testDb.current.insert(projects).values({
-      id: "project-1",
-      name: "Test",
-      rootPath: projectRoot,
-    }).run();
+    testDb.current
+      .insert(projects)
+      .values({
+        id: "project-1",
+        name: "Test",
+        rootPath: projectRoot,
+      })
+      .run();
   });
 
   it("skips execution when all plan tasks are complete and rework is not requested", async () => {
     const db = testDb.current;
-    db.insert(tasks).values({
-      id: "task-1",
-      projectId: "project-1",
-      title: "Task",
-      description: "Desc",
-      status: "implementing",
-      plan: "## Plan\n1. [x] Done",
-      reworkRequested: false,
-    }).run();
+    db.insert(tasks)
+      .values({
+        id: "task-1",
+        projectId: "project-1",
+        title: "Task",
+        description: "Desc",
+        status: "implementing",
+        plan: "## Plan\n- [x] Task 1: Done",
+        reworkRequested: false,
+      })
+      .run();
 
     await runImplementer("task-1", projectRoot);
 
@@ -71,39 +76,47 @@ describe("runImplementer rework behavior", () => {
 
   it("executes and injects latest human comment when rework is requested", async () => {
     const db = testDb.current;
-    db.insert(tasks).values({
-      id: "task-2",
-      projectId: "project-1",
-      title: "Task",
-      description: "Desc",
-      status: "implementing",
-      plan: "## Plan\n- [x] Done",
-      reworkRequested: true,
-    }).run();
-    db.insert(taskComments).values({
-      id: "c-1",
-      taskId: "task-2",
-      author: "agent",
-      message: "agent-msg",
-      attachments: "[]",
-      createdAt: "2026-01-01T00:00:00.000Z",
-    }).run();
-    db.insert(taskComments).values({
-      id: "c-2",
-      taskId: "task-2",
-      author: "human",
-      message: "first-human",
-      attachments: "[]",
-      createdAt: "2026-01-01T00:00:01.000Z",
-    }).run();
-    db.insert(taskComments).values({
-      id: "c-3",
-      taskId: "task-2",
-      author: "human",
-      message: "latest-human",
-      attachments: "[]",
-      createdAt: "2026-01-01T00:00:02.000Z",
-    }).run();
+    db.insert(tasks)
+      .values({
+        id: "task-2",
+        projectId: "project-1",
+        title: "Task",
+        description: "Desc",
+        status: "implementing",
+        plan: "## Plan\n- [x] Done",
+        reworkRequested: true,
+      })
+      .run();
+    db.insert(taskComments)
+      .values({
+        id: "c-1",
+        taskId: "task-2",
+        author: "agent",
+        message: "agent-msg",
+        attachments: "[]",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      })
+      .run();
+    db.insert(taskComments)
+      .values({
+        id: "c-2",
+        taskId: "task-2",
+        author: "human",
+        message: "first-human",
+        attachments: "[]",
+        createdAt: "2026-01-01T00:00:01.000Z",
+      })
+      .run();
+    db.insert(taskComments)
+      .values({
+        id: "c-3",
+        taskId: "task-2",
+        author: "human",
+        message: "latest-human",
+        attachments: "[]",
+        createdAt: "2026-01-01T00:00:02.000Z",
+      })
+      .run();
 
     await runImplementer("task-2", projectRoot);
 
@@ -119,27 +132,33 @@ describe("runImplementer rework behavior", () => {
     expect(updatedTask?.implementationLog).toBe("Implementation done");
   });
 
-  it("does not skip when numbered checklist has pending items", async () => {
+  it("does not skip when checkbox Task checklist has pending items", async () => {
     const db = testDb.current;
     queryMock
       .mockReturnValueOnce(streamSuccess("Implementation done"))
-      .mockReturnValueOnce(streamSuccess("## Fix Steps\n1. [x] Pending step\n2. [x] Done step"));
+      .mockReturnValueOnce(
+        streamSuccess("## Fix Steps\n- [x] Task 1: Pending step\n- [x] Task 2: Done step"),
+      );
 
-    db.insert(tasks).values({
-      id: "task-3",
-      projectId: "project-1",
-      title: "Task",
-      description: "Desc",
-      status: "implementing",
-      plan: "## Fix Steps\n1. [ ] Pending step\n2. [x] Done step",
-      reworkRequested: false,
-    }).run();
+    db.insert(tasks)
+      .values({
+        id: "task-3",
+        projectId: "project-1",
+        title: "Task",
+        description: "Desc",
+        status: "implementing",
+        plan: "## Fix Steps\n- [ ] Task 1: Pending step\n- [x] Task 2: Done step",
+        reworkRequested: false,
+      })
+      .run();
 
     await runImplementer("task-3", projectRoot);
 
     expect(queryMock).toHaveBeenCalledTimes(2);
     const call = queryMock.mock.calls[0]?.[0] as { prompt: string };
-    expect(call.prompt).toContain("Parsed plan tasks (status + dependencies extracted by orchestrator):");
+    expect(call.prompt).toContain(
+      "Parsed plan tasks (status + dependencies extracted by orchestrator):",
+    );
     expect(call.prompt).toContain("Task 1 [pending]");
     expect(call.prompt).toContain("Task 2 [completed]");
     const syncCall = queryMock.mock.calls[1]?.[0] as { prompt: string };
@@ -152,15 +171,17 @@ describe("runImplementer rework behavior", () => {
 
   it("does not skip when plan task format is unrecognized", async () => {
     const db = testDb.current;
-    db.insert(tasks).values({
-      id: "task-4",
-      projectId: "project-1",
-      title: "Task",
-      description: "Desc",
-      status: "implementing",
-      plan: "Plan:\n- remove old code\n- update docs",
-      reworkRequested: false,
-    }).run();
+    db.insert(tasks)
+      .values({
+        id: "task-4",
+        projectId: "project-1",
+        title: "Task",
+        description: "Desc",
+        status: "implementing",
+        plan: "Plan:\n- remove old code\n- update docs",
+        reworkRequested: false,
+      })
+      .run();
 
     await runImplementer("task-4", projectRoot);
 
@@ -168,33 +189,36 @@ describe("runImplementer rework behavior", () => {
     const call = queryMock.mock.calls[0]?.[0] as { prompt: string };
     expect(call.prompt).toContain(
       "No structured checklist/tasks were parsed from plan. " +
-      "Interpret the plan text directly and decide actionable implementation steps."
+        "Interpret the plan text directly and decide actionable implementation steps.",
     );
     const updatedTask = db.select().from(tasks).where(eq(tasks.id, "task-4")).get();
     expect(updatedTask?.implementationLog).toBe("Implementation done");
   });
 
-  it("fails guard when checklist remains pending after auto-sync", async () => {
+  it("does not fail when checkbox Task checklist remains pending after auto-sync", async () => {
     const db = testDb.current;
     queryMock
       .mockReturnValueOnce(streamSuccess("Implementation done"))
-      .mockReturnValueOnce(streamSuccess("## Plan\n1. [ ] Still pending"));
+      .mockReturnValueOnce(streamSuccess("## Plan\n- [ ] Task 1: Still pending"));
 
-    db.insert(tasks).values({
-      id: "task-5",
-      projectId: "project-1",
-      title: "Task",
-      description: "Desc",
-      status: "implementing",
-      plan: "## Plan\n1. [ ] Still pending",
-      reworkRequested: false,
-    }).run();
+    db.insert(tasks)
+      .values({
+        id: "task-5",
+        projectId: "project-1",
+        title: "Task",
+        description: "Desc",
+        status: "implementing",
+        plan: "## Plan\n- [ ] Task 1: Still pending",
+        reworkRequested: false,
+      })
+      .run();
 
-    await expect(runImplementer("task-5", projectRoot)).rejects.toThrow(
-      "Plan checklist incomplete after implementation sync"
-    );
+    await expect(runImplementer("task-5", projectRoot)).resolves.toBeUndefined();
 
     const updatedTask = db.select().from(tasks).where(eq(tasks.id, "task-5")).get();
-    expect(updatedTask?.implementationLog).toContain("Checklist remains incomplete after auto-sync");
+    expect(updatedTask?.implementationLog).toContain("Implementation done");
+    expect(updatedTask?.implementationLog).toContain(
+      "Checklist remains incomplete after auto-sync",
+    );
   });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { createTestDb, tasks, projects } from "@aif/shared";
+import { createTestDb, tasks, projects, taskComments } from "@aif/shared";
 import { eq } from "drizzle-orm";
 
 // Set up test db
@@ -26,21 +26,25 @@ vi.mock("../subagents/implementer.js", () => ({
 vi.mock("../subagents/reviewer.js", () => ({
   runReviewer: vi.fn().mockResolvedValue(undefined),
 }));
+vi.mock("../reviewGate.js", () => ({
+  evaluateReviewCommentsForAutoMode: vi.fn().mockResolvedValue({ status: "success" }),
+}));
 
-const {
-  pollAndProcess,
-  getCoordinatorRuntimeCounters,
-  resetCoordinatorRuntimeCountersForTests,
-} = await import("../coordinator.js");
+const { pollAndProcess, getCoordinatorRuntimeCounters, resetCoordinatorRuntimeCountersForTests } =
+  await import("../coordinator.js");
 const { runPlanner } = await import("../subagents/planner.js");
 const { runPlanChecker } = await import("../subagents/planChecker.js");
 const { runImplementer } = await import("../subagents/implementer.js");
 const { runReviewer } = await import("../subagents/reviewer.js");
+const { evaluateReviewCommentsForAutoMode } = await import("../reviewGate.js");
 
 describe("coordinator", () => {
   beforeEach(() => {
     testDb.current = createTestDb();
-    testDb.current.insert(projects).values({ id: "test-project", name: "Test", rootPath: "/tmp/test" }).run();
+    testDb.current
+      .insert(projects)
+      .values({ id: "test-project", name: "Test", rootPath: "/tmp/test" })
+      .run();
     vi.clearAllMocks();
     resetCoordinatorRuntimeCountersForTests();
   });
@@ -65,7 +69,12 @@ describe("coordinator", () => {
   it("should ignore backlog tasks until human starts AI", async () => {
     const db = testDb.current;
     db.insert(tasks)
-      .values({ id: "task-planning", projectId: "test-project", title: "Backlog task", status: "backlog" })
+      .values({
+        id: "task-planning",
+        projectId: "test-project",
+        title: "Backlog task",
+        status: "backlog",
+      })
       .run();
 
     await pollAndProcess();
@@ -81,7 +90,12 @@ describe("coordinator", () => {
   it("should ignore verified tasks", async () => {
     const db = testDb.current;
     db.insert(tasks)
-      .values({ id: "task-verified", projectId: "test-project", title: "Verified task", status: "verified" })
+      .values({
+        id: "task-verified",
+        projectId: "test-project",
+        title: "Verified task",
+        status: "verified",
+      })
       .run();
 
     await pollAndProcess();
@@ -139,7 +153,12 @@ describe("coordinator", () => {
   it("should pick up implementing tasks and continue to review", async () => {
     const db = testDb.current;
     db.insert(tasks)
-      .values({ id: "task-impl", projectId: "test-project", title: "Resume impl", status: "implementing" })
+      .values({
+        id: "task-impl",
+        projectId: "test-project",
+        title: "Resume impl",
+        status: "implementing",
+      })
       .run();
 
     await pollAndProcess();
@@ -163,6 +182,96 @@ describe("coordinator", () => {
     expect(runPlanChecker).not.toHaveBeenCalled();
     const task = db.select().from(tasks).where(eq(tasks.id, "task-3")).get();
     expect(task!.status).toBe("done");
+  });
+
+  it("should auto-request changes after review when autoMode=true and fixes are found", async () => {
+    const db = testDb.current;
+    db.insert(tasks)
+      .values({
+        id: "task-review-fixes",
+        projectId: "test-project",
+        title: "Review with fixes",
+        status: "review",
+        autoMode: true,
+        reviewComments: "## Code Review\n- fix issue A\n- fix issue B",
+      })
+      .run();
+
+    vi.mocked(evaluateReviewCommentsForAutoMode).mockResolvedValueOnce({
+      status: "request_changes",
+      fixes: "- fix issue A\n- fix issue B",
+    });
+
+    await pollAndProcess();
+
+    const task = db.select().from(tasks).where(eq(tasks.id, "task-review-fixes")).get();
+    const comments = db
+      .select()
+      .from(taskComments)
+      .where(eq(taskComments.taskId, "task-review-fixes"))
+      .all();
+
+    expect(task!.status).toBe("implementing");
+    expect(task!.reworkRequested).toBe(true);
+    expect(comments).toHaveLength(1);
+    expect(comments[0]!.author).toBe("agent");
+    expect(comments[0]!.message).toContain("## Auto Review Gate Summary");
+    expect(comments[0]!.message).toContain("Outcome: request_changes");
+    expect(comments[0]!.message).toContain("fix issue A");
+  });
+
+  it("should skip auto review gate when autoMode=false", async () => {
+    const db = testDb.current;
+    db.insert(tasks)
+      .values({
+        id: "task-review-manual",
+        projectId: "test-project",
+        title: "Manual review mode",
+        status: "review",
+        autoMode: false,
+        reviewComments: "Some review comments",
+      })
+      .run();
+
+    await pollAndProcess();
+
+    const task = db.select().from(tasks).where(eq(tasks.id, "task-review-manual")).get();
+    expect(task!.status).toBe("done");
+    expect(evaluateReviewCommentsForAutoMode).not.toHaveBeenCalled();
+  });
+
+  it("should log auto review gate checks before moving review task to done", async () => {
+    const db = testDb.current;
+    db.insert(tasks)
+      .values({
+        id: "task-review-auto-log",
+        projectId: "test-project",
+        title: "Auto review logging",
+        status: "review",
+        autoMode: true,
+        reviewComments: "## Code Review\nLooks good",
+      })
+      .run();
+
+    await pollAndProcess();
+
+    const task = db.select().from(tasks).where(eq(tasks.id, "task-review-auto-log")).get();
+    const comments = db
+      .select()
+      .from(taskComments)
+      .where(eq(taskComments.taskId, "task-review-auto-log"))
+      .all();
+
+    expect(task!.status).toBe("done");
+    expect(comments).toHaveLength(1);
+    expect(comments[0]!.message).toContain("## Auto Review Gate Summary");
+    expect(comments[0]!.message).toContain("Outcome: success");
+    expect(task!.agentActivityLog).toContain(
+      "coordinator auto review gate started: validating review comments before done transition",
+    );
+    expect(task!.agentActivityLog).toContain(
+      "coordinator auto review gate passed: review accepted, proceeding to done",
+    );
   });
 
   it("should auto-recover stale implementing task to blocked_external", async () => {
@@ -254,11 +363,16 @@ describe("coordinator", () => {
   it("should move task to blocked_external on external planner failure", async () => {
     const db = testDb.current;
     db.insert(tasks)
-      .values({ id: "task-ext-1", projectId: "test-project", title: "External fail", status: "planning" })
+      .values({
+        id: "task-ext-1",
+        projectId: "test-project",
+        title: "External fail",
+        status: "planning",
+      })
       .run();
 
     vi.mocked(runPlanner).mockRejectedValueOnce(
-      new Error("Claude Code process exited with code 1")
+      new Error("Claude Code process exited with code 1"),
     );
 
     await pollAndProcess();
@@ -326,9 +440,7 @@ describe("coordinator", () => {
       .values({ id: "task-5", projectId: "test-project", title: "Fail impl", status: "plan_ready" })
       .run();
 
-    vi.mocked(runImplementer).mockRejectedValueOnce(
-      new Error("Implementer crashed")
-    );
+    vi.mocked(runImplementer).mockRejectedValueOnce(new Error("Implementer crashed"));
 
     await pollAndProcess();
 
@@ -339,11 +451,16 @@ describe("coordinator", () => {
   it("should move task to blocked_external when implementer is blocked by permissions", async () => {
     const db = testDb.current;
     db.insert(tasks)
-      .values({ id: "task-impl-perm", projectId: "test-project", title: "Impl blocked", status: "plan_ready" })
+      .values({
+        id: "task-impl-perm",
+        projectId: "test-project",
+        title: "Impl blocked",
+        status: "plan_ready",
+      })
       .run();
 
     vi.mocked(runImplementer).mockRejectedValueOnce(
-      new Error("Implementer blocked by permissions")
+      new Error("Implementer blocked by permissions"),
     );
 
     await pollAndProcess();
@@ -357,11 +474,16 @@ describe("coordinator", () => {
   it("should fast-retry on implementer stream interruption before worker dispatch", async () => {
     const db = testDb.current;
     db.insert(tasks)
-      .values({ id: "task-impl-stream", projectId: "test-project", title: "Impl stream issue", status: "plan_ready" })
+      .values({
+        id: "task-impl-stream",
+        projectId: "test-project",
+        title: "Impl stream issue",
+        status: "plan_ready",
+      })
       .run();
 
     vi.mocked(runImplementer).mockRejectedValueOnce(
-      new Error("Claude stream interrupted before implement-worker dispatch")
+      new Error("Claude stream interrupted before implement-worker dispatch"),
     );
 
     await pollAndProcess();
@@ -374,21 +496,26 @@ describe("coordinator", () => {
     expect(getCoordinatorRuntimeCounters().fastRetryStreamInterruptions).toBe(1);
   });
 
-  it("should keep task in implementing when checklist guard fails", async () => {
+  it("should revert to source status on checklist sync error from implementer", async () => {
     const db = testDb.current;
     db.insert(tasks)
-      .values({ id: "task-impl-checklist", projectId: "test-project", title: "Checklist guard", status: "plan_ready" })
+      .values({
+        id: "task-impl-checklist",
+        projectId: "test-project",
+        title: "Checklist guard",
+        status: "plan_ready",
+      })
       .run();
 
     vi.mocked(runImplementer).mockRejectedValueOnce(
-      new Error("Plan checklist incomplete after implementation sync")
+      new Error("Plan checklist incomplete after implementation sync"),
     );
 
     await pollAndProcess();
 
     const task = db.select().from(tasks).where(eq(tasks.id, "task-impl-checklist")).get();
-    expect(task!.status).toBe("implementing");
-    expect(task!.blockedReason).toContain("Plan checklist incomplete after implementation sync");
+    expect(task!.status).toBe("plan_ready");
+    expect(task!.blockedReason).toBeNull();
     expect(task!.retryAfter).toBeNull();
   });
 
@@ -425,7 +552,12 @@ describe("coordinator", () => {
   it("should set intermediate status during processing", async () => {
     const db = testDb.current;
     db.insert(tasks)
-      .values({ id: "task-6", projectId: "test-project", title: "Intermediate", status: "planning" })
+      .values({
+        id: "task-6",
+        projectId: "test-project",
+        title: "Intermediate",
+        status: "planning",
+      })
       .run();
 
     // Track status changes during planner execution

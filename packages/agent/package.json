@@ -1,6 +1,8 @@
 {
   "name": "@aif/agent",
   "version": "0.1.0",
+  "description": "AI coordinator and Claude subagents for AIF Handoff",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "scripts": {

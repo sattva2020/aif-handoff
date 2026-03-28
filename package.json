@@ -1,5 +1,26 @@
 {
   "name": "aif-handoff",
+  "version": "0.1.0",
+  "description": "Autonomous task management system with Kanban board and AI subagents",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lee-to/aif-handoff.git"
+  },
+  "author": "AIF Handoff Maintainers",
+  "keywords": [
+    "ai",
+    "agents",
+    "kanban",
+    "task-management",
+    "automation",
+    "claude",
+    "subagents"
+  ],
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
   "private": true,
   "workspaces": [
     "packages/*"
@@ -13,7 +34,13 @@
     "coverage": "turbo test -- --coverage",
     "db:setup": "mkdir -p data && cd packages/shared && DATABASE_URL=../../data/aif.sqlite drizzle-kit push",
     "db:push": "turbo db:push --filter=@aif/shared",
-    "aif:init": "ai-factory init"
+    "aif:init": "ai-factory init",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,json,md,css}": "prettier --write"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^3.2.4",
@@ -21,6 +48,9 @@
     "eslint": "^9.23.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "globals": "^16.0.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
+    "prettier": "^3.8.1",
     "turbo": "^2.5.0",
     "typescript": "^5.8.0",
     "typescript-eslint": "^8.28.0"

@@ -5,24 +5,12 @@ import { Column } from "./Column";
 import { Button } from "@/components/ui/button";
 import { AddTaskForm } from "./AddTaskForm";
 import { Input } from "@/components/ui/input";
+import { readStorage, writeStorage } from "@/lib/storage";
+import { STORAGE_KEYS } from "@/lib/storageKeys";
 
 type QuickFilter = "mine" | "blocked" | "recent" | "no_plan";
 type ViewMode = "kanban" | "list";
 type ListSort = "updated_desc" | "updated_asc" | "priority_desc" | "priority_asc" | "status";
-const LIST_QUERY_KEY = "aif-list-query";
-const LIST_SORT_KEY = "aif-list-sort";
-
-function readStorage(key: string): string | null {
-  if (typeof window === "undefined") return null;
-  if (typeof localStorage?.getItem !== "function") return null;
-  return localStorage.getItem(key);
-}
-
-function writeStorage(key: string, value: string) {
-  if (typeof window === "undefined") return;
-  if (typeof localStorage?.setItem !== "function") return;
-  localStorage.setItem(key, value);
-}
 
 interface BoardProps {
   projectId: string;
@@ -38,20 +26,19 @@ const FILTER_LABELS: Record<QuickFilter, string> = {
   no_plan: "no plan",
 };
 
-const STATUS_ORDER = Object.fromEntries(ORDERED_STATUSES.map((status, idx) => [status, idx])) as Record<
-  TaskStatus,
-  number
->;
+const STATUS_ORDER = Object.fromEntries(
+  ORDERED_STATUSES.map((status, idx) => [status, idx]),
+) as Record<TaskStatus, number>;
 
 export function Board({ projectId, onTaskClick, density, viewMode = "kanban" }: BoardProps) {
   const { data: tasks, isLoading } = useTasks(projectId);
   const isCompact = density === "compact";
   const [activeFilters, setActiveFilters] = useState<QuickFilter[]>([]);
   const [listQuery, setListQuery] = useState(() => {
-    return readStorage(LIST_QUERY_KEY) ?? "";
+    return readStorage(STORAGE_KEYS.LIST_QUERY) ?? "";
   });
   const [listSort, setListSort] = useState<ListSort>(() => {
-    const saved = readStorage(LIST_SORT_KEY);
+    const saved = readStorage(STORAGE_KEYS.LIST_SORT);
     return saved === "updated_asc" ||
       saved === "priority_desc" ||
       saved === "priority_asc" ||
@@ -61,16 +48,16 @@ export function Board({ projectId, onTaskClick, density, viewMode = "kanban" }: 
   });
 
   useEffect(() => {
-    writeStorage(LIST_QUERY_KEY, listQuery);
+    writeStorage(STORAGE_KEYS.LIST_QUERY, listQuery);
   }, [listQuery]);
 
   useEffect(() => {
-    writeStorage(LIST_SORT_KEY, listSort);
+    writeStorage(STORAGE_KEYS.LIST_SORT, listSort);
   }, [listSort]);
 
   const toggleFilter = (filter: QuickFilter) => {
     setActiveFilters((prev) =>
-      prev.includes(filter) ? prev.filter((f) => f !== filter) : [...prev, filter]
+      prev.includes(filter) ? prev.filter((f) => f !== filter) : [...prev, filter],
     );
   };
 
@@ -180,8 +167,12 @@ export function Board({ projectId, onTaskClick, density, viewMode = "kanban" }: 
 
   return (
     <>
-      <div className={`mb-4 flex flex-wrap items-center gap-2 border border-border bg-card/45 ${isCompact ? "px-2 py-1.5" : "px-3 py-2"}`}>
-        <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Filters</span>
+      <div
+        className={`mb-4 flex flex-wrap items-center gap-2 border border-border bg-card/45 ${isCompact ? "px-2 py-1.5" : "px-3 py-2"}`}
+      >
+        <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+          Filters
+        </span>
         {(Object.keys(FILTER_LABELS) as QuickFilter[]).map((key) => {
           const active = activeFilters.includes(key);
           return (
@@ -202,7 +193,12 @@ export function Board({ projectId, onTaskClick, density, viewMode = "kanban" }: 
           );
         })}
         {activeFilters.length > 0 && (
-          <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setActiveFilters([])}>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ml-auto"
+            onClick={() => setActiveFilters([])}
+          >
             clear filters
           </Button>
         )}
@@ -217,7 +213,12 @@ export function Board({ projectId, onTaskClick, density, viewMode = "kanban" }: 
               : "Create a task in Backlog to kick off automation"}
           </p>
           {activeFilters.length > 0 && (
-            <Button size="sm" variant="outline" className="mt-3" onClick={() => setActiveFilters([])}>
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-3"
+              onClick={() => setActiveFilters([])}
+            >
               Show all tasks
             </Button>
           )}
@@ -244,7 +245,9 @@ export function Board({ projectId, onTaskClick, density, viewMode = "kanban" }: 
           <div>
             <AddTaskForm projectId={projectId} />
           </div>
-          <div className={`flex flex-col gap-2 border border-border bg-card/45 ${isCompact ? "p-1.5" : "p-2"} md:flex-row md:items-center`}>
+          <div
+            className={`flex flex-col gap-2 border border-border bg-card/45 ${isCompact ? "p-1.5" : "p-2"} md:flex-row md:items-center`}
+          >
             <Input
               value={listQuery}
               onChange={(event) => setListQuery(event.target.value)}
@@ -267,11 +270,31 @@ export function Board({ projectId, onTaskClick, density, viewMode = "kanban" }: 
             <table className="min-w-full border-collapse text-left">
               <thead className="border-b border-border bg-secondary/35">
                 <tr>
-                  <th className={`px-3 uppercase tracking-[0.16em] text-muted-foreground ${isCompact ? "py-1.5 text-[10px]" : "py-2 text-[11px]"}`}>Task</th>
-                  <th className={`px-3 uppercase tracking-[0.16em] text-muted-foreground ${isCompact ? "py-1.5 text-[10px]" : "py-2 text-[11px]"}`}>Status</th>
-                  <th className={`px-3 uppercase tracking-[0.16em] text-muted-foreground ${isCompact ? "py-1.5 text-[10px]" : "py-2 text-[11px]"}`}>Priority</th>
-                  <th className={`px-3 uppercase tracking-[0.16em] text-muted-foreground ${isCompact ? "py-1.5 text-[10px]" : "py-2 text-[11px]"}`}>Owner</th>
-                  <th className={`px-3 uppercase tracking-[0.16em] text-muted-foreground ${isCompact ? "py-1.5 text-[10px]" : "py-2 text-[11px]"}`}>Updated</th>
+                  <th
+                    className={`px-3 uppercase tracking-[0.16em] text-muted-foreground ${isCompact ? "py-1.5 text-[10px]" : "py-2 text-[11px]"}`}
+                  >
+                    Task
+                  </th>
+                  <th
+                    className={`px-3 uppercase tracking-[0.16em] text-muted-foreground ${isCompact ? "py-1.5 text-[10px]" : "py-2 text-[11px]"}`}
+                  >
+                    Status
+                  </th>
+                  <th
+                    className={`px-3 uppercase tracking-[0.16em] text-muted-foreground ${isCompact ? "py-1.5 text-[10px]" : "py-2 text-[11px]"}`}
+                  >
+                    Priority
+                  </th>
+                  <th
+                    className={`px-3 uppercase tracking-[0.16em] text-muted-foreground ${isCompact ? "py-1.5 text-[10px]" : "py-2 text-[11px]"}`}
+                  >
+                    Owner
+                  </th>
+                  <th
+                    className={`px-3 uppercase tracking-[0.16em] text-muted-foreground ${isCompact ? "py-1.5 text-[10px]" : "py-2 text-[11px]"}`}
+                  >
+                    Updated
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -282,9 +305,17 @@ export function Board({ projectId, onTaskClick, density, viewMode = "kanban" }: 
                     onClick={() => onTaskClick(task.id)}
                   >
                     <td className={`px-3 ${isCompact ? "py-1" : "py-2.5"}`}>
-                      <div className={`${isCompact ? "text-[13px]" : "text-sm"} font-medium tracking-tight`}>{task.title}</div>
+                      <div
+                        className={`${isCompact ? "text-[13px]" : "text-sm"} font-medium tracking-tight`}
+                      >
+                        {task.title}
+                      </div>
                       {task.description && (
-                        <div className={`line-clamp-1 text-muted-foreground ${isCompact ? "text-[11px]" : "text-xs"}`}>{task.description}</div>
+                        <div
+                          className={`line-clamp-1 text-muted-foreground ${isCompact ? "text-[11px]" : "text-xs"}`}
+                        >
+                          {task.description}
+                        </div>
                       )}
                     </td>
                     <td className={`px-3 ${isCompact ? "py-1" : "py-2.5"}`}>
@@ -299,23 +330,26 @@ export function Board({ projectId, onTaskClick, density, viewMode = "kanban" }: 
                         {STATUS_CONFIG[task.status].label}
                       </span>
                     </td>
-                    <td className={`px-3 text-muted-foreground ${isCompact ? "py-1 text-[11px]" : "py-2.5 text-xs"}`}>
+                    <td
+                      className={`px-3 text-muted-foreground ${isCompact ? "py-1 text-[11px]" : "py-2.5 text-xs"}`}
+                    >
                       {task.priority || "-"}
                     </td>
-                    <td className={`px-3 text-muted-foreground ${isCompact ? "py-1 text-[11px]" : "py-2.5 text-xs"}`}>
+                    <td
+                      className={`px-3 text-muted-foreground ${isCompact ? "py-1 text-[11px]" : "py-2.5 text-xs"}`}
+                    >
                       {task.autoMode ? "AI" : "Manual"}
                     </td>
-                    <td className={`px-3 text-muted-foreground ${isCompact ? "py-1 text-[11px]" : "py-2.5 text-xs"}`}>
+                    <td
+                      className={`px-3 text-muted-foreground ${isCompact ? "py-1 text-[11px]" : "py-2.5 text-xs"}`}
+                    >
                       {new Date(task.updatedAt).toLocaleString()}
                     </td>
                   </tr>
                 ))}
                 {listTasks.length === 0 && (
                   <tr>
-                    <td
-                      colSpan={5}
-                      className="px-3 py-4 text-center text-xs text-muted-foreground"
-                    >
+                    <td colSpan={5} className="px-3 py-4 text-center text-xs text-muted-foreground">
                       No tasks match current list search
                     </td>
                   </tr>

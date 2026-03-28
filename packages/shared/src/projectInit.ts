@@ -1,32 +1,12 @@
-import { existsSync, mkdirSync, cpSync, readFileSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { existsSync, mkdirSync, cpSync } from "node:fs";
+import { resolve } from "node:path";
 import { execSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import { logger } from "./logger.js";
+import { findMonorepoRootFromUrl } from "./monorepoRoot.js";
 
 const log = logger("project-init");
 
-function findMonorepoRoot(): string {
-  const thisFile = fileURLToPath(import.meta.url);
-  let dir = dirname(thisFile);
-
-  for (let i = 0; i < 10; i++) {
-    const pkgPath = resolve(dir, "package.json");
-    if (existsSync(pkgPath)) {
-      try {
-        const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
-        if (pkg.workspaces) return dir;
-      } catch {}
-    }
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-
-  return resolve(dirname(thisFile), "../../..");
-}
-
-const MONOREPO_ROOT = findMonorepoRoot();
+const MONOREPO_ROOT = findMonorepoRootFromUrl(import.meta.url);
 
 /**
  * Initialize a project directory with .claude/ (agents + skills), .ai-factory/, and git repo.

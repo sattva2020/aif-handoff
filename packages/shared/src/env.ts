@@ -12,18 +12,22 @@ const envSchema = z.object({
   AGENT_STAGE_STALE_TIMEOUT_MS: z.coerce.number().default(20 * 60 * 1000),
   AGENT_STAGE_STALE_MAX_RETRY: z.coerce.number().default(3),
   AGENT_STAGE_RUN_TIMEOUT_MS: z.coerce.number().default(15 * 60 * 1000),
+  AGENT_QUERY_START_TIMEOUT_MS: z.coerce.number().default(45 * 1000),
+  AGENT_QUERY_START_RETRY_DELAY_MS: z.coerce.number().default(1000),
   DATABASE_URL: z.string().default("./data/aif.sqlite"),
-  AGENT_QUERY_AUDIT_ENABLED: z.preprocess((value) => {
-    if (typeof value === "string") {
-      const normalized = value.trim().toLowerCase();
-      if (BOOLEAN_TRUE_VALUES.has(normalized)) return true;
-      if (BOOLEAN_FALSE_VALUES.has(normalized)) return false;
-    }
-    return value;
-  }, z.boolean()).default(true),
-  LOG_LEVEL: z
-    .enum(["fatal", "error", "warn", "info", "debug", "trace"])
-    .default("debug"),
+  CORS_ORIGIN: z.string().default("*"),
+  API_BASE_URL: z.string().default("http://localhost:3001"),
+  AGENT_QUERY_AUDIT_ENABLED: z
+    .preprocess((value) => {
+      if (typeof value === "string") {
+        const normalized = value.trim().toLowerCase();
+        if (BOOLEAN_TRUE_VALUES.has(normalized)) return true;
+        if (BOOLEAN_FALSE_VALUES.has(normalized)) return false;
+      }
+      return value;
+    }, z.boolean())
+    .default(true),
+  LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("debug"),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -37,9 +41,7 @@ export function getEnv(): Env {
   if (!result.success) {
     const formatted = result.error.flatten().fieldErrors;
     log.fatal({ errors: formatted }, "Environment validation failed");
-    throw new Error(
-      `Environment validation failed: ${JSON.stringify(formatted)}`
-    );
+    throw new Error(`Environment validation failed: ${JSON.stringify(formatted)}`);
   }
 
   _env = result.data;
@@ -48,8 +50,6 @@ export function getEnv(): Env {
 }
 
 /** Validate env without caching — useful for testing */
-export function validateEnv(
-  env: Record<string, string | undefined> = process.env
-): Env {
+export function validateEnv(env: Record<string, string | undefined> = process.env): Env {
   return envSchema.parse(env);
 }

@@ -1,40 +1,17 @@
-import { existsSync, mkdirSync, readFileSync } from "fs";
+import { mkdirSync } from "fs";
 import { dirname, resolve } from "path";
-import { fileURLToPath } from "url";
 import Database from "better-sqlite3";
 import { drizzle, BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import * as schema from "./schema.js";
 import { logger } from "./logger.js";
+import { findMonorepoRootFromUrl } from "./monorepoRoot.js";
 
 const log = logger("db");
 
 let _db: BetterSQLite3Database<typeof schema> | null = null;
 let _sqlite: Database.Database | null = null;
 
-/** Find monorepo root by walking up from this file (packages/shared/src/db.ts → root). */
-function findMonorepoRoot(): string {
-  // db.ts lives at packages/shared/src/db.ts — root is 3 levels up
-  const thisFile = fileURLToPath(import.meta.url);
-  let dir = dirname(thisFile);
-
-  for (let i = 0; i < 10; i++) {
-    const pkgPath = resolve(dir, "package.json");
-    if (existsSync(pkgPath)) {
-      try {
-        const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
-        if (pkg.workspaces) return dir;
-      } catch {}
-    }
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-
-  // Fallback: 3 levels up from this file
-  return resolve(dirname(thisFile), "../../..");
-}
-
-const MONOREPO_ROOT = findMonorepoRoot();
+const MONOREPO_ROOT = findMonorepoRootFromUrl(import.meta.url);
 
 /** Resolve DB path relative to the monorepo root. */
 function resolveDbPath(raw: string): string {
@@ -42,9 +19,7 @@ function resolveDbPath(raw: string): string {
   return resolve(MONOREPO_ROOT, raw);
 }
 
-export function getDb(
-  url?: string
-): BetterSQLite3Database<typeof schema> {
+export function getDb(url?: string): BetterSQLite3Database<typeof schema> {
   if (_db) return _db;
 
   const dbPath = resolveDbPath(url ?? process.env.DATABASE_URL ?? "./data/aif.sqlite");
@@ -136,19 +111,14 @@ function ensureTables(sqlite: Database.Database): void {
     sqlite,
     "projects",
     "plan_checker_max_budget_usd",
-    "plan_checker_max_budget_usd REAL"
+    "plan_checker_max_budget_usd REAL",
   );
-  ensureColumn(
-    sqlite,
-    "projects",
-    "implementer_max_budget_usd",
-    "implementer_max_budget_usd REAL"
-  );
+  ensureColumn(sqlite, "projects", "implementer_max_budget_usd", "implementer_max_budget_usd REAL");
   ensureColumn(
     sqlite,
     "projects",
     "review_sidecar_max_budget_usd",
-    "review_sidecar_max_budget_usd REAL"
+    "review_sidecar_max_budget_usd REAL",
   );
   ensureColumn(sqlite, "task_comments", "author", "author TEXT NOT NULL DEFAULT 'human'");
   ensureColumn(sqlite, "task_comments", "attachments", "attachments TEXT NOT NULL DEFAULT '[]'");
@@ -158,11 +128,9 @@ function ensureColumn(
   sqlite: Database.Database,
   table: string,
   columnName: string,
-  columnDefinition: string
+  columnDefinition: string,
 ): void {
-  const columns = sqlite
-    .prepare(`PRAGMA table_info(${table})`)
-    .all() as Array<{ name: string }>;
+  const columns = sqlite.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
   const exists = columns.some((column) => column.name === columnName);
   if (!exists) {
     sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${columnDefinition}`);

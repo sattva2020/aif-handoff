@@ -31,7 +31,7 @@ describe("plan layer parsing", () => {
     expect(layers).toEqual([[1, 2], [3]]);
   });
 
-  it("parses heading-style tasks with Depends on lines", () => {
+  it("does not parse non-checkbox heading-style tasks", () => {
     const plan = `
 ### Task 1: Init
 **Depends on:** nothing
@@ -43,7 +43,7 @@ describe("plan layer parsing", () => {
 **Depends on:** Task 1
 `;
     const { layers } = computePlanLayers(plan);
-    expect(layers).toEqual([[1], [2, 3]]);
+    expect(layers).toEqual([]);
   });
 
   it("formats summary for prompt injection", () => {
@@ -51,7 +51,7 @@ describe("plan layer parsing", () => {
     expect(text).toContain("Layer 2 (parallel): tasks 2, 3");
   });
 
-  it("parses numbered checklist tasks in `1. [ ]` format", () => {
+  it("does not parse numbered checklist tasks without `Task` keyword", () => {
     const plan = `
 ## Fix Steps
 1. [ ] Remove footer html
@@ -59,10 +59,10 @@ describe("plan layer parsing", () => {
 3. [ ] Remove footer js (depends on 1)
 `;
     const { layers } = computePendingPlanLayers(plan);
-    expect(layers).toEqual([[1], [3]]);
+    expect(layers).toEqual([]);
   });
 
-  it("parses numbered tasks without checkboxes as pending", () => {
+  it("does not parse numbered plain steps", () => {
     const plan = `
 ## Steps
 1. Create endpoint
@@ -70,6 +70,26 @@ describe("plan layer parsing", () => {
 3. Verify integration
 `;
     const { layers } = computePendingPlanLayers(plan);
-    expect(layers).toEqual([[1, 2, 3]]);
+    expect(layers).toEqual([]);
+  });
+
+  it("parses checkbox Task rows with heading prefix", () => {
+    const plan = `
+### Phase 1
+#### - [x] Task 1: Done base setup
+#### - [ ] Task 2: Add feature (depends on 1)
+`;
+    const { layers } = computePendingPlanLayers(plan);
+    expect(layers).toEqual([[2]]);
+  });
+
+  it("treats [~] Task as in-progress (pending)", () => {
+    const plan = `
+### Phase 1
+- [x] Task 1: Base setup
+- [~] Task 2: Coordinator is working now (depends on 1)
+`;
+    const { layers } = computePendingPlanLayers(plan);
+    expect(layers).toEqual([[2]]);
   });
 });

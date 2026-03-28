@@ -1,20 +1,9 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
 import { eq } from "drizzle-orm";
-import { getDb, projects, tasks, logger, incrementTaskTokenUsage } from "@aif/shared";
-import { createActivityLogger, logActivity, getClaudePath } from "../hooks.js";
-import { writeQueryAudit } from "../queryAudit.js";
-import {
-  createClaudeStderrCollector,
-  explainClaudeFailure,
-  probeClaudeCliFailure,
-} from "../claudeDiagnostics.js";
+import { getDb, projects, tasks, logger, persistTaskPlan } from "@aif/shared";
+import { executeSubagentQuery } from "../subagentQuery.js";
 
 const log = logger("plan-checker");
 const AGENT_NAME = "plan-checker";
-const PROJECT_SCOPE_SYSTEM_APPEND =
-  "Project scope rule: work strictly inside the current working directory (project root). " +
-  "Do not inspect or modify files in the orchestrator monorepo or in parent/sibling directories " +
-  "unless the user explicitly asks for that path. Avoid broad discovery outside the current project root.";
 
 function normalizeMarkdownFence(text: string): string {
   const fenced = text.match(/```(?:markdown|md)?\s*([\s\S]*?)```/i);
@@ -53,87 +42,27 @@ Requirements:
 4) Preserve completed items "- [x]" as completed.
 5) Return only the corrected plan markdown, no explanations.`;
 
-  let resultText = "";
-  const stderrCollector = createClaudeStderrCollector();
-  logActivity(taskId, "Agent", `${AGENT_NAME} started`);
-  writeQueryAudit({
-    timestamp: new Date().toISOString(),
+  const { resultText } = await executeSubagentQuery({
     taskId,
-    agentName: AGENT_NAME,
     projectRoot,
+    agentName: AGENT_NAME,
     prompt,
-    options: {
-      settingSources: ["project"],
-      maxBudgetUsd: planCheckerBudget,
-      systemPrompt: {
-        type: "preset",
-        preset: "claude_code",
-        append: PROJECT_SCOPE_SYSTEM_APPEND,
-      },
-    },
+    maxBudgetUsd: planCheckerBudget,
   });
 
-  try {
-    for await (const message of query({
-      prompt,
-      options: {
-        cwd: projectRoot,
-        env: process.env,
-        pathToClaudeCodeExecutable: getClaudePath(),
-        settingSources: ["project"],
-        permissionMode: "acceptEdits",
-        systemPrompt: {
-          type: "preset",
-          preset: "claude_code",
-          append: PROJECT_SCOPE_SYSTEM_APPEND,
-        },
-        ...(planCheckerBudget == null ? {} : { maxBudgetUsd: planCheckerBudget }),
-        stderr: stderrCollector.onStderr,
-        hooks: {
-          PostToolUse: [
-            { hooks: [createActivityLogger(taskId)] },
-          ],
-        },
-      },
-    })) {
-      if (message.type === "result") {
-        incrementTaskTokenUsage(taskId, {
-          ...message.usage,
-          total_cost_usd: message.total_cost_usd,
-        });
-        if (message.subtype === "success") {
-          resultText = message.result;
-          log.info({ taskId }, "plan-checker completed successfully");
-        } else {
-          logActivity(taskId, "Agent", `${AGENT_NAME} ended (${message.subtype})`);
-          throw new Error(`Plan checker failed: ${message.subtype}`);
-        }
-      }
-    }
-
-    const normalizedPlan = normalizeMarkdownFence(resultText);
-    if (normalizedPlan.length === 0) {
-      throw new Error("Plan checker returned empty content");
-    }
-
-    db.update(tasks)
-      .set({
-        plan: normalizedPlan,
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(tasks.id, taskId))
-      .run();
-
-    logActivity(taskId, "Agent", `${AGENT_NAME} complete`);
-    log.debug({ taskId }, "Verified plan saved to task");
-  } catch (err) {
-    let detail = stderrCollector.getTail();
-    if (!detail) {
-      detail = await probeClaudeCliFailure(projectRoot, getClaudePath());
-    }
-    const reason = explainClaudeFailure(err, detail);
-    logActivity(taskId, "Agent", `${AGENT_NAME} failed — ${reason}`);
-    log.error({ taskId, err, claudeStderr: detail }, "Plan checker execution failed");
-    throw new Error(reason, { cause: err });
+  const normalizedPlan = normalizeMarkdownFence(resultText);
+  if (normalizedPlan.length === 0) {
+    throw new Error("Plan checker returned empty content");
   }
+
+  persistTaskPlan({
+    db,
+    taskId,
+    planText: normalizedPlan,
+    projectRoot,
+    isFix: task.isFix,
+    updatedAt: new Date().toISOString(),
+  });
+
+  log.debug({ taskId }, "Verified plan saved to task");
 }

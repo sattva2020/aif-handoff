@@ -25,12 +25,12 @@ AIF Handoff is a Turborepo monorepo with four packages. The system automates tas
 
 ## Packages
 
-| Package | Name | Purpose |
-|---------|------|---------|
+| Package           | Name          | Purpose                                            |
+| ----------------- | ------------- | -------------------------------------------------- |
 | `packages/shared` | `@aif/shared` | Types, DB schema, state machine, constants, logger |
-| `packages/api` | `@aif/api` | Hono REST + WebSocket server (port 3001) |
-| `packages/web` | `@aif/web` | React Kanban UI (port 5173) |
-| `packages/agent` | `@aif/agent` | Coordinator + Claude Agent SDK subagents |
+| `packages/api`    | `@aif/api`    | Hono REST + WebSocket server (port 3001)           |
+| `packages/web`    | `@aif/web`    | React Kanban UI (port 5173)                        |
+| `packages/agent`  | `@aif/agent`  | Coordinator + Claude Agent SDK subagents           |
 
 ### Dependency Graph
 
@@ -40,7 +40,12 @@ shared ← web (browser export only)
 shared ← agent
 ```
 
-No cross-dependencies between `api`, `web`, and `agent`. They communicate via HTTP/WebSocket at runtime.
+No cross-dependencies between `api`, `web`, and `agent`. Runtime integration is:
+
+- `web` ↔ `api` via HTTP/WebSocket
+- `agent` → Claude Agent SDK via SDK calls
+- `agent` → SQLite via `@aif/shared` (co-deployed orchestration path)
+- `agent` → `api` via HTTP for best-effort broadcast notifications
 
 ## Agent Pipeline
 
@@ -50,6 +55,7 @@ The coordinator (`packages/agent/src/coordinator.ts`) polls every 30 seconds via
 Backlog ──[start_ai]──► Planning ──► Plan Ready ──► Implementing ──► Review ──► Done ──► Verified
                             │              │              │              │           │
                             │              │              │              │           └─[request_changes]──► Implementing (rework)
+                            │              │              │              └─[auto-mode review gate]──► request_changes ─► Implementing (rework)
                             │              │              │              │
                             │              └─[request_    │              └─────────────────────────────────►
                             │                replanning]──┘
@@ -57,11 +63,11 @@ Backlog ──[start_ai]──► Planning ──► Plan Ready ──► Implem
                      plan-coordinator          implement-coordinator        review + security sidecars
 ```
 
-| Stage Transition | Agent | Description |
-|-----------------|-------|-------------|
-| Backlog → Planning → Plan Ready | `plan-coordinator` | Iterative plan refinement via `plan-polisher` |
-| Plan Ready → Implementing → Review | `implement-coordinator` | Parallel execution with worktrees + quality sidecars |
-| Review → Done | `review-sidecar` + `security-sidecar` | Code review and security audit in parallel |
+| Stage Transition                                        | Agent                                                                     | Description                                                                                                             |
+| ------------------------------------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Backlog → Planning → Plan Ready                         | `plan-coordinator`                                                        | Iterative plan refinement via `plan-polisher`                                                                           |
+| Plan Ready → Implementing → Review                      | `implement-coordinator`                                                   | Parallel execution with worktrees + quality sidecars                                                                    |
+| Review → Done / Review → request_changes → Implementing | `review-sidecar` + `security-sidecar` (+ auto review gate in coordinator) | Code review and security audit in parallel; in auto mode, review comments are analyzed and may trigger automatic rework |
 
 ### Reliability Guards
 
@@ -90,29 +96,29 @@ All agents are defined as markdown files in `.claude/agents/*.md` and loaded by 
 
 Defined in `packages/shared/src/stateMachine.ts`. Human actions available per status:
 
-| Status | Human Actions |
-|--------|--------------|
-| `backlog` | `start_ai` |
-| `planning` | *(none — agent working)* |
-| `plan_ready` | `start_implementation`, `request_replanning`, `fast_fix` |
-| `implementing` | *(none — agent working)* |
-| `review` | *(none — agent working)* |
-| `blocked_external` | `retry_from_blocked` |
-| `done` | `approve_done`, `request_changes` |
-| `verified` | *(terminal state)* |
+| Status             | Human Actions                                            |
+| ------------------ | -------------------------------------------------------- |
+| `backlog`          | `start_ai`                                               |
+| `planning`         | _(none — agent working)_                                 |
+| `plan_ready`       | `start_implementation`, `request_replanning`, `fast_fix` |
+| `implementing`     | _(none — agent working)_                                 |
+| `review`           | _(none — agent working)_                                 |
+| `blocked_external` | `retry_from_blocked`                                     |
+| `done`             | `approve_done`, `request_changes`                        |
+| `verified`         | _(terminal state)_                                       |
 
-Tasks have an `autoMode` flag. When `true`, the agent automatically transitions through all stages. When `false`, the user must manually trigger `start_implementation` from `plan_ready`.
+Tasks have an `autoMode` flag. When `true`, the agent automatically transitions through all stages. This includes an automatic post-review gate: review comments are analyzed, and if fix items are detected the coordinator applies a `request_changes`-style transition (`done -> implementing`) with an agent comment containing required fixes. When `false`, the user must manually trigger `start_implementation` from `plan_ready`.
 
 ## Real-Time Updates
 
 The API broadcasts events via WebSocket (`/ws` endpoint) on every state change:
 
-| Event | Trigger |
-|-------|---------|
-| `task:created` | New task created |
-| `task:updated` | Task fields updated |
-| `task:moved` | Task status changed via state machine |
-| `task:deleted` | Task deleted |
+| Event          | Trigger                               |
+| -------------- | ------------------------------------- |
+| `task:created` | New task created                      |
+| `task:updated` | Task fields updated                   |
+| `task:moved`   | Task status changed via state machine |
+| `task:deleted` | Task deleted                          |
 
 The web UI connects via `useWebSocket` hook and invalidates React Query caches on incoming events.
 
@@ -121,6 +127,7 @@ The web UI connects via `useWebSocket` hook and invalidates React Query caches o
 SQLite via `better-sqlite3` with `drizzle-orm` for type-safe queries. Schema is defined in `packages/shared/src/schema.ts`.
 
 Three tables:
+
 - **tasks** — task data, status, plan, implementation log, review comments, agent activity, heartbeat metadata
 - **task_comments** — human/agent comments with optional attachments
 - **projects** — project metadata (name, root path, agent budgets)

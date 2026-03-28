@@ -15,6 +15,7 @@ export default defineConfig({
     proxy: {
       "/projects": "http://localhost:3001",
       "/tasks": "http://localhost:3001",
+      "/agent": "http://localhost:3001",
       "/health": "http://localhost:3001",
       "/ws": {
         target: "ws://localhost:3001",

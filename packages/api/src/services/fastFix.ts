@@ -1,0 +1,151 @@
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { incrementTaskTokenUsage, parseAttachments } from "@aif/shared";
+
+interface FastFixComment {
+  author: string;
+  message: string;
+  attachments: string | null;
+  createdAt: string;
+}
+
+interface RunFastFixQueryInput {
+  taskId: string;
+  taskTitle: string;
+  taskDescription: string;
+  latestComment: FastFixComment;
+  projectRoot: string;
+  previousPlan: string;
+  priorAttempt?: string;
+  shouldTryFileUpdate?: boolean;
+}
+
+function formatLatestCommentForPrompt(comment: FastFixComment): string {
+  const attachments = parseAttachments(comment.attachments);
+  const attachmentLines = attachments.length
+    ? attachments
+        .map((file, index) => {
+          const contentBlock = file.content
+            ? `\n     content:\n${file.content
+                .slice(0, 4000)
+                .split("\n")
+                .map((line) => `       ${line}`)
+                .join("\n")}`
+            : "\n     content: [not provided]";
+          return `${index + 1}. ${file.name} (${file.mimeType}, ${file.size} bytes)${contentBlock}`;
+        })
+        .join("\n")
+    : "none";
+
+  return [
+    `[${comment.createdAt}] ${comment.author}`,
+    `message: ${comment.message}`,
+    "attachments:",
+    attachmentLines,
+  ].join("\n");
+}
+
+export async function runFastFixQuery(input: RunFastFixQueryInput): Promise<string> {
+  const includeFileUpdateStep = input.shouldTryFileUpdate ?? true;
+  const prompt = input.priorAttempt
+    ? `You are editing an existing implementation plan markdown.
+
+TASK TITLE:
+${input.taskTitle}
+
+TASK DESCRIPTION:
+${input.taskDescription}
+
+CURRENT PLAN (must be preserved, with only necessary edits):
+<<<CURRENT_PLAN
+${input.previousPlan}
+CURRENT_PLAN
+
+LATEST HUMAN COMMENT TO APPLY:
+${formatLatestCommentForPrompt(input.latestComment)}
+
+PRIOR ATTEMPT THAT WAS TOO SHORT (do not use as final output):
+<<<PRIOR_ATTEMPT
+${input.priorAttempt}
+PRIOR_ATTEMPT
+
+Requirements:
+1) Return the FULL updated plan markdown, not a summary and not only a patch.
+2) Keep existing sections and details unless the comment explicitly asks to change them.
+3) Apply only the requested quick fix.
+${
+  includeFileUpdateStep
+    ? "4) Also update the original plan file in the workspace (if you can access files/tools): find the existing source plan markdown that matches CURRENT PLAN and overwrite it with the FULL updated plan.\n5) Output markdown only in your final response."
+    : "4) Do not use tools/subagents. Return the FULL updated plan markdown directly.\n5) Output markdown only in your final response."
+}`
+    : `You are editing an existing implementation plan markdown.
+
+TASK TITLE:
+${input.taskTitle}
+
+TASK DESCRIPTION:
+${input.taskDescription}
+
+CURRENT PLAN (must be preserved, with only necessary edits):
+<<<CURRENT_PLAN
+${input.previousPlan}
+CURRENT_PLAN
+
+LATEST HUMAN COMMENT TO APPLY:
+${formatLatestCommentForPrompt(input.latestComment)}
+
+Requirements:
+1) Return the FULL updated plan markdown, not a summary and not only a patch.
+2) Keep existing sections and details unless the comment explicitly asks to change them.
+3) Apply only the requested quick fix.
+${
+  includeFileUpdateStep
+    ? "4) Also update the original plan file in the workspace (if you can access files/tools): find the existing source plan markdown that matches CURRENT PLAN and overwrite it with the FULL updated plan.\n5) Output markdown only in your final response."
+    : "4) Do not use tools/subagents. Return the FULL updated plan markdown directly.\n5) Output markdown only in your final response."
+}`;
+
+  let resultText = "";
+  for await (const message of query({
+    prompt,
+    options: {
+      cwd: input.projectRoot,
+      settingSources: ["project"],
+      model: "haiku",
+      maxThinkingTokens: 1024,
+      systemPrompt: {
+        type: "preset",
+        preset: "claude_code",
+        ...(includeFileUpdateStep
+          ? {}
+          : { append: "Do not use tools or subagents. Reply directly with markdown only." }),
+      },
+    },
+  })) {
+    if (message.type !== "result") continue;
+    incrementTaskTokenUsage(input.taskId, {
+      ...message.usage,
+      total_cost_usd: message.total_cost_usd,
+    });
+    if (message.subtype !== "success") {
+      throw new Error(`Fast fix failed: ${message.subtype}`);
+    }
+    resultText = message.result.trim();
+  }
+
+  if (!resultText) {
+    throw new Error("Fast fix did not return updated plan text");
+  }
+  return resultText;
+}
+
+export async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string,
+): Promise<T> {
+  return await Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error(message)), timeoutMs);
+    }),
+  ]);
+}

@@ -40,16 +40,17 @@ Copy the example environment file:
 cp .env.example .env
 ```
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ANTHROPIC_API_KEY` | *(optional)* | API key. Agent SDK uses `~/.claude/` auth by default |
-| `PORT` | `3001` | API server port |
-| `POLL_INTERVAL_MS` | `30000` | Agent coordinator polling interval (ms) |
-| `AGENT_STAGE_STALE_TIMEOUT_MS` | `1200000` | Stale-stage watchdog timeout (ms) before auto-recovery |
-| `AGENT_STAGE_STALE_MAX_RETRY` | `3` | Max stale auto-recover attempts before quarantine in `blocked_external` |
-| `DATABASE_URL` | `./data/aif.sqlite` | SQLite database path |
-| `AGENT_QUERY_AUDIT_ENABLED` | `true` | Enable/disable query audit logs in `logs/*.log` |
-| `LOG_LEVEL` | `debug` | Log level: `fatal`, `error`, `warn`, `info`, `debug`, `trace` |
+| Variable                       | Default             | Description                                                             |
+| ------------------------------ | ------------------- | ----------------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`            | _(optional)_        | API key. Agent SDK uses `~/.claude/` auth by default                    |
+| `PORT`                         | `3001`              | API server port                                                         |
+| `POLL_INTERVAL_MS`             | `30000`             | Agent coordinator polling interval (ms)                                 |
+| `AGENT_STAGE_STALE_TIMEOUT_MS` | `1200000`           | Stale-stage watchdog timeout (ms) before auto-recovery                  |
+| `AGENT_STAGE_STALE_MAX_RETRY`  | `3`                 | Max stale auto-recover attempts before quarantine in `blocked_external` |
+| `AGENT_STAGE_RUN_TIMEOUT_MS`   | `900000`            | Per-stage timeout (ms) before coordinator marks run as failed           |
+| `DATABASE_URL`                 | `./data/aif.sqlite` | SQLite database path                                                    |
+| `AGENT_QUERY_AUDIT_ENABLED`    | `true`              | Enable/disable query audit logs in `logs/*.log`                         |
+| `LOG_LEVEL`                    | `debug`             | Log level: `fatal`, `error`, `warn`, `info`, `debug`, `trace`           |
 
 You can set planner/plan-checker/implementer/review budgets per project in the project edit dialog. Leave any budget field empty for unlimited.
 
@@ -65,28 +66,35 @@ npm run dev
 
 This runs three processes in parallel via Turborepo:
 
-| Service | URL | Description |
-|---------|-----|-------------|
-| **API** | `http://localhost:3001` | REST + WebSocket server |
-| **Web** | `http://localhost:5173` | Kanban board UI |
-| **Agent** | *(background)* | Polls every 30s, dispatches subagents |
+| Service   | URL                     | Description                           |
+| --------- | ----------------------- | ------------------------------------- |
+| **API**   | `http://localhost:3001` | REST + WebSocket server               |
+| **Web**   | `http://localhost:5173` | Kanban board UI                       |
+| **Agent** | _(background)_          | Polls every 30s, dispatches subagents |
 
 ## Verify It Works
 
 1. Open `http://localhost:5173` — you should see the Kanban board
 2. Create a project (top-left selector)
 3. Add a task to the Backlog column
-4. If agent is running with valid credentials, the task will automatically move through stages
+4. If Claude auth is missing, the UI will show a warning banner with setup guidance
+5. If agent is running with valid credentials, the task will automatically move through stages
+
+Optional readiness check:
+
+```bash
+curl -s http://localhost:3001/agent/readiness
+```
 
 ## Available Scripts
 
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Start all services with hot reload |
-| `npm run build` | Build all packages |
-| `npm test` | Run all tests (Vitest) |
-| `npm run db:setup` | Create data dir + push schema |
-| `npm run db:push` | Push schema changes |
+| Command            | Description                        |
+| ------------------ | ---------------------------------- |
+| `npm run dev`      | Start all services with hot reload |
+| `npm run build`    | Build all packages                 |
+| `npm test`         | Run all tests (Vitest)             |
+| `npm run db:setup` | Create data dir + push schema      |
+| `npm run db:push`  | Push schema changes                |
 
 ## Next Steps
 

@@ -7,6 +7,7 @@ describe("notifyTaskBroadcast", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.stubEnv("PORT", "3999");
+    vi.stubEnv("API_BASE_URL", "http://localhost:3999");
   });
 
   afterEach(() => {
@@ -24,7 +25,7 @@ describe("notifyTaskBroadcast", () => {
       "http://localhost:3999/tasks/task-1/broadcast",
       expect.objectContaining({
         method: "POST",
-      })
+      }),
     );
   });
 

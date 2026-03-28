@@ -18,13 +18,15 @@ function extractDependencyNumbers(raw: string): number[] {
 }
 
 function parseInlineTask(
-  line: string
+  line: string,
 ): { number: number; description: string; inlineDeps: number[]; completed: boolean } | null {
-  const checkboxMatch = line.match(
-    /^\s*-\s*\[([ x~!])\]\s+\*\*Task\s+(\d+):\s*([^*]+?)\*\*(?:\s*\(([^)]*)\))?/i
+  const normalizedLine = line.replace(/^\s*#{1,6}\s*/, "").trim();
+
+  const boldCheckboxTaskMatch = normalizedLine.match(
+    /^(?:[-*]\s*)?\[([ x~!])\]\s+\*\*Task\s+(\d+)\s*:\s*(.+?)\*\*\s*(?:\(([^)]*)\))?\s*$/i,
   );
-  if (checkboxMatch) {
-    const [, statusRaw, numberRaw, descRaw, depsRaw = ""] = checkboxMatch;
+  if (boldCheckboxTaskMatch) {
+    const [, statusRaw, numberRaw, descRaw, depsRaw = ""] = boldCheckboxTaskMatch;
     return {
       number: Number(numberRaw),
       description: descRaw.trim(),
@@ -33,38 +35,16 @@ function parseInlineTask(
     };
   }
 
-  const numberedCheckboxMatch = line.match(
-    /^\s*(\d+)[.)]\s*\[([ x~!])\]\s+(.+?)(?:\s*\(([^)]*)\))?\s*$/i
+  const plainCheckboxTaskMatch = normalizedLine.match(
+    /^(?:[-*]\s*)?\[([ x~!])\]\s+Task\s+(\d+)\s*:\s*(.+?)\s*(?:\(([^)]*)\))?\s*$/i,
   );
-  if (numberedCheckboxMatch) {
-    const [, numberRaw, statusRaw, descRaw, depsRaw = ""] = numberedCheckboxMatch;
+  if (plainCheckboxTaskMatch) {
+    const [, statusRaw, numberRaw, descRaw, depsRaw = ""] = plainCheckboxTaskMatch;
     return {
       number: Number(numberRaw),
       description: descRaw.trim(),
       inlineDeps: extractDependencyNumbers(depsRaw),
       completed: statusRaw.toLowerCase() === "x",
-    };
-  }
-
-  const numberedStepMatch = line.match(/^\s*(\d+)[.)]\s+(.+?)\s*$/);
-  if (numberedStepMatch) {
-    const [, numberRaw, descRaw] = numberedStepMatch;
-    return {
-      number: Number(numberRaw),
-      description: descRaw.trim(),
-      inlineDeps: [],
-      completed: false,
-    };
-  }
-
-  const headingMatch = line.match(/^\s*###\s+Task\s+(\d+):\s*(.+)$/i);
-  if (headingMatch) {
-    const [, numberRaw, descRaw] = headingMatch;
-    return {
-      number: Number(numberRaw),
-      description: descRaw.trim(),
-      inlineDeps: [],
-      completed: false,
     };
   }
 
@@ -116,7 +96,9 @@ export function parsePlanTasks(planText: string): PlanTaskNode[] {
     if (deps.length === 0) continue;
     const node = tasksByNumber.get(currentTaskNumber);
     if (!node) continue;
-    const merged = Array.from(new Set([...node.explicitDependencies, ...deps])).sort((a, b) => a - b);
+    const merged = Array.from(new Set([...node.explicitDependencies, ...deps])).sort(
+      (a, b) => a - b,
+    );
     tasksByNumber.set(currentTaskNumber, { ...node, explicitDependencies: merged });
   }
 
@@ -134,7 +116,7 @@ export function parsePlanTasks(planText: string): PlanTaskNode[] {
 
   const normalized: PlanTaskNode[] = tasks.map((task) => {
     const explicitDependencies = task.explicitDependencies.filter(
-      (dep) => dep !== task.number && knownNumbers.has(dep)
+      (dep) => dep !== task.number && knownNumbers.has(dep),
     );
     return {
       ...task,
@@ -215,7 +197,7 @@ export function computePlanLayers(planText: string): PlanLayerComputation {
 export function computePendingPlanLayers(planText: string): PlanLayerComputation {
   const allTasks = parsePlanTasks(planText);
   const completedNumbers = new Set(
-    allTasks.filter((task) => task.completed).map((task) => task.number)
+    allTasks.filter((task) => task.completed).map((task) => task.number),
   );
   const pendingTasks = allTasks
     .filter((task) => !task.completed)

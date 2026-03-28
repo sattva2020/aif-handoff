@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createTestDb, tasks, taskComments, projects } from "@aif/shared";
@@ -68,6 +68,13 @@ describe("tasks API", () => {
       const res = await app.request("/tasks");
       const body = await res.json();
       expect(body).toHaveLength(2);
+    });
+
+    it("should return 400 for invalid projectId format", async () => {
+      const res = await app.request("/tasks?projectId=not-a-uuid");
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toMatch(/Invalid projectId format/);
     });
   });
 
@@ -174,6 +181,39 @@ describe("tasks API", () => {
 
       expect(res.status).toBe(404);
     });
+
+    it("should sync physical plan file when updating plan via PUT", async () => {
+      const db = testDb.current;
+      const rootPath = mkdtempSync(join(tmpdir(), "aif-put-plan-sync-"));
+      db.insert(projects)
+        .values({
+          id: "project-put-plan",
+          name: "Project Put Plan",
+          rootPath,
+        })
+        .run();
+      db.insert(tasks)
+        .values({
+          id: "upd-plan-1",
+          projectId: "project-put-plan",
+          title: "Update plan",
+          isFix: false,
+        })
+        .run();
+
+      const res = await app.request("/tasks/upd-plan-1", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan: "## PUT Plan\n- [ ] Step from API" }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.plan).toBe("## PUT Plan\n- [ ] Step from API");
+
+      const filePlan = readFileSync(join(rootPath, ".ai-factory", "PLAN.md"), "utf8");
+      expect(filePlan).toBe("## PUT Plan\n- [ ] Step from API\n");
+    });
   });
 
   describe("POST /tasks/:id/sync-plan", () => {
@@ -184,17 +224,21 @@ describe("tasks API", () => {
       mkdirSync(aiFactoryDir, { recursive: true });
       writeFileSync(join(aiFactoryDir, "PLAN.md"), "## Synced Plan\n- Step from file\n", "utf8");
 
-      db.insert(projects).values({
-        id: "project-sync",
-        name: "Project Sync",
-        rootPath,
-      }).run();
-      db.insert(tasks).values({
-        id: "task-sync",
-        projectId: "project-sync",
-        title: "Sync task",
-        plan: "## Old Plan\n- old step",
-      }).run();
+      db.insert(projects)
+        .values({
+          id: "project-sync",
+          name: "Project Sync",
+          rootPath,
+        })
+        .run();
+      db.insert(tasks)
+        .values({
+          id: "task-sync",
+          projectId: "project-sync",
+          title: "Sync task",
+          plan: "## Old Plan\n- old step",
+        })
+        .run();
 
       const res = await app.request("/tasks/task-sync/sync-plan", {
         method: "POST",
@@ -210,16 +254,20 @@ describe("tasks API", () => {
       const rootPath = mkdtempSync(join(tmpdir(), "aif-sync-plan-missing-"));
       mkdirSync(join(rootPath, ".ai-factory"), { recursive: true });
 
-      db.insert(projects).values({
-        id: "project-sync-missing",
-        name: "Project Sync Missing",
-        rootPath,
-      }).run();
-      db.insert(tasks).values({
-        id: "task-sync-missing",
-        projectId: "project-sync-missing",
-        title: "Sync task missing",
-      }).run();
+      db.insert(projects)
+        .values({
+          id: "project-sync-missing",
+          name: "Project Sync Missing",
+          rootPath,
+        })
+        .run();
+      db.insert(tasks)
+        .values({
+          id: "task-sync-missing",
+          projectId: "project-sync-missing",
+          title: "Sync task missing",
+        })
+        .run();
 
       const res = await app.request("/tasks/task-sync-missing/sync-plan", {
         method: "POST",
@@ -228,6 +276,25 @@ describe("tasks API", () => {
       expect(res.status).toBe(404);
       const body = await res.json();
       expect(body.error).toMatch(/Plan file not found/);
+    });
+
+    it("should return 404 when project for task does not exist", async () => {
+      const db = testDb.current;
+      db.insert(tasks)
+        .values({
+          id: "task-sync-no-project",
+          projectId: "missing-project",
+          title: "Task without project",
+        })
+        .run();
+
+      const res = await app.request("/tasks/task-sync-no-project/sync-plan", {
+        method: "POST",
+      });
+
+      expect(res.status).toBe(404);
+      const body = await res.json();
+      expect(body.error).toMatch(/Project not found for task/);
     });
   });
 
@@ -239,16 +306,20 @@ describe("tasks API", () => {
       mkdirSync(aiFactoryDir, { recursive: true });
       writeFileSync(join(aiFactoryDir, "PLAN.md"), "## Existing Plan\n", "utf8");
 
-      db.insert(projects).values({
-        id: "project-plan-status",
-        name: "Project Plan Status",
-        rootPath,
-      }).run();
-      db.insert(tasks).values({
-        id: "task-plan-status",
-        projectId: "project-plan-status",
-        title: "Status task",
-      }).run();
+      db.insert(projects)
+        .values({
+          id: "project-plan-status",
+          name: "Project Plan Status",
+          rootPath,
+        })
+        .run();
+      db.insert(tasks)
+        .values({
+          id: "task-plan-status",
+          projectId: "project-plan-status",
+          title: "Status task",
+        })
+        .run();
 
       const res = await app.request("/tasks/task-plan-status/plan-file-status");
       expect(res.status).toBe(200);
@@ -262,16 +333,20 @@ describe("tasks API", () => {
       const rootPath = mkdtempSync(join(tmpdir(), "aif-plan-status-missing-"));
       mkdirSync(join(rootPath, ".ai-factory"), { recursive: true });
 
-      db.insert(projects).values({
-        id: "project-plan-status-missing",
-        name: "Project Plan Status Missing",
-        rootPath,
-      }).run();
-      db.insert(tasks).values({
-        id: "task-plan-status-missing",
-        projectId: "project-plan-status-missing",
-        title: "Status task missing",
-      }).run();
+      db.insert(projects)
+        .values({
+          id: "project-plan-status-missing",
+          name: "Project Plan Status Missing",
+          rootPath,
+        })
+        .run();
+      db.insert(tasks)
+        .values({
+          id: "task-plan-status-missing",
+          projectId: "project-plan-status-missing",
+          title: "Status task missing",
+        })
+        .run();
 
       const res = await app.request("/tasks/task-plan-status-missing/plan-file-status");
       expect(res.status).toBe(200);
@@ -310,9 +385,60 @@ describe("tasks API", () => {
       expect(res.status).toBe(404);
     });
 
+    it("should return 500 when fast_fix second attempt throws unexpectedly", async () => {
+      const db = testDb.current;
+      db.insert(tasks)
+        .values({
+          id: "ev-fast-fix-err",
+          projectId: "project-fast-fix-err",
+          title: "Fast fix error path",
+          status: "plan_ready",
+          autoMode: false,
+          plan: "## Plan\n- Step A",
+        })
+        .run();
+      db.insert(taskComments)
+        .values({
+          id: "ev-fast-fix-err-comment",
+          taskId: "ev-fast-fix-err",
+          author: "human",
+          message: "Please amend plan",
+          attachments: "[]",
+        })
+        .run();
+      db.insert(projects)
+        .values({
+          id: "project-fast-fix-err",
+          name: "Fast fix error project",
+          rootPath: process.cwd(),
+        })
+        .run();
+
+      mockQuery.mockReset();
+      mockQuery
+        .mockImplementationOnce(async function* () {
+          yield { type: "result", subtype: "error", result: "first attempt failed" };
+        })
+        .mockImplementationOnce(async function* () {
+          yield { type: "result", subtype: "error", result: "second attempt failed" };
+        });
+
+      const res = await app.request("/tasks/ev-fast-fix-err/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event: "fast_fix" }),
+      });
+
+      expect(res.status).toBe(500);
+      const body = await res.json();
+      expect(body.error).toBe("Internal server error");
+    });
+
     it("should start AI from backlog", async () => {
       const db = testDb.current;
-      db.insert(tasks).values({ id: "mov-1", projectId: "test-project", title: "Move me", status: "backlog" }).run();
+      db.insert(tasks)
+        .values({ id: "mov-1", projectId: "test-project", title: "Move me", status: "backlog" })
+        .run();
 
       const res = await app.request("/tasks/mov-1/events", {
         method: "POST",
@@ -327,7 +453,9 @@ describe("tasks API", () => {
 
     it("should reject invalid event payload", async () => {
       const db = testDb.current;
-      db.insert(tasks).values({ id: "mov-2", projectId: "test-project", title: "Invalid move" }).run();
+      db.insert(tasks)
+        .values({ id: "mov-2", projectId: "test-project", title: "Invalid move" })
+        .run();
 
       const res = await app.request("/tasks/mov-2/events", {
         method: "POST",
@@ -340,7 +468,14 @@ describe("tasks API", () => {
 
     it("should reject invalid transition", async () => {
       const db = testDb.current;
-      db.insert(tasks).values({ id: "mov-3", projectId: "test-project", title: "Invalid transition", status: "planning" }).run();
+      db.insert(tasks)
+        .values({
+          id: "mov-3",
+          projectId: "test-project",
+          title: "Invalid transition",
+          status: "planning",
+        })
+        .run();
 
       const res = await app.request("/tasks/mov-3/events", {
         method: "POST",
@@ -397,7 +532,9 @@ describe("tasks API", () => {
 
     it("should approve done task to verified", async () => {
       const db = testDb.current;
-      db.insert(tasks).values({ id: "ev-1", projectId: "test-project", title: "Done task", status: "done" }).run();
+      db.insert(tasks)
+        .values({ id: "ev-1", projectId: "test-project", title: "Done task", status: "done" })
+        .run();
 
       const res = await app.request("/tasks/ev-1/events", {
         method: "POST",
@@ -574,7 +711,9 @@ describe("tasks API", () => {
   describe("PATCH /tasks/:id/position", () => {
     it("should reorder a task", async () => {
       const db = testDb.current;
-      db.insert(tasks).values({ id: "pos-1", projectId: "test-project", title: "Reorder me", position: 1000 }).run();
+      db.insert(tasks)
+        .values({ id: "pos-1", projectId: "test-project", title: "Reorder me", position: 1000 })
+        .run();
 
       const res = await app.request("/tasks/pos-1/position", {
         method: "PATCH",
@@ -666,11 +805,7 @@ describe("tasks API", () => {
       const delRes = await app.request("/tasks/c-2", { method: "DELETE" });
       expect(delRes.status).toBe(200);
 
-      const comments = db
-        .select()
-        .from(taskComments)
-        .where(eq(taskComments.taskId, "c-2"))
-        .all();
+      const comments = db.select().from(taskComments).where(eq(taskComments.taskId, "c-2")).all();
       expect(comments).toHaveLength(0);
     });
   });

@@ -1,48 +1,25 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react";
+import { STORAGE_KEYS } from "../lib/storageKeys.js";
+import { createExternalStore } from "../lib/createExternalStore.js";
 
 export interface NotificationSettings {
   desktop: boolean;
   sound: boolean;
 }
 
-const STORAGE_KEY = "aif-notification-settings";
-
 const DEFAULT_SETTINGS: NotificationSettings = {
   desktop: false,
   sound: false,
 };
 
-function getSettings(): NotificationSettings {
-  if (typeof window === "undefined") return DEFAULT_SETTINGS;
+const store = createExternalStore<NotificationSettings>(
+  STORAGE_KEYS.NOTIFICATION_SETTINGS,
+  DEFAULT_SETTINGS,
+);
 
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) return DEFAULT_SETTINGS;
-
-  try {
-    const parsed = JSON.parse(raw) as Partial<NotificationSettings>;
-    return {
-      desktop: Boolean(parsed.desktop),
-      sound: Boolean(parsed.sound),
-    };
-  } catch {
-    return DEFAULT_SETTINGS;
-  }
-}
-
-const listeners = new Set<() => void>();
-let cachedSettings = getSettings();
-let cachedSnapshot = JSON.stringify(cachedSettings);
-
-function subscribe(cb: () => void) {
-  listeners.add(cb);
-  return () => listeners.delete(cb);
-}
-
-function getSnapshot() {
-  return cachedSnapshot;
-}
-
-export function requestDesktopNotificationPermission(): Promise<NotificationPermission | "unsupported"> {
+export function requestDesktopNotificationPermission(): Promise<
+  NotificationPermission | "unsupported"
+> {
   if (typeof window === "undefined" || typeof Notification === "undefined") {
     return Promise.resolve("unsupported");
   }
@@ -57,7 +34,7 @@ export function getDesktopNotificationPermission(): NotificationPermission | "un
 }
 
 export function useNotificationSettings() {
-  const snapshot = useSyncExternalStore(subscribe, getSnapshot);
+  const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const settings = useMemo(() => {
     try {
       return JSON.parse(snapshot) as NotificationSettings;
@@ -67,11 +44,7 @@ export function useNotificationSettings() {
   }, [snapshot]);
 
   const setSettings = useCallback((partial: Partial<NotificationSettings>) => {
-    const next: NotificationSettings = { ...cachedSettings, ...partial };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-    cachedSettings = next;
-    cachedSnapshot = JSON.stringify(next);
-    listeners.forEach((cb) => cb());
+    store.update(partial);
   }, []);
 
   return { settings, setSettings };

@@ -1,6 +1,8 @@
 {
   "name": "@aif/api",
   "version": "0.1.0",
+  "description": "Hono REST API and WebSocket server for AIF Handoff",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "scripts": {

@@ -41,7 +41,7 @@ export function AddTaskForm({ projectId }: Props) {
         onError: (error) => {
           console.error("[kanban] Failed to create task", error);
         },
-      }
+      },
     );
   };
 
@@ -73,24 +73,58 @@ export function AddTaskForm({ projectId }: Props) {
         onChange={(e) => setDescription(e.target.value)}
         rows={2}
       />
-      <label className="flex items-center gap-2 text-xs text-muted-foreground">
-        <input
-          type="checkbox"
-          checked={autoMode}
-          onChange={(e) => setAutoMode(e.target.checked)}
-          className="h-3.5 w-3.5 accent-[var(--color-primary)]"
-        />
-        Auto mode
-      </label>
-      <label className="flex items-center gap-2 text-xs text-muted-foreground">
-        <input
-          type="checkbox"
-          checked={isFix}
-          onChange={(e) => setIsFix(e.target.checked)}
-          className="h-3.5 w-3.5 accent-[var(--color-primary)]"
-        />
-        Fix
-      </label>
+      <div className="space-y-2 border border-border/60 bg-muted/20 p-2">
+        <div className="space-y-1">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Task type
+          </p>
+          <label className="flex items-start gap-2 text-xs text-muted-foreground">
+            <input
+              type="radio"
+              name="taskType"
+              aria-label="Standard"
+              checked={!isFix}
+              onChange={() => setIsFix(false)}
+              className="mt-0.5 h-3.5 w-3.5 accent-[var(--color-primary)]"
+            />
+            <span>
+              <span className="font-medium text-foreground">Standard</span>
+              {" - Default task flow."}
+            </span>
+          </label>
+          <label className="flex items-start gap-2 text-xs text-muted-foreground">
+            <input
+              type="radio"
+              name="taskType"
+              aria-label="Fix"
+              checked={isFix}
+              onChange={() => setIsFix(true)}
+              className="mt-0.5 h-3.5 w-3.5 accent-[var(--color-primary)]"
+            />
+            <span>
+              <span className="font-medium text-foreground">Fix</span>
+              {
+                " - Use when something is not working correctly or is broken; a patch will be created for the self-learning system."
+              }
+            </span>
+          </label>
+        </div>
+        <label className="flex items-start gap-2 text-xs text-muted-foreground">
+          <input
+            type="checkbox"
+            aria-label="Auto mode"
+            checked={autoMode}
+            onChange={(e) => setAutoMode(e.target.checked)}
+            className="mt-0.5 h-3.5 w-3.5 accent-[var(--color-primary)]"
+          />
+          <span>
+            <span className="font-medium text-foreground">Auto mode</span>
+            {
+              " - AI moves tasks between statuses automatically; the user only starts the process and verifies the result."
+            }
+          </span>
+        </label>
+      </div>
       <div className="flex gap-2 pt-1">
         <Button type="submit" size="sm" disabled={!title.trim() || createTask.isPending}>
           {createTask.isPending ? "Adding..." : "Add"}

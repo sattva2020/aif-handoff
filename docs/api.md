@@ -6,6 +6,47 @@ Base URL: `http://localhost:3001`
 
 All endpoints return JSON. Request bodies use `application/json`.
 
+## System
+
+### Health Check
+
+```
+GET /health
+```
+
+**Response:** `200 OK`
+
+```json
+{
+  "status": "ok",
+  "uptime": 123
+}
+```
+
+### Agent Readiness
+
+```
+GET /agent/readiness
+```
+
+Checks whether agent authentication is configured via `ANTHROPIC_API_KEY` and/or Claude profile auth (`~/.claude`).
+
+**Response:** `200 OK`
+
+```json
+{
+  "ready": true,
+  "hasApiKey": false,
+  "hasClaudeAuth": true,
+  "authSource": "claude_profile",
+  "detectedPath": "/Users/you/.claude/auth.json",
+  "message": "Agent authentication is configured.",
+  "checkedAt": "2026-03-28T17:10:00.000Z"
+}
+```
+
+`authSource` values: `api_key`, `claude_profile`, `both`, `none`.
+
 ## Projects
 
 ### List Projects
@@ -15,6 +56,7 @@ GET /projects
 ```
 
 **Response:** `200 OK`
+
 ```json
 [
   {
@@ -66,6 +108,7 @@ DELETE /projects/:id
 ```
 
 **Response:** `200 OK`
+
 ```json
 { "success": true }
 ```
@@ -79,6 +122,7 @@ GET /projects/:id/mcp
 Reads `.mcp.json` from the project root and returns its MCP servers map.
 
 **Response:** `200 OK`
+
 ```json
 {
   "mcpServers": {
@@ -91,6 +135,7 @@ Reads `.mcp.json` from the project root and returns its MCP servers map.
 ```
 
 If `.mcp.json` does not exist (or cannot be parsed), returns:
+
 ```json
 { "mcpServers": {} }
 ```
@@ -105,9 +150,9 @@ If `.mcp.json` does not exist (or cannot be parsed), returns:
 GET /tasks?projectId=<uuid>
 ```
 
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| `projectId` | query string | no | Filter by project. Omit to list all tasks |
+| Param       | Type         | Required | Description                               |
+| ----------- | ------------ | -------- | ----------------------------------------- |
+| `projectId` | query string | no       | Filter by project. Omit to list all tasks |
 
 **Response:** `200 OK` — array of task objects sorted by status order, then position.
 
@@ -125,7 +170,7 @@ POST /tasks
 | `description` | string | no | `""` | Task description |
 | `attachments` | array | no | `[]` | File attachments (max 10) |
 | `priority` | integer | no | `0` | Priority level (0-5) |
-| `autoMode` | boolean | no | `true` | Auto-advance through agent pipeline |
+| `autoMode` | boolean | no | `true` | Auto-advance through agent pipeline, including automatic post-review rework loop when fixes are detected |
 | `isFix` | boolean | no | `false` | Marks the task as fix-flow task (uses FIX plan conventions) |
 
 **Attachment object:**
@@ -161,7 +206,7 @@ PUT /tasks/:id
 | `description` | string | Task description |
 | `attachments` | array | File attachments |
 | `priority` | integer | Priority (0-5) |
-| `autoMode` | boolean | Auto-advance mode |
+| `autoMode` | boolean | Auto-advance mode (includes automatic post-review rework loop when enabled) |
 | `isFix` | boolean | Marks task as fix-flow |
 | `plan` | string\|null | Generated plan (markdown) |
 | `implementationLog` | string\|null | Implementation output |
@@ -184,6 +229,7 @@ DELETE /tasks/:id
 ```
 
 **Response:** `200 OK`
+
 ```json
 { "success": true }
 ```
@@ -205,18 +251,19 @@ Transitions a task through the state machine.
 
 **Valid events by current status:**
 
-| Current Status | Valid Events |
-|---------------|-------------|
-| `backlog` | `start_ai` |
-| `plan_ready` | `start_implementation`, `request_replanning`, `fast_fix` |
-| `blocked_external` | `retry_from_blocked` |
-| `done` | `approve_done`, `request_changes` |
+| Current Status     | Valid Events                                             |
+| ------------------ | -------------------------------------------------------- |
+| `backlog`          | `start_ai`                                               |
+| `plan_ready`       | `start_implementation`, `request_replanning`, `fast_fix` |
+| `blocked_external` | `retry_from_blocked`                                     |
+| `done`             | `approve_done`, `request_changes`                        |
 
 Additional constraints:
 
 - `start_implementation` requires `autoMode=false` (manual gate). For `autoMode=true`, implementation is picked automatically by the coordinator.
 - `fast_fix` requires `autoMode=false` and at least one human comment on the task.
 - `request_changes` transitions `done -> implementing`, sets `reworkRequested=true`, and resets watchdog retry state (`retryCount=0`).
+- With `autoMode=true`, coordinator can trigger this same `request_changes`-style rework loop automatically after review if fix items are extracted from `reviewComments`.
 
 **Response:** `200 OK` — the updated task object.
 
@@ -253,6 +300,7 @@ Used by the agent process to trigger WebSocket broadcasts after updating a task.
 | `type` | string | `task:updated` | Event type: `task:updated` or `task:moved` |
 
 **Response:** `200 OK`
+
 ```json
 { "success": true }
 ```
@@ -309,17 +357,19 @@ All events are JSON with this structure:
 ```json
 {
   "type": "project:created | task:created | task:updated | task:moved | task:deleted",
-  "payload": { /* project/task object or { id } for deletes */ }
+  "payload": {
+    /* project/task object or { id } for deletes */
+  }
 }
 ```
 
-| Event | Payload | Triggered By |
-|-------|---------|-------------|
-| `project:created` | Full project object | `POST /projects` |
-| `task:created` | Full task object | `POST /tasks` |
-| `task:updated` | Full task object | `PUT /tasks/:id`, `PATCH /tasks/:id/position`, `POST /tasks/:id/events` (`fast_fix`) |
-| `task:moved` | Full task object | `POST /tasks/:id/events` |
-| `task:deleted` | `{ id: string }` | `DELETE /tasks/:id` |
+| Event             | Payload             | Triggered By                                                                         |
+| ----------------- | ------------------- | ------------------------------------------------------------------------------------ |
+| `project:created` | Full project object | `POST /projects`                                                                     |
+| `task:created`    | Full task object    | `POST /tasks`                                                                        |
+| `task:updated`    | Full task object    | `PUT /tasks/:id`, `PATCH /tasks/:id/position`, `POST /tasks/:id/events` (`fast_fix`) |
+| `task:moved`      | Full task object    | `POST /tasks/:id/events`                                                             |
+| `task:deleted`    | `{ id: string }`    | `DELETE /tasks/:id`                                                                  |
 
 ### Connection
 

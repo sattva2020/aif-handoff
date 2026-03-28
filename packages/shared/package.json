@@ -1,6 +1,8 @@
 {
   "name": "@aif/shared",
   "version": "0.1.0",
+  "description": "Shared types, schema, database, and utilities for AIF Handoff",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "main": "./src/index.ts",

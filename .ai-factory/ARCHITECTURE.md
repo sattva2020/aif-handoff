@@ -73,20 +73,22 @@ agent ──→ shared
 - ✅ `api`, `web`, `agent` → import from `@aif/shared`
 - ✅ `web` → import from `@aif/shared/browser` (browser-safe subset)
 - ✅ `web` → call `api` via HTTP/WebSocket at runtime (not import)
-- ✅ `agent` → call `api` via HTTP at runtime (not import)
+- ✅ `agent` → call `api` via HTTP at runtime for broadcasts (see deviation note in point 4)
+- ✅ `agent` → direct DB access via `@aif/shared` for pipeline orchestration (intentional deviation)
 
 ### Forbidden
 
 - ❌ `shared` → import from `api`, `web`, or `agent` (shared is the foundation, no upward deps)
 - ❌ `api` → import from `web` or `agent` (API is independent)
 - ❌ `web` → import from `api` or `agent` (UI communicates via HTTP/WS only)
-- ❌ `agent` → import from `api` or `web` (agent communicates via HTTP only)
+- ❌ `agent` → import from `api` or `web` (agent runtime integration is via HTTP + shared DB, not code imports)
 - ❌ Cross-package deep imports (e.g., `@aif/shared/src/db` — use public API only)
 
 ## Module Communication
 
 - **web ↔ api:** HTTP REST calls + WebSocket for real-time updates
-- **agent → api:** HTTP REST calls to transition task stages and update state
+- **agent → shared (DB):** Direct database access for pipeline orchestration (heartbeats, status transitions, stale recovery)
+- **agent → api:** HTTP REST calls for WebSocket broadcasts (best-effort via notifier.ts)
 - **agent → Claude Agent SDK:** Spawns subagent processes using `.claude/agents/` definitions
 - **Shared types:** All modules import types and schemas from `@aif/shared`
 
@@ -96,9 +98,11 @@ agent ──→ shared
 
 2. **Shared is pure foundation** — The `shared` package contains only types, schemas, validation, and utilities. It has zero knowledge of HTTP, React, or agent logic. If code needs framework-specific features, it belongs in the consuming module.
 
-3. **Runtime communication over imports** — Modules that need to interact at runtime (web→api, agent→api) do so via HTTP/WebSocket, never via direct imports. This keeps modules independently testable and deployable in the future.
+3. **Runtime communication over imports** — Modules that need to interact at runtime (web→api, agent→api) do so via HTTP/WebSocket, never via direct imports. Agent internal orchestration data access remains in `@aif/shared` by design for now.
 
-4. **Single source of truth for data** — Database access lives exclusively in `shared` (schema + connection). The `api` module is the only one that reads/writes the database directly. `agent` and `web` go through the API.
+4. **Single source of truth for data** — Database access lives exclusively in `shared` (schema + connection). The `api` module is the primary read/write interface for external clients. `web` always goes through the API via HTTP/WebSocket.
+
+   > **Intentional deviation (agent):** The `agent` package currently accesses the database directly via `@aif/shared` for performance-critical operations: heartbeat updates (every 30s), status transitions during pipeline execution, and stale task recovery. Routing these through HTTP would add latency and failure points on the critical path. The `notifier.ts` module does call the API via HTTP for WebSocket broadcasts (best-effort). When the agent moves to a separate process or host, these direct DB calls should migrate to API endpoints with proper auth.
 
 5. **Agent definitions are config, not code** — Subagent behavior is defined in `.claude/agents/*.md` files, loaded by the Agent SDK via `settingSources: ["project"]`. The `agent` package orchestrates when to invoke them, not what they do.
 
@@ -143,7 +147,7 @@ import { claude } from "@anthropic-ai/claude-agent-sdk";
 
 export async function runPlanner(taskId: string, description: string) {
   const session = await claude({
-    agent: "plan-coordinator",        // references .claude/agents/plan-coordinator.md
+    agent: "plan-coordinator", // references .claude/agents/plan-coordinator.md
     settingSources: ["project"],
     prompt: `Plan implementation for task ${taskId}: ${description}`,
   });
@@ -169,4 +173,4 @@ export async function fetchTasks(projectId: string) {
 - ❌ **Putting DB queries in api routes directly** — Keep data access in shared or use repository functions. Routes should be thin.
 - ❌ **Shared depending on Node-only APIs without a browser guard** — `shared/browser.ts` must remain browser-safe. Node-only code stays in `shared/index.ts`.
 - ❌ **Hardcoding agent prompts in TypeScript** — Agent behavior belongs in `.claude/agents/*.md` files, not in the `agent` package source code.
-- ❌ **Skipping the API for data access** — Even though `agent` has access to `@aif/shared` and could query the DB directly, it should go through the API to maintain a single point of data access.
+- ❌ **Introducing new external clients with direct DB writes** — `web` and any third-party integrations must go through API endpoints. Current direct DB writes are limited to the co-deployed `agent` service and should not expand to new client surfaces.

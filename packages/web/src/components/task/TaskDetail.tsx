@@ -12,7 +12,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { api } from "@/lib/api";
+import { formatTokenCount, formatUsd, encodeBase64 } from "@/lib/formatters";
 import {
   useTask,
   useUpdateTask,
@@ -26,6 +28,7 @@ import { TaskPlan } from "./TaskPlan";
 import { TaskLog } from "./TaskLog";
 import { AgentTimeline } from "./AgentTimeline";
 import { TaskComments } from "./TaskComments";
+import { Section, TabButton } from "./Section";
 
 interface TaskDetailProps {
   taskId: string | null;
@@ -34,6 +37,13 @@ interface TaskDetailProps {
 
 type TaskDetailTab = "implementation" | "review" | "comments" | "activity";
 type PlanChangeMode = "replanning" | "fast_fix" | "request_changes";
+
+const TEXT_FILE_MAX_SIZE = 200_000;
+const IMAGE_FILE_MAX_SIZE = 1_000_000;
+const BASE64_CONTENT_MAX_SIZE = 2_000_000;
+const MAX_TASK_ATTACHMENTS = 10;
+const COMMENT_TIMEOUT_MS = 30_000;
+const FAST_FIX_TIMEOUT_MS = 200_000;
 
 const ACTION_BUTTONS_BY_STATUS: Partial<
   Record<
@@ -74,29 +84,6 @@ const ACTION_BUTTONS_BY_STATUS: Partial<
     { label: "Request changes", actionType: "open_request_changes", variant: "outline" },
   ],
 };
-
-function encodeBase64(bytes: Uint8Array): string {
-  const chunkSize = 0x8000;
-  let binary = "";
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize);
-    binary += String.fromCharCode(...Array.from(chunk));
-  }
-  return btoa(binary);
-}
-
-function formatTokenCount(value: number | undefined): string {
-  return Intl.NumberFormat("en-US").format(value ?? 0);
-}
-
-function formatUsd(value: number | undefined): string {
-  return Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 4,
-    maximumFractionDigits: 4,
-  }).format(value ?? 0);
-}
 
 export function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const { data: task } = useTask(taskId);
@@ -143,7 +130,7 @@ export function TaskDetail({ taskId, onClose }: TaskDetailProps) {
 
   const visibleActions = task
     ? (ACTION_BUTTONS_BY_STATUS[task.status] ?? []).filter(
-        (action) => action.visible?.(task) ?? true
+        (action) => action.visible?.(task) ?? true,
       )
     : [];
 
@@ -168,7 +155,7 @@ export function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   const withTimeout = async <T,>(
     promise: Promise<T>,
     timeoutMs: number,
-    message: string
+    message: string,
   ): Promise<T> => {
     return await Promise.race([
       promise,
@@ -182,16 +169,19 @@ export function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     const isTextLike =
       file.type.startsWith("text/") ||
       /\.(md|markdown|txt|json|ya?ml|toml|ini|env|ts|tsx|js|jsx|mjs|cjs|py|go|java|kt|rb|php|css|scss|html|xml|csv|sql|sh)$/i.test(
-        file.name
+        file.name,
       );
     const isImage = file.type.startsWith("image/");
-    const canReadContent = isTextLike && file.size <= 200_000;
+    const canReadContent = isTextLike && file.size <= TEXT_FILE_MAX_SIZE;
     const rawContent = canReadContent ? await file.text() : null;
-    let content: string | null = rawContent ? rawContent.slice(0, 200_000) : null;
+    let content: string | null = rawContent ? rawContent.slice(0, TEXT_FILE_MAX_SIZE) : null;
 
-    if (!content && isImage && file.size <= 1_000_000) {
+    if (!content && isImage && file.size <= IMAGE_FILE_MAX_SIZE) {
       const base64 = encodeBase64(new Uint8Array(await file.arrayBuffer()));
-      content = `data:${file.type || "application/octet-stream"};base64,${base64}`.slice(0, 2_000_000);
+      content = `data:${file.type || "application/octet-stream"};base64,${base64}`.slice(
+        0,
+        BASE64_CONTENT_MAX_SIZE,
+      );
     }
 
     return {
@@ -219,8 +209,8 @@ export function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             attachments,
           },
         }),
-        30_000,
-        "Comment request timed out"
+        COMMENT_TIMEOUT_MS,
+        "Comment request timed out",
       );
       await withTimeout(
         taskEvent.mutateAsync({
@@ -232,11 +222,13 @@ export function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 ? "fast_fix"
                 : "request_changes",
         }),
-        planChangeMode === "fast_fix" ? 200_000 : 30_000,
-        "Task event request timed out"
+        planChangeMode === "fast_fix" ? FAST_FIX_TIMEOUT_MS : COMMENT_TIMEOUT_MS,
+        "Task event request timed out",
       );
       if (planChangeMode === "fast_fix") {
-        setPlanChangeSuccess("Fast fix applied. Plan updated in task and sync to .ai-factory/PLAN.md attempted.");
+        setPlanChangeSuccess(
+          "Fast fix applied. Plan updated in task and sync to .ai-factory/PLAN.md attempted.",
+        );
       } else {
         setPlanChangeSuccess(null);
       }
@@ -258,7 +250,7 @@ export function TaskDetail({ taskId, onClose }: TaskDetailProps) {
     updateTask.mutate({
       id: task.id,
       input: {
-        attachments: [...taskAttachments, ...uploaded].slice(0, 10),
+        attachments: [...taskAttachments, ...uploaded].slice(0, MAX_TASK_ATTACHMENTS),
       },
     });
   };
@@ -295,9 +287,11 @@ export function TaskDetail({ taskId, onClose }: TaskDetailProps) {
           setMaintenanceSuccess("Agent activity log cleared.");
         },
         onError: (error) => {
-          setMaintenanceError(error instanceof Error ? error.message : "Failed to clear agent activity log");
+          setMaintenanceError(
+            error instanceof Error ? error.message : "Failed to clear agent activity log",
+          );
         },
-      }
+      },
     );
   };
 
@@ -312,7 +306,9 @@ export function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         setMaintenanceSuccess("Plan synced from physical file.");
       },
       onError: (error) => {
-        setMaintenanceError(error instanceof Error ? error.message : "Failed to sync plan from physical file");
+        setMaintenanceError(
+          error instanceof Error ? error.message : "Failed to sync plan from physical file",
+        );
       },
     });
   };
@@ -392,9 +388,7 @@ export function TaskDetail({ taskId, onClose }: TaskDetailProps) {
 
                 {HUMAN_ACTIONS_BY_STATUS[task.status].length > 0 && visibleActions.length > 0 && (
                   <div className="border border-border bg-background/60 p-3">
-                    <label className="mb-2 block text-xs text-muted-foreground">
-                      Actions
-                    </label>
+                    <label className="mb-2 block text-xs text-muted-foreground">Actions</label>
                     <div className="flex flex-wrap gap-2">
                       {visibleActions.map((action) => (
                         <Button
@@ -434,7 +428,9 @@ export function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                           }}
                           disabled={isSubmittingPlanChange || isCheckingStartAiPlanFile}
                         >
-                          {action.event === "start_ai" && isCheckingStartAiPlanFile ? "Checking..." : action.label}
+                          {action.event === "start_ai" && isCheckingStartAiPlanFile
+                            ? "Checking..."
+                            : action.label}
                         </Button>
                       ))}
                     </div>
@@ -453,10 +449,7 @@ export function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                   >
                     Implementation
                   </TabButton>
-                  <TabButton
-                    active={activeTab === "review"}
-                    onClick={() => setActiveTab("review")}
-                  >
+                  <TabButton active={activeTab === "review"} onClick={() => setActiveTab("review")}>
                     Review
                   </TabButton>
                   <TabButton
@@ -495,8 +488,14 @@ export function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                         className="inline-flex items-center gap-1 border border-border bg-background/60 px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
                         onClick={() => setAttachmentsExpanded((prev) => !prev)}
                       >
-                        {attachmentsExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                        {attachmentsExpanded ? "Hide attachments" : `Show attachments (${taskAttachments.length})`}
+                        {attachmentsExpanded ? (
+                          <ChevronDown className="h-3 w-3" />
+                        ) : (
+                          <ChevronRight className="h-3 w-3" />
+                        )}
+                        {attachmentsExpanded
+                          ? "Hide attachments"
+                          : `Show attachments (${taskAttachments.length})`}
                       </button>
 
                       {attachmentsExpanded && (
@@ -526,15 +525,22 @@ export function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                             className="block w-full text-xs text-muted-foreground file:mr-3 file:border file:border-border file:bg-secondary/40 file:px-3 file:py-1.5 file:text-xs"
                           />
                           {taskAttachments.length === 0 ? (
-                            <p className="text-xs text-muted-foreground">No files attached to this task.</p>
+                            <p className="text-xs text-muted-foreground">
+                              No files attached to this task.
+                            </p>
                           ) : (
                             <ul className="space-y-1 text-xs text-foreground/85">
                               {taskAttachments.map((file, index) => (
-                                <li key={`${file.name}-${index}`} className="flex items-center justify-between gap-3 border border-border bg-secondary/30 px-2 py-1.5">
+                                <li
+                                  key={`${file.name}-${index}`}
+                                  className="flex items-center justify-between gap-3 border border-border bg-secondary/30 px-2 py-1.5"
+                                >
                                   <span className="truncate">
                                     {file.name} ({file.mimeType || "unknown"}, {file.size} bytes)
                                     {file.content == null && (
-                                      <span className="ml-1 text-[10px] text-muted-foreground">(metadata only)</span>
+                                      <span className="ml-1 text-[10px] text-muted-foreground">
+                                        (metadata only)
+                                      </span>
                                     )}
                                   </span>
                                   <Button
@@ -557,20 +563,20 @@ export function TaskDetail({ taskId, onClose }: TaskDetailProps) {
 
                   <Section
                     title="Plan"
-                    actions={task.plan?.trim()
-                      ? (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-6 px-2 text-[10px]"
-                            onClick={() => setShowSyncPlanConfirm(true)}
-                            disabled={syncTaskPlan.isPending}
-                          >
-                            {syncTaskPlan.isPending ? "Syncing..." : "Sync"}
-                          </Button>
-                        )
-                      : undefined}
+                    actions={
+                      task.plan?.trim() ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-6 px-2 text-[10px]"
+                          onClick={() => setShowSyncPlanConfirm(true)}
+                          disabled={syncTaskPlan.isPending}
+                        >
+                          {syncTaskPlan.isPending ? "Syncing..." : "Sync"}
+                        </Button>
+                      ) : undefined
+                    }
                   >
                     <TaskPlan plan={task.plan} />
                   </Section>
@@ -608,20 +614,20 @@ export function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                   {activeTab === "activity" && (
                     <Section
                       title="Agent Activity"
-                      actions={task.agentActivityLog?.trim()
-                        ? (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="h-6 px-2 text-[10px]"
-                              onClick={() => setShowClearActivityConfirm(true)}
-                              disabled={updateTask.isPending}
-                            >
-                              {updateTask.isPending ? "Clearing..." : "Clear log"}
-                            </Button>
-                          )
-                        : undefined}
+                      actions={
+                        task.agentActivityLog?.trim() ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-6 px-2 text-[10px]"
+                            onClick={() => setShowClearActivityConfirm(true)}
+                            disabled={updateTask.isPending}
+                          >
+                            {updateTask.isPending ? "Clearing..." : "Clear log"}
+                          </Button>
+                        ) : undefined
+                      }
                     >
                       <AgentTimeline activityLog={task.agentActivityLog} />
                     </Section>
@@ -644,122 +650,49 @@ export function TaskDetail({ taskId, onClose }: TaskDetailProps) {
         </div>
       )}
 
-      <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete task?</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            This action cannot be undone. The task &ldquo;{task?.title}&rdquo;
-            will be permanently deleted.
-          </p>
-          <div className="mt-4 flex justify-end gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowDeleteConfirm(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={handleDelete}
-            >
-              Delete
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        onOpenChange={setShowDeleteConfirm}
+        title="Delete task?"
+        description={`This action cannot be undone. The task "${task?.title ?? ""}" will be permanently deleted.`}
+        confirmLabel="Delete"
+        variant="destructive"
+        onConfirm={handleDelete}
+      />
 
-      <Dialog open={showClearActivityConfirm} onOpenChange={setShowClearActivityConfirm}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Clear agent activity log?</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            This action cannot be undone. All agent activity entries for this task will be removed.
-          </p>
-          <div className="mt-4 flex justify-end gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowClearActivityConfirm(false)}
-              disabled={updateTask.isPending}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={handleClearActivityLog}
-              disabled={updateTask.isPending}
-            >
-              {updateTask.isPending ? "Clearing..." : "Clear"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={showClearActivityConfirm}
+        onOpenChange={setShowClearActivityConfirm}
+        title="Clear agent activity log?"
+        description="This action cannot be undone. All agent activity entries for this task will be removed."
+        confirmLabel={updateTask.isPending ? "Clearing..." : "Clear"}
+        variant="destructive"
+        disabled={updateTask.isPending}
+        onConfirm={handleClearActivityLog}
+      />
 
-      <Dialog open={showSyncPlanConfirm} onOpenChange={setShowSyncPlanConfirm}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Sync plan from file?</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            This will overwrite the current plan in DB with the content from the physical plan file.
-          </p>
-          <div className="mt-4 flex justify-end gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowSyncPlanConfirm(false)}
-              disabled={syncTaskPlan.isPending}
-            >
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              onClick={handleSyncPlanFromFile}
-              disabled={syncTaskPlan.isPending}
-            >
-              {syncTaskPlan.isPending ? "Syncing..." : "Sync"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={showSyncPlanConfirm}
+        onOpenChange={setShowSyncPlanConfirm}
+        title="Sync plan from file?"
+        description="This will overwrite the current plan in DB with the content from the physical plan file."
+        confirmLabel={syncTaskPlan.isPending ? "Syncing..." : "Sync"}
+        disabled={syncTaskPlan.isPending}
+        onConfirm={handleSyncPlanFromFile}
+      />
 
-      <Dialog open={showStartAiConfirm} onOpenChange={setShowStartAiConfirm}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Plan file already exists</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            A plan file already exists{startAiPlanPath ? ` (${startAiPlanPath})` : ""}. AI will overwrite it.
-            Continue?
-          </p>
-          <div className="mt-4 flex justify-end gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowStartAiConfirm(false)}
-              disabled={taskEvent.isPending}
-            >
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => {
-                setShowStartAiConfirm(false);
-                triggerStartAi();
-              }}
-              disabled={taskEvent.isPending}
-            >
-              Continue
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={showStartAiConfirm}
+        onOpenChange={setShowStartAiConfirm}
+        title="Plan file already exists"
+        description={`A plan file already exists${startAiPlanPath ? ` (${startAiPlanPath})` : ""}. AI will overwrite it. Continue?`}
+        confirmLabel="Continue"
+        disabled={taskEvent.isPending}
+        onConfirm={() => {
+          setShowStartAiConfirm(false);
+          triggerStartAi();
+        }}
+      />
 
       <Dialog
         open={showReplanModal}
@@ -814,7 +747,9 @@ export function TaskDetail({ taskId, onClose }: TaskDetailProps) {
               {replanFiles.length > 0 && (
                 <ul className="space-y-1 text-xs text-muted-foreground">
                   {replanFiles.map((file) => (
-                    <li key={`${file.name}-${file.size}`}>{file.name} ({file.size} bytes)</li>
+                    <li key={`${file.name}-${file.size}`}>
+                      {file.name} ({file.size} bytes)
+                    </li>
                   ))}
                 </ul>
               )}
@@ -847,73 +782,24 @@ export function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             <Button
               size="sm"
               onClick={handlePlanChangeRequest}
-              disabled={
-                !replanComment.trim() ||
-                isSubmittingPlanChange
-              }
+              disabled={!replanComment.trim() || isSubmittingPlanChange}
             >
-              {isSubmittingPlanChange
-                ? (
-                  <>
-                    <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-                    Sending...
-                  </>
-                )
-                : planChangeMode === "replanning"
-                  ? "Send"
-                  : planChangeMode === "fast_fix"
-                    ? "Apply fast fix"
-                    : "Request changes"}
+              {isSubmittingPlanChange ? (
+                <>
+                  <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                  Sending...
+                </>
+              ) : planChangeMode === "replanning" ? (
+                "Send"
+              ) : planChangeMode === "fast_fix" ? (
+                "Apply fast fix"
+              ) : (
+                "Request changes"
+              )}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
     </>
-  );
-}
-
-function Section({
-  title,
-  actions,
-  children,
-}: {
-  title: string;
-  actions?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="border border-border bg-background/55 p-3">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          {title}
-        </h4>
-        {actions}
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      className={`border px-2 py-1 text-[10px] transition-colors ${
-        active
-          ? "border-primary/40 bg-primary/15 text-primary"
-          : "border-border bg-background/50 text-muted-foreground hover:bg-background"
-      }`}
-      onClick={onClick}
-      type="button"
-    >
-      {children}
-    </button>
   );
 }

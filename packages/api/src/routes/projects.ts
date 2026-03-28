@@ -1,11 +1,16 @@
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { eq } from "drizzle-orm";
-import { getDb, projects, logger, initProjectDirectory } from "@aif/shared";
+import { logger } from "@aif/shared";
 import { createProjectSchema } from "../schemas.js";
 import { broadcast } from "../ws.js";
+import {
+  listProjects,
+  findProjectById,
+  createProject,
+  updateProject,
+  deleteProject,
+  getProjectMcpServers,
+} from "../repositories/projects.js";
 
 const log = logger("projects-route");
 
@@ -13,8 +18,7 @@ export const projectsRouter = new Hono();
 
 // GET /projects
 projectsRouter.get("/", (c) => {
-  const db = getDb();
-  const all = db.select().from(projects).all();
+  const all = listProjects();
   log.debug({ count: all.length }, "Listed all projects");
   return c.json(all);
 });
@@ -22,35 +26,12 @@ projectsRouter.get("/", (c) => {
 // POST /projects
 projectsRouter.post("/", zValidator("json", createProjectSchema), async (c) => {
   const body = c.req.valid("json");
-  const db = getDb();
+  const { project: created, pathError } = createProject(body);
+  if (pathError) return c.json({ error: pathError }, 400);
+  if (!created) return c.json({ error: "Failed to create project" }, 500);
 
-  const id = crypto.randomUUID();
-  const now = new Date().toISOString();
-
-  db.insert(projects)
-    .values({
-      id,
-      name: body.name,
-      rootPath: body.rootPath,
-      plannerMaxBudgetUsd: body.plannerMaxBudgetUsd ?? null,
-      planCheckerMaxBudgetUsd: body.planCheckerMaxBudgetUsd ?? null,
-      implementerMaxBudgetUsd: body.implementerMaxBudgetUsd ?? null,
-      reviewSidecarMaxBudgetUsd: body.reviewSidecarMaxBudgetUsd ?? null,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .run();
-
-  try {
-    initProjectDirectory(body.rootPath);
-  } catch (err) {
-    // Project creation should not fail if optional scaffold/bootstrap step fails.
-    log.warn({ projectId: id, rootPath: body.rootPath, err }, "Project directory initialization failed");
-  }
-
-  const created = db.select().from(projects).where(eq(projects.id, id)).get();
-  log.debug({ projectId: id, name: body.name }, "Project created");
-  broadcast({ type: "project:created", payload: created! });
+  log.debug({ projectId: created.id, name: body.name }, "Project created");
+  broadcast({ type: "project:created", payload: created });
   return c.json(created, 201);
 });
 
@@ -58,27 +39,15 @@ projectsRouter.post("/", zValidator("json", createProjectSchema), async (c) => {
 projectsRouter.put("/:id", zValidator("json", createProjectSchema), async (c) => {
   const { id } = c.req.param();
   const body = c.req.valid("json");
-  const db = getDb();
 
-  const existing = db.select().from(projects).where(eq(projects.id, id)).get();
+  const existing = findProjectById(id);
   if (!existing) {
     return c.json({ error: "Project not found" }, 404);
   }
 
-  db.update(projects)
-    .set({
-      name: body.name,
-      rootPath: body.rootPath,
-      plannerMaxBudgetUsd: body.plannerMaxBudgetUsd ?? null,
-      planCheckerMaxBudgetUsd: body.planCheckerMaxBudgetUsd ?? null,
-      implementerMaxBudgetUsd: body.implementerMaxBudgetUsd ?? null,
-      reviewSidecarMaxBudgetUsd: body.reviewSidecarMaxBudgetUsd ?? null,
-      updatedAt: new Date().toISOString(),
-    })
-    .where(eq(projects.id, id))
-    .run();
+  const { project: updated, pathError } = updateProject(id, body);
+  if (pathError) return c.json({ error: pathError }, 400);
 
-  const updated = db.select().from(projects).where(eq(projects.id, id)).get();
   log.debug({ projectId: id }, "Project updated");
   return c.json(updated);
 });
@@ -86,39 +55,23 @@ projectsRouter.put("/:id", zValidator("json", createProjectSchema), async (c) =>
 // GET /projects/:id/mcp — read .mcp.json from project directory
 projectsRouter.get("/:id/mcp", (c) => {
   const { id } = c.req.param();
-  const db = getDb();
-
-  const project = db.select().from(projects).where(eq(projects.id, id)).get();
+  const project = findProjectById(id);
   if (!project) {
     return c.json({ error: "Project not found" }, 404);
   }
 
-  const mcpPath = resolve(project.rootPath, ".mcp.json");
-  if (!existsSync(mcpPath)) {
-    return c.json({ mcpServers: {} });
-  }
-
-  try {
-    const raw = readFileSync(mcpPath, "utf-8");
-    const parsed = JSON.parse(raw);
-    return c.json({ mcpServers: parsed.mcpServers ?? {} });
-  } catch {
-    return c.json({ mcpServers: {} });
-  }
+  return c.json({ mcpServers: getProjectMcpServers(id) });
 });
 
 // DELETE /projects/:id
 projectsRouter.delete("/:id", (c) => {
   const { id } = c.req.param();
-  const db = getDb();
-
-  const existing = db.select().from(projects).where(eq(projects.id, id)).get();
+  const existing = findProjectById(id);
   if (!existing) {
     return c.json({ error: "Project not found" }, 404);
   }
 
-  db.delete(projects).where(eq(projects.id, id)).run();
+  deleteProject(id);
   log.debug({ projectId: id }, "Project deleted");
-
   return c.json({ success: true });
 });
