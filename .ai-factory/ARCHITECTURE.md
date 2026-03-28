@@ -106,6 +106,8 @@ agent ──→ shared
 
 5. **Agent definitions are config, not code** — Subagent behavior is defined in `.claude/agents/*.md` files, loaded by the Agent SDK via `settingSources: ["project"]`. The `agent` package orchestrates when to invoke them, not what they do.
 
+6. **Code quality principles are mandatory** — All modules must follow SOLID and DRY principles to keep responsibilities clear, reduce duplication, and preserve maintainability as the monorepo grows.
+
 ## Code Examples
 
 ### Importing from shared (correct)

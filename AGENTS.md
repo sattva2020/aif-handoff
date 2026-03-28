@@ -65,35 +65,35 @@ data/                    # SQLite database files (gitignored)
 
 ## Key Entry Points
 
-| File | Purpose |
-|------|---------|
-| `packages/api/src/index.ts` | API server entry (Hono, port 3001) |
-| `packages/web/src/main.tsx` | Web app entry (React, port 5173) |
-| `packages/agent/src/index.ts` | Agent coordinator entry |
-| `packages/shared/src/schema.ts` | Database schema (drizzle-orm) |
-| `packages/shared/src/stateMachine.ts` | Task state transitions |
-| `turbo.json` | Turborepo task definitions |
+| File                                  | Purpose                            |
+| ------------------------------------- | ---------------------------------- |
+| `packages/api/src/index.ts`           | API server entry (Hono, port 3001) |
+| `packages/web/src/main.tsx`           | Web app entry (React, port 5173)   |
+| `packages/agent/src/index.ts`         | Agent coordinator entry            |
+| `packages/shared/src/schema.ts`       | Database schema (drizzle-orm)      |
+| `packages/shared/src/stateMachine.ts` | Task state transitions             |
+| `turbo.json`                          | Turborepo task definitions         |
 
 ## Documentation
 
-| Document | Path | Description |
-|----------|------|-------------|
-| README | README.md | Project landing page |
-| Getting Started | docs/getting-started.md | Installation, setup, first steps |
-| Architecture | docs/architecture.md | Agent pipeline, state machine, data flow |
-| API Reference | docs/api.md | REST endpoints, WebSocket events |
-| Configuration | docs/configuration.md | Environment variables, logging, auth |
+| Document        | Path                    | Description                              |
+| --------------- | ----------------------- | ---------------------------------------- |
+| README          | README.md               | Project landing page                     |
+| Getting Started | docs/getting-started.md | Installation, setup, first steps         |
+| Architecture    | docs/architecture.md    | Agent pipeline, state machine, data flow |
+| API Reference   | docs/api.md             | REST endpoints, WebSocket events         |
+| Configuration   | docs/configuration.md   | Environment variables, logging, auth     |
 
 ## AI Context Files
 
-| File | Purpose |
-|------|---------|
-| CLAUDE.md | Project instructions for Claude Code |
-| AGENTS.md | This file — project structure map |
-| .ai-factory/DESCRIPTION.md | Project specification and tech stack |
+| File                        | Purpose                               |
+| --------------------------- | ------------------------------------- |
+| CLAUDE.md                   | Project instructions for Claude Code  |
+| AGENTS.md                   | This file — project structure map     |
+| .ai-factory/DESCRIPTION.md  | Project specification and tech stack  |
 | .ai-factory/ARCHITECTURE.md | Architecture decisions and guidelines |
-| .ai-factory/RULES.md | Project rules and conventions |
-| .ai-factory/references/ | Claude Agent SDK reference docs |
+| .ai-factory/RULES.md        | Project rules and conventions         |
+| .ai-factory/references/     | Claude Agent SDK reference docs       |
 
 ## Agent Rules
 
@@ -104,5 +104,6 @@ data/                    # SQLite database files (gitignored)
 ## Project Rules
 
 - Every package must maintain at least 70% test coverage (measured by @vitest/coverage-v8)
+- Write code following SOLID and DRY principles
 - Always run linter after implementation: `npm run lint`
 - Always run tests after implementation: `npm test`
