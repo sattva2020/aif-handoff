@@ -58,9 +58,17 @@ async function triggerWake(reason: string): Promise<void> {
   }
 }
 
-connectWakeChannel((reason) => {
-  void triggerWake(reason);
-});
+if (env.AGENT_WAKE_ENABLED) {
+  log.info("Wake transport enabled — connecting to API WebSocket");
+  const initiated = connectWakeChannel((reason) => {
+    void triggerWake(reason);
+  });
+  if (!initiated) {
+    log.warn("Wake channel connection could not be initiated — falling back to polling only");
+  }
+} else {
+  log.info("Wake transport disabled (AGENT_WAKE_ENABLED=false) — using polling only");
+}
 
 log.info("Agent coordinator is running. Press Ctrl+C to stop.");
 

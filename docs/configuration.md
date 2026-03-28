@@ -27,6 +27,7 @@ cp .env.example .env
 | `ACTIVITY_LOG_BATCH_SIZE`          | number  | `20`                | Maximum entries per flush when in batch mode                                                                                        |
 | `ACTIVITY_LOG_BATCH_MAX_AGE_MS`    | number  | `5000`              | Maximum age (ms) of buffered entries before auto-flush in batch mode                                                                |
 | `ACTIVITY_LOG_QUEUE_LIMIT`         | number  | `500`               | Hard queue limit to prevent unbounded memory growth in batch mode                                                                   |
+| `AGENT_WAKE_ENABLED`               | boolean | `true`              | Enable event-driven coordinator wake via API WebSocket; set to `false` for polling-only mode                                        |
 
 Environment validation is handled by Zod in `packages/shared/src/env.ts`. The application will fail to start with a descriptive error if required variables are invalid.
 

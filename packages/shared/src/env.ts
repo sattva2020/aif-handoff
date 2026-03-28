@@ -47,6 +47,16 @@ const envSchema = z.object({
   ACTIVITY_LOG_BATCH_SIZE: z.coerce.number().min(1).default(20),
   ACTIVITY_LOG_BATCH_MAX_AGE_MS: z.coerce.number().min(100).default(5000),
   ACTIVITY_LOG_QUEUE_LIMIT: z.coerce.number().min(1).default(500),
+  AGENT_WAKE_ENABLED: z
+    .preprocess((value) => {
+      if (typeof value === "string") {
+        const normalized = value.trim().toLowerCase();
+        if (BOOLEAN_TRUE_VALUES.has(normalized)) return true;
+        if (BOOLEAN_FALSE_VALUES.has(normalized)) return false;
+      }
+      return value;
+    }, z.boolean())
+    .default(true),
 });
 
 export type Env = z.infer<typeof envSchema>;
