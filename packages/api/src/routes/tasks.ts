@@ -1,8 +1,6 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { existsSync, readFileSync } from "node:fs";
-import { logger, getCanonicalPlanPath } from "@aif/shared";
-import { findProjectByTaskId, persistTaskPlanForTask } from "@aif/data";
+import { logger } from "@aif/shared";
 import {
   createTaskSchema,
   updateTaskSchema,
@@ -23,6 +21,9 @@ import {
   createComment,
   toTaskResponse,
   toCommentResponse,
+  getTaskPlanFileStatus,
+  updateTaskPlan,
+  syncTaskPlanFromFile,
 } from "../repositories/tasks.js";
 
 const log = logger("tasks-route");
@@ -101,25 +102,12 @@ tasksRouter.get("/:id", (c) => {
 // GET /tasks/:id/plan-file-status — check if canonical physical plan file already exists
 tasksRouter.get("/:id/plan-file-status", (c) => {
   const { id } = c.req.param();
-  const existing = findTaskById(id);
-  if (!existing) {
-    return c.json({ error: "Task not found" }, 404);
+  const status = getTaskPlanFileStatus(id);
+  if (!status) {
+    return c.json({ error: "Task or project not found" }, 404);
   }
 
-  const project = findProjectByTaskId(id);
-  if (!project) {
-    return c.json({ error: "Project not found for task" }, 404);
-  }
-
-  const canonicalPlanPath = getCanonicalPlanPath({
-    projectRoot: project.rootPath,
-    isFix: existing.isFix,
-  });
-
-  return c.json({
-    exists: existsSync(canonicalPlanPath),
-    path: canonicalPlanPath,
-  });
+  return c.json(status);
 });
 
 // GET /tasks/:id/comments — list comments
@@ -172,17 +160,11 @@ tasksRouter.put("/:id", zValidator("json", updateTaskSchema), async (c) => {
 
   const hasPlanUpdate = Object.prototype.hasOwnProperty.call(restBody, "plan");
   if (hasPlanUpdate) {
-    const project = findProjectByTaskId(id);
-    if (!project) {
+    try {
+      updateTaskPlan(id, restBody.plan ?? null, existing.projectId, existing.isFix);
+    } catch {
       return c.json({ error: "Project not found for task" }, 404);
     }
-    persistTaskPlanForTask({
-      taskId: id,
-      projectRoot: project.rootPath,
-      isFix: existing.isFix,
-      planText: restBody.plan ?? null,
-      updatedAt: new Date().toISOString(),
-    });
     delete updatePayload.plan;
   }
 
@@ -197,38 +179,17 @@ tasksRouter.put("/:id", zValidator("json", updateTaskSchema), async (c) => {
 // POST /tasks/:id/sync-plan — sync DB plan with physical plan file
 tasksRouter.post("/:id/sync-plan", (c) => {
   const { id } = c.req.param();
-  const existing = findTaskById(id);
-  if (!existing) {
-    return c.json({ error: "Task not found" }, 404);
+  const result = syncTaskPlanFromFile(id);
+  if (!result) {
+    return c.json({ error: "Task or project not found" }, 404);
   }
-
-  const project = findProjectByTaskId(id);
-  if (!project) {
-    return c.json({ error: "Project not found for task" }, 404);
-  }
-
-  const canonicalPlanPath = getCanonicalPlanPath({
-    projectRoot: project.rootPath,
-    isFix: existing.isFix,
-  });
-  if (!existsSync(canonicalPlanPath)) {
+  if (!result.synced) {
     return c.json({ error: "Plan file not found" }, 404);
   }
 
-  const filePlan = readFileSync(canonicalPlanPath, "utf8");
-  const normalizedPlan = filePlan.trim().length > 0 ? filePlan : null;
-
-  persistTaskPlanForTask({
-    taskId: id,
-    planText: normalizedPlan,
-    projectRoot: project.rootPath,
-    isFix: existing.isFix,
-    updatedAt: new Date().toISOString(),
-  });
-
   const updated = updateTask(id, {});
   if (!updated) return c.json({ error: "Task not found after sync" }, 500);
-  log.debug({ taskId: id, canonicalPlanPath }, "Task plan synced from physical file");
+  log.debug({ taskId: id }, "Task plan synced from physical file");
 
   broadcast({ type: "task:updated", payload: toTaskResponse(updated) });
   return c.json(toTaskResponse(updated));

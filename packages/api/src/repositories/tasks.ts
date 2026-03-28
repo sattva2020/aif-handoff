@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { getCanonicalPlanPath } from "@aif/shared";
 import {
   createTask,
@@ -50,6 +50,35 @@ export function getTaskPlanFileStatus(taskId: string) {
     exists: existsSync(canonicalPlanPath),
     path: canonicalPlanPath,
   };
+}
+
+export function syncTaskPlanFromFile(taskId: string): { synced: boolean } | null {
+  const task = findTaskById(taskId);
+  if (!task) return null;
+
+  const project = findProjectByTaskId(taskId);
+  if (!project) return null;
+
+  const canonicalPlanPath = getCanonicalPlanPath({
+    projectRoot: project.rootPath,
+    isFix: task.isFix,
+  });
+  if (!existsSync(canonicalPlanPath)) {
+    return { synced: false };
+  }
+
+  const filePlan = readFileSync(canonicalPlanPath, "utf8");
+  const normalizedPlan = filePlan.trim().length > 0 ? filePlan : null;
+
+  persistTaskPlanForTask({
+    taskId,
+    planText: normalizedPlan,
+    projectRoot: project.rootPath,
+    isFix: task.isFix,
+    updatedAt: new Date().toISOString(),
+  });
+
+  return { synced: true };
 }
 
 export {

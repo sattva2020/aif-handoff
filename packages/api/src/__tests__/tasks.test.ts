@@ -295,7 +295,7 @@ describe("tasks API", () => {
 
       expect(res.status).toBe(404);
       const body = await res.json();
-      expect(body.error).toMatch(/Project not found for task/);
+      expect(body.error).toMatch(/Task or project not found/);
     });
   });
 
