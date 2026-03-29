@@ -1,4 +1,5 @@
 import pino from "pino";
+import "./loadEnv.js";
 
 const level = process.env.LOG_LEVEL ?? "debug";
 

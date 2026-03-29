@@ -40,6 +40,8 @@ Copy the example environment file:
 cp .env.example .env
 ```
 
+`api` and `agent` automatically read env from root `.env` (`.env.local` overrides when present), so no extra export step is required.
+
 | Variable                       | Default             | Description                                                             |
 | ------------------------------ | ------------------- | ----------------------------------------------------------------------- |
 | `ANTHROPIC_API_KEY`            | _(optional)_        | API key. Agent SDK uses `~/.claude/` auth by default                    |
@@ -48,6 +50,7 @@ cp .env.example .env
 | `AGENT_STAGE_STALE_TIMEOUT_MS` | `1200000`           | Stale-stage watchdog timeout (ms) before auto-recovery                  |
 | `AGENT_STAGE_STALE_MAX_RETRY`  | `3`                 | Max stale auto-recover attempts before quarantine in `blocked_external` |
 | `AGENT_STAGE_RUN_TIMEOUT_MS`   | `900000`            | Per-stage timeout (ms) before coordinator marks run as failed           |
+| `AGENT_USE_SUBAGENTS`          | `true`              | `false`: run via `aif-*` skills, `true`: run via custom subagents       |
 | `DATABASE_URL`                 | `./data/aif.sqlite` | SQLite database path                                                    |
 | `AGENT_QUERY_AUDIT_ENABLED`    | `true`              | Enable/disable query audit logs in `logs/*.log`                         |
 | `LOG_LEVEL`                    | `debug`             | Log level: `fatal`, `error`, `warn`, `info`, `debug`, `trace`           |
