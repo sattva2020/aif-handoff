@@ -51,6 +51,9 @@ async function handleFastFix(input: EventHandlerInput): Promise<EventHandlerResu
   if (!previousPlan) {
     return { ok: false, status: 409, error: "fast_fix requires an existing plan on the task" };
   }
+  const effectivePlanPath = task.isFix
+    ? ".ai-factory/FIX_PLAN.md"
+    : task.planPath || ".ai-factory/PLAN.md";
 
   let firstAttempt = "";
   try {
@@ -61,6 +64,7 @@ async function handleFastFix(input: EventHandlerInput): Promise<EventHandlerResu
         taskDescription: task.description,
         latestComment,
         projectRoot: project.rootPath,
+        planPath: effectivePlanPath,
         previousPlan,
         shouldTryFileUpdate: true,
       }),
@@ -80,6 +84,7 @@ async function handleFastFix(input: EventHandlerInput): Promise<EventHandlerResu
           taskDescription: task.description,
           latestComment,
           projectRoot: project.rootPath,
+          planPath: effectivePlanPath,
           previousPlan,
           priorAttempt: firstAttempt || undefined,
           shouldTryFileUpdate: false,
@@ -101,6 +106,7 @@ async function handleFastFix(input: EventHandlerInput): Promise<EventHandlerResu
     taskId: task.id,
     projectRoot: project.rootPath,
     isFix: task.isFix,
+    planPath: task.planPath ?? undefined,
     planText: updatedPlan,
     updatedAt: nowIso,
   });

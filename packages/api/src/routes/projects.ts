@@ -32,7 +32,7 @@ projectsRouter.get("/", (c) => {
 });
 
 // POST /projects
-projectsRouter.post("/", zValidator("json", createProjectSchema), async (c) => {
+projectsRouter.post("/", zValidator("json", createProjectSchema as any), async (c) => {
   const body = c.req.valid("json");
   const { project: created, pathError } = createProject(body);
   if (pathError) return c.json({ error: pathError }, 400);
@@ -44,7 +44,7 @@ projectsRouter.post("/", zValidator("json", createProjectSchema), async (c) => {
 });
 
 // PUT /projects/:id
-projectsRouter.put("/:id", zValidator("json", createProjectSchema), async (c) => {
+projectsRouter.put("/:id", zValidator("json", createProjectSchema as any), async (c) => {
   const { id } = c.req.param();
   const body = c.req.valid("json");
 
@@ -74,7 +74,7 @@ projectsRouter.get("/:id/mcp", (c) => {
 // POST /projects/:id/roadmap/generate — start async roadmap generation + import
 projectsRouter.post(
   "/:id/roadmap/generate",
-  zValidator("json", roadmapGenerateSchema),
+  zValidator("json", roadmapGenerateSchema as any),
   async (c) => {
     const { id } = c.req.param();
     const { roadmapAlias, vision } = c.req.valid("json");
@@ -96,64 +96,68 @@ projectsRouter.post(
 );
 
 // POST /projects/:id/roadmap/import — trigger roadmap import and create backlog tasks
-projectsRouter.post("/:id/roadmap/import", zValidator("json", roadmapImportSchema), async (c) => {
-  const { id } = c.req.param();
-  const { roadmapAlias } = c.req.valid("json");
+projectsRouter.post(
+  "/:id/roadmap/import",
+  zValidator("json", roadmapImportSchema as any),
+  async (c) => {
+    const { id } = c.req.param();
+    const { roadmapAlias } = c.req.valid("json");
 
-  const project = findProjectById(id);
-  if (!project) {
-    return c.json({ error: "Project not found" }, 404);
-  }
+    const project = findProjectById(id);
+    if (!project) {
+      return c.json({ error: "Project not found" }, 404);
+    }
 
-  log.info({ projectId: id, roadmapAlias }, "Roadmap import requested");
+    log.info({ projectId: id, roadmapAlias }, "Roadmap import requested");
 
-  try {
-    // Generate tasks from roadmap via Agent SDK
-    const generation = await generateRoadmapTasks({
-      projectId: id,
-      roadmapAlias,
-    });
+    try {
+      // Generate tasks from roadmap via Agent SDK
+      const generation = await generateRoadmapTasks({
+        projectId: id,
+        roadmapAlias,
+      });
 
-    // Import with dedupe and tag enrichment
-    const result = importGeneratedTasks(id, generation);
+      // Import with dedupe and tag enrichment
+      const result = importGeneratedTasks(id, generation);
 
-    // Broadcast each created task
-    for (const taskId of result.taskIds) {
-      const task = findTaskById(taskId);
-      if (task) {
-        broadcast({ type: "task:created", payload: toTaskResponse(task) });
+      // Broadcast each created task
+      for (const taskId of result.taskIds) {
+        const task = findTaskById(taskId);
+        if (task) {
+          broadcast({ type: "task:created", payload: toTaskResponse(task) });
+        }
       }
-    }
 
-    // Wake coordinator to process new backlog items
-    if (result.created > 0) {
-      broadcast({ type: "agent:wake", payload: { id } });
+      // Wake coordinator to process new backlog items
+      if (result.created > 0) {
+        broadcast({ type: "agent:wake", payload: { id } });
+        log.info(
+          { projectId: id, roadmapAlias, created: result.created },
+          "Batch wake event sent after roadmap import",
+        );
+      }
+
       log.info(
-        { projectId: id, roadmapAlias, created: result.created },
-        "Batch wake event sent after roadmap import",
+        { projectId: id, roadmapAlias, created: result.created, skipped: result.skipped },
+        "Roadmap import completed",
       );
-    }
 
-    log.info(
-      { projectId: id, roadmapAlias, created: result.created, skipped: result.skipped },
-      "Roadmap import completed",
-    );
-
-    return c.json(result, 201);
-  } catch (err) {
-    if (err instanceof RoadmapGenerationError) {
-      const status =
-        err.code === "PROJECT_NOT_FOUND" || err.code === "ROADMAP_NOT_FOUND" ? 404 : 500;
-      log.warn(
-        { projectId: id, roadmapAlias, code: err.code, error: err.message },
-        "Roadmap import failed",
-      );
-      return c.json({ error: err.message, code: err.code }, status);
+      return c.json(result, 201);
+    } catch (err) {
+      if (err instanceof RoadmapGenerationError) {
+        const status =
+          err.code === "PROJECT_NOT_FOUND" || err.code === "ROADMAP_NOT_FOUND" ? 404 : 500;
+        log.warn(
+          { projectId: id, roadmapAlias, code: err.code, error: err.message },
+          "Roadmap import failed",
+        );
+        return c.json({ error: err.message, code: err.code }, status);
+      }
+      log.error({ projectId: id, roadmapAlias, err }, "Roadmap import unexpected error");
+      return c.json({ error: "Internal server error" }, 500);
     }
-    log.error({ projectId: id, roadmapAlias, err }, "Roadmap import unexpected error");
-    return c.json({ error: "Internal server error" }, 500);
-  }
-});
+  },
+);
 
 // DELETE /projects/:id
 projectsRouter.delete("/:id", (c) => {

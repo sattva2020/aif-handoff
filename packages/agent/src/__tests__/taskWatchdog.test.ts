@@ -115,7 +115,7 @@ describe("releaseDueBlockedTasks", () => {
       retryCount: 1,
     });
 
-    releaseDueBlockedTasks(db);
+    releaseDueBlockedTasks();
 
     const task = db.select().from(tasks).where(eq(tasks.id, id)).get();
     expect(task?.status).toBe("planning");
@@ -133,7 +133,7 @@ describe("releaseDueBlockedTasks", () => {
       retryCount: 1,
     });
 
-    releaseDueBlockedTasks(db);
+    releaseDueBlockedTasks();
 
     const task = db.select().from(tasks).where(eq(tasks.id, id)).get();
     expect(task?.status).toBe("blocked_external");
@@ -148,7 +148,7 @@ describe("releaseDueBlockedTasks", () => {
       retryAfter: pastTime,
     });
 
-    releaseDueBlockedTasks(db);
+    releaseDueBlockedTasks();
 
     const task = db.select().from(tasks).where(eq(tasks.id, id)).get();
     expect(task?.status).toBe("blocked_external");
@@ -171,7 +171,7 @@ describe("recoverStaleInProgressTasks", () => {
       retryCount: 0,
     });
 
-    recoverStaleInProgressTasks(db);
+    recoverStaleInProgressTasks();
 
     const task = db.select().from(tasks).where(eq(tasks.id, id)).get();
     expect(task?.status).toBe("blocked_external");
@@ -190,7 +190,7 @@ describe("recoverStaleInProgressTasks", () => {
       retryCount: 99,
     });
 
-    recoverStaleInProgressTasks(db);
+    recoverStaleInProgressTasks();
 
     const task = db.select().from(tasks).where(eq(tasks.id, id)).get();
     expect(task?.status).toBe("blocked_external");
@@ -208,7 +208,7 @@ describe("recoverStaleInProgressTasks", () => {
       updatedAt: freshTime,
     });
 
-    recoverStaleInProgressTasks(db);
+    recoverStaleInProgressTasks();
 
     const task = db.select().from(tasks).where(eq(tasks.id, id)).get();
     expect(task?.status).toBe("planning");

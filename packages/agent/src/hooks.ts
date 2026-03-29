@@ -257,7 +257,7 @@ function buildHookLogContext(data: Record<string, unknown>): Record<string, unkn
 export function createActivityLogger(taskId: string): HookCallback {
   return async (input, _toolUseId, _options) => {
     if (!isRecord(input)) return {};
-    const data = input;
+    const data = input as Record<string, unknown>;
     const toolName = String(data.tool_name ?? "unknown");
     const toolInput = isRecord(data.tool_input) ? data.tool_input : undefined;
     const detail = summarizeToolInput(toolName, toolInput);
@@ -275,7 +275,7 @@ export function createActivityLogger(taskId: string): HookCallback {
 export function createSubagentLogger(taskId: string): HookCallback {
   return async (input, _toolUseId, _options) => {
     if (!isRecord(input)) return {};
-    const data = input;
+    const data = input as Record<string, unknown>;
     const agentName = String(
       data.agent_name ?? data.subagent_type ?? data.agent_type ?? data.description ?? "unknown",
     );

@@ -49,6 +49,7 @@ describe("fastFix service", () => {
         createdAt: "2026-03-28T00:00:00.000Z",
       },
       projectRoot: process.cwd(),
+      planPath: ".ai-factory/PLAN.md",
       previousPlan: "## Old plan",
     });
 
@@ -74,6 +75,7 @@ describe("fastFix service", () => {
         createdAt: "2026-03-28T00:00:00.000Z",
       },
       projectRoot: process.cwd(),
+      planPath: ".ai-factory/PLAN.md",
       previousPlan: "## Previous",
       priorAttempt: "too short",
       shouldTryFileUpdate: false,
@@ -85,6 +87,8 @@ describe("fastFix service", () => {
     };
     expect(callArg.prompt).toContain("PRIOR_ATTEMPT");
     expect(callArg.prompt).toContain("Do not use tools/subagents");
+    expect(callArg.prompt).toContain("PLAN PATH");
+    expect(callArg.prompt).toContain("@.ai-factory/PLAN.md");
     expect(callArg.options.systemPrompt?.append).toContain("Do not use tools");
   });
 
@@ -109,6 +113,7 @@ describe("fastFix service", () => {
         createdAt: "2026-03-28T00:00:00.000Z",
       },
       projectRoot: process.cwd(),
+      planPath: ".ai-factory/PLAN.md",
       previousPlan: "## Previous",
       priorAttempt: "still too short",
       shouldTryFileUpdate: true,
@@ -119,9 +124,38 @@ describe("fastFix service", () => {
       options: { systemPrompt?: { append?: string } };
     };
     expect(callArg.prompt).toContain("PRIOR_ATTEMPT");
-    expect(callArg.prompt).toContain("Also update the original plan file");
+    expect(callArg.prompt).toContain("Also update the plan file @.ai-factory/PLAN.md");
     expect(callArg.prompt).toContain("line-1");
     expect(callArg.options.systemPrompt?.append).toBeUndefined();
+  });
+
+  it("marks attachment content as missing when neither inline content nor path is present", async () => {
+    mockQuery.mockImplementation(successResult("## Updated plan"));
+
+    await runFastFixQuery({
+      taskId: "task-2c",
+      taskTitle: "Task 2c",
+      taskDescription: "Desc 2c",
+      latestComment: {
+        author: "human",
+        message: "Apply from metadata",
+        attachments: JSON.stringify([
+          {
+            name: "context.json",
+            mimeType: "application/json",
+            size: 100,
+            content: null,
+          },
+        ]),
+        createdAt: "2026-03-28T00:00:00.000Z",
+      },
+      projectRoot: process.cwd(),
+      planPath: ".ai-factory/PLAN.md",
+      previousPlan: "## Previous",
+    });
+
+    const callArg = mockQuery.mock.calls[0]?.[0] as { prompt: string };
+    expect(callArg.prompt).toContain("content: [not provided]");
   });
 
   it("throws when model returns non-success subtype", async () => {
@@ -147,6 +181,7 @@ describe("fastFix service", () => {
           createdAt: "2026-03-28T00:00:00.000Z",
         },
         projectRoot: process.cwd(),
+        planPath: ".ai-factory/PLAN.md",
         previousPlan: "## Previous",
       }),
     ).rejects.toThrow("Fast fix failed");
@@ -167,6 +202,7 @@ describe("fastFix service", () => {
           createdAt: "2026-03-28T00:00:00.000Z",
         },
         projectRoot: process.cwd(),
+        planPath: ".ai-factory/PLAN.md",
         previousPlan: "## Previous",
       }),
     ).rejects.toThrow("did not return updated plan text");

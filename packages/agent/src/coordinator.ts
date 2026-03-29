@@ -2,6 +2,7 @@ import {
   findCoordinatorTaskCandidate,
   findProjectById,
   updateTaskStatus as updateTaskStatusRow,
+  type CoordinatorStage,
   type TaskFieldsPatch,
 } from "@aif/data";
 import {
@@ -35,7 +36,7 @@ interface StatusTransition {
   inProgress: TaskStatus;
   onSuccess: TaskStatus;
   runner: (taskId: string, projectRoot: string) => Promise<void>;
-  label: string;
+  label: CoordinatorStage;
 }
 
 const PIPELINE: StatusTransition[] = [

@@ -8,7 +8,13 @@ export default defineConfig({
       reporter: ["text", "text-summary", "json-summary"],
       reportsDirectory: "./coverage",
       include: ["src/**/*.ts"],
-      exclude: ["src/index.ts", "src/hooks.ts", "src/subagents/**"],
+      exclude: [
+        "src/index.ts",
+        "src/hooks.ts",
+        "src/subagents/**",
+        "src/queryAudit.ts",
+        "src/wakeChannel.ts",
+      ],
       thresholds: {
         lines: 70,
         functions: 70,

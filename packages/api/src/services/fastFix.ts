@@ -15,6 +15,7 @@ interface RunFastFixQueryInput {
   taskDescription: string;
   latestComment: FastFixComment;
   projectRoot: string;
+  planPath: string;
   previousPlan: string;
   priorAttempt?: string;
   shouldTryFileUpdate?: boolean;
@@ -66,6 +67,9 @@ CURRENT PLAN (must be preserved, with only necessary edits):
 ${input.previousPlan}
 CURRENT_PLAN
 
+PLAN PATH (must be the only plan file you update):
+@${input.planPath}
+
 LATEST HUMAN COMMENT TO APPLY:
 ${formatLatestCommentForPrompt(input.latestComment)}
 
@@ -80,7 +84,7 @@ Requirements:
 3) Apply only the requested quick fix.
 ${
   includeFileUpdateStep
-    ? "4) Also update the original plan file in the workspace (if you can access files/tools): find the existing source plan markdown that matches CURRENT PLAN and overwrite it with the FULL updated plan.\n5) Output markdown only in your final response."
+    ? `4) Also update the plan file @${input.planPath} in the workspace (if you can access files/tools): overwrite it with the FULL updated plan.\n5) Do not create or modify any other plan file paths.\n6) Output markdown only in your final response.`
     : "4) Do not use tools/subagents. Return the FULL updated plan markdown directly.\n5) Output markdown only in your final response."
 }`
     : `You are editing an existing implementation plan markdown.
@@ -96,6 +100,9 @@ CURRENT PLAN (must be preserved, with only necessary edits):
 ${input.previousPlan}
 CURRENT_PLAN
 
+PLAN PATH (must be the only plan file you update):
+@${input.planPath}
+
 LATEST HUMAN COMMENT TO APPLY:
 ${formatLatestCommentForPrompt(input.latestComment)}
 
@@ -105,7 +112,7 @@ Requirements:
 3) Apply only the requested quick fix.
 ${
   includeFileUpdateStep
-    ? "4) Also update the original plan file in the workspace (if you can access files/tools): find the existing source plan markdown that matches CURRENT PLAN and overwrite it with the FULL updated plan.\n5) Output markdown only in your final response."
+    ? `4) Also update the plan file @${input.planPath} in the workspace (if you can access files/tools): overwrite it with the FULL updated plan.\n5) Do not create or modify any other plan file paths.\n6) Output markdown only in your final response.`
     : "4) Do not use tools/subagents. Return the FULL updated plan markdown directly.\n5) Output markdown only in your final response."
 }`;
 

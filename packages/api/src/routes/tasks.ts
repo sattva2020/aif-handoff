@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { logger, parseAttachments } from "@aif/shared";
 import {
   createTaskSchema,
@@ -38,7 +39,7 @@ const log = logger("tasks-route");
 export const tasksRouter = new Hono();
 
 // POST /tasks/:id/broadcast — emit WS update for a task (used by agent process)
-tasksRouter.post("/:id/broadcast", zValidator("json", broadcastTaskSchema), async (c) => {
+tasksRouter.post("/:id/broadcast", zValidator("json", broadcastTaskSchema as any), async (c) => {
   const { id } = c.req.param();
   const { type } = c.req.valid("json");
   const task = findTaskById(id);
@@ -62,7 +63,7 @@ tasksRouter.get("/", (c) => {
 });
 
 // POST /tasks — create
-tasksRouter.post("/", zValidator("json", createTaskSchema), async (c) => {
+tasksRouter.post("/", zValidator("json", createTaskSchema as any), async (c) => {
   const body = c.req.valid("json");
 
   // Pre-create the task to get an ID, then persist attachments to storage
@@ -146,7 +147,7 @@ tasksRouter.get("/:id/attachments/:filename", async (c) => {
     c.header("Content-Type", attachment.mimeType || "application/octet-stream");
     c.header("Content-Disposition", `attachment; filename="${attachment.name}"`);
     c.header("Content-Length", String(buffer.length));
-    return c.body(buffer);
+    return new Response(new Uint8Array(buffer), { headers: c.res.headers });
   } catch {
     return c.json({ error: "Attachment file not found on disk" }, 404);
   }
@@ -197,14 +198,14 @@ tasksRouter.get("/:id/comments/:commentId/attachments/:filename", async (c) => {
     c.header("Content-Type", attachment.mimeType || "application/octet-stream");
     c.header("Content-Disposition", `attachment; filename="${attachment.name}"`);
     c.header("Content-Length", String(buffer.length));
-    return c.body(buffer);
+    return new Response(new Uint8Array(buffer), { headers: c.res.headers });
   } catch {
     return c.json({ error: "Attachment file not found on disk" }, 404);
   }
 });
 
 // POST /tasks/:id/comments — create a human comment
-tasksRouter.post("/:id/comments", zValidator("json", createTaskCommentSchema), async (c) => {
+tasksRouter.post("/:id/comments", zValidator("json", createTaskCommentSchema as any), async (c) => {
   const { id } = c.req.param();
   const body = c.req.valid("json");
   const task = findTaskById(id);
@@ -238,7 +239,7 @@ tasksRouter.post("/:id/comments", zValidator("json", createTaskCommentSchema), a
 });
 
 // PUT /tasks/:id — update fields
-tasksRouter.put("/:id", zValidator("json", updateTaskSchema), async (c) => {
+tasksRouter.put("/:id", zValidator("json", updateTaskSchema as any), async (c) => {
   const { id } = c.req.param();
   const body = c.req.valid("json");
   const existing = findTaskById(id);
@@ -314,7 +315,7 @@ tasksRouter.delete("/:id", (c) => {
 });
 
 // POST /tasks/:id/events — apply a human action through state machine
-tasksRouter.post("/:id/events", zValidator("json", taskEventSchema), async (c) => {
+tasksRouter.post("/:id/events", zValidator("json", taskEventSchema as any), async (c) => {
   const { id } = c.req.param();
   const { event, deletePlanFile } = c.req.valid("json");
   const existing = findTaskById(id);
@@ -328,7 +329,7 @@ tasksRouter.post("/:id/events", zValidator("json", taskEventSchema), async (c) =
       deletePlanFile,
     });
     if (!handled.ok) {
-      return c.json({ error: handled.error }, handled.status);
+      return c.json({ error: handled.error }, handled.status as ContentfulStatusCode);
     }
 
     log.debug(
@@ -351,7 +352,7 @@ tasksRouter.post("/:id/events", zValidator("json", taskEventSchema), async (c) =
 });
 
 // PATCH /tasks/:id/position — reorder within column
-tasksRouter.patch("/:id/position", zValidator("json", reorderTaskSchema), async (c) => {
+tasksRouter.patch("/:id/position", zValidator("json", reorderTaskSchema as any), async (c) => {
   const { id } = c.req.param();
   const { position } = c.req.valid("json");
   const existing = findTaskById(id);
