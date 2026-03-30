@@ -263,7 +263,7 @@ describe("coordinator", () => {
 
   it("should auto-recover stale implementing task to blocked_external", async () => {
     const db = testDb.current;
-    const staleDate = new Date(Date.now() - 25 * 60_000).toISOString();
+    const staleDate = new Date(Date.now() - 100 * 60_000).toISOString();
     db.insert(tasks)
       .values({
         id: "task-stale-impl",
@@ -310,7 +310,7 @@ describe("coordinator", () => {
 
   it("should quarantine stale task when watchdog retry limit reached", async () => {
     const db = testDb.current;
-    const staleDate = new Date(Date.now() - 25 * 60_000).toISOString();
+    const staleDate = new Date(Date.now() - 100 * 60_000).toISOString();
     db.insert(tasks)
       .values({
         id: "task-stale-limit",
@@ -566,6 +566,107 @@ describe("coordinator", () => {
     expect(runReviewer).not.toHaveBeenCalled();
     const task = db.select().from(tasks).where(eq(tasks.id, "task-skip-review-full")).get();
     expect(task!.status).toBe("done");
+  });
+
+  it("should preserve reviewIterationCount across rework cycles until max iterations", async () => {
+    const db = testDb.current;
+    db.insert(tasks)
+      .values({
+        id: "task-rework-iter",
+        projectId: "test-project",
+        title: "Rework iteration tracking",
+        status: "review",
+        autoMode: true,
+        reviewComments: "## Code Review\n- fix issue A",
+        maxReviewIterations: 3,
+      })
+      .run();
+
+    // --- Cycle 1: reviewer completes, gate requests rework ---
+    vi.mocked(handleAutoReviewGate).mockResolvedValueOnce("rework_requested");
+    await pollAndProcess();
+
+    let task = db.select().from(tasks).where(eq(tasks.id, "task-rework-iter")).get();
+    expect(task!.status).toBe("implementing");
+    expect(task!.reworkRequested).toBe(true);
+    expect(task!.reviewIterationCount).toBe(1);
+
+    // --- Cycle 2: implementer completes, task moves to review (count must survive) ---
+    vi.clearAllMocks();
+    vi.mocked(handleAutoReviewGate).mockResolvedValueOnce("rework_requested");
+    await pollAndProcess();
+
+    task = db.select().from(tasks).where(eq(tasks.id, "task-rework-iter")).get();
+    // After implementer→review→gate rework: count should be 2 now
+    expect(task!.status).toBe("implementing");
+    expect(task!.reworkRequested).toBe(true);
+    expect(task!.reviewIterationCount).toBe(2);
+
+    // --- Cycle 3: implementer completes, reviewer runs, gate hits max iterations ---
+    vi.clearAllMocks();
+    vi.mocked(handleAutoReviewGate).mockResolvedValueOnce("max_iterations_reached");
+    await pollAndProcess();
+
+    task = db.select().from(tasks).where(eq(tasks.id, "task-rework-iter")).get();
+    expect(task!.status).toBe("done");
+  });
+
+  it("should reset reviewIterationCount to 0 for non-implementer stage transitions", async () => {
+    const db = testDb.current;
+    db.insert(tasks)
+      .values({
+        id: "task-reset-count",
+        projectId: "test-project",
+        title: "Reset count on planning",
+        status: "planning",
+        reviewIterationCount: 5,
+      })
+      .run();
+
+    await pollAndProcess();
+
+    const task = db.select().from(tasks).where(eq(tasks.id, "task-reset-count")).get();
+    expect(task!.status).toBe("done");
+    expect(task!.reviewIterationCount).toBe(0);
+  });
+
+  it("should pass reworkRequested=true to implementer during rework and reset after", async () => {
+    const db = testDb.current;
+    db.insert(tasks)
+      .values({
+        id: "task-rework-flag",
+        projectId: "test-project",
+        title: "Rework flag lifecycle",
+        status: "review",
+        autoMode: true,
+        reviewComments: "## Code Review\n- fix issue A",
+      })
+      .run();
+
+    // Cycle 1: reviewer → gate requests rework
+    vi.mocked(handleAutoReviewGate).mockResolvedValueOnce("rework_requested");
+    await pollAndProcess();
+
+    let task = db.select().from(tasks).where(eq(tasks.id, "task-rework-flag")).get();
+    expect(task!.status).toBe("implementing");
+    expect(task!.reworkRequested).toBe(true);
+
+    // Cycle 2: capture reworkRequested inside implementer execution
+    let reworkDuringExec: boolean | undefined;
+    vi.mocked(runImplementer).mockImplementationOnce(async (taskId) => {
+      const t = db.select().from(tasks).where(eq(tasks.id, taskId)).get();
+      reworkDuringExec = t?.reworkRequested;
+    });
+    vi.mocked(handleAutoReviewGate).mockResolvedValueOnce("accepted");
+    await pollAndProcess();
+
+    // Implementer must see reworkRequested=true during execution
+    expect(reworkDuringExec).toBe(true);
+
+    // After full cycle (implementer→review→accepted→done), reworkRequested is reset
+    task = db.select().from(tasks).where(eq(tasks.id, "task-rework-flag")).get();
+    expect(task!.status).toBe("done");
+    expect(task!.reworkRequested).toBe(false);
   });
 
   it("should do nothing when no tasks exist", async () => {

@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import {
   findProjectById,
   findTaskById,
-  getLatestHumanComment,
+  getLatestReworkComment,
   persistTaskPlanForTask,
   setTaskFields,
   incrementTaskTokenUsage,
@@ -20,16 +20,17 @@ const AGENT_NAME = "implement-coordinator";
 const FIX_PLAN_PATH = ".ai-factory/FIX_PLAN.md";
 const PLAN_PATH = ".ai-factory/PLAN.md";
 
-function formatLatestHumanCommentForPrompt(
+function formatReworkCommentForPrompt(
   comment: {
+    author: string;
     createdAt: string;
     message: string;
     attachments: string | null;
   } | null,
 ): string {
-  if (!comment) return "No human comments found for rework request.";
+  if (!comment) return "No rework comments found for rework request.";
   return [
-    `[${comment.createdAt}] human`,
+    `[${comment.createdAt}] ${comment.author}`,
     `message: ${comment.message}`,
     "attachments:",
     formatAttachmentsForPrompt(comment.attachments),
@@ -168,7 +169,9 @@ export async function runImplementer(taskId: string, projectRoot: string): Promi
     : { tasks: [], layers: [] };
   const parsedTaskCount = parsedPlanComputation.tasks.length;
   const pendingTaskCount = layerComputation.tasks.length;
-  const latestHumanComment = task.reworkRequested ? (getLatestHumanComment(taskId) ?? null) : null;
+  const latestReworkComment = task.reworkRequested
+    ? (getLatestReworkComment(taskId) ?? null)
+    : null;
 
   if (selectedPlan && parsedTaskCount > 0 && pendingTaskCount === 0 && !task.reworkRequested) {
     const nowIso = new Date().toISOString();
@@ -211,8 +214,8 @@ ${planSection}
 ${
   task.reworkRequested
     ? `Rework mode: true (requested from done/request_changes).
-Latest human rework comment (must be addressed in this implementation run):
-${formatLatestHumanCommentForPrompt(latestHumanComment)}`
+Latest rework comment (must be addressed in this implementation run):
+${formatReworkCommentForPrompt(latestReworkComment)}`
     : "Rework mode: false."
 }
 

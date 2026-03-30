@@ -50,6 +50,7 @@ export type TaskFieldsUpdate = {
   reworkRequested?: boolean;
   reviewIterationCount?: number;
   maxReviewIterations?: number;
+  paused?: boolean;
   lastHeartbeatAt?: string | null;
   position?: number;
 };
@@ -117,6 +118,7 @@ export function createTask(input: {
   skipReview?: boolean;
   useSubagents?: boolean;
   maxReviewIterations?: number;
+  paused?: boolean;
   roadmapAlias?: string;
   tags?: string[];
 }): TaskRow | undefined {
@@ -141,6 +143,7 @@ export function createTask(input: {
       skipReview: input.skipReview,
       useSubagents: input.useSubagents,
       maxReviewIterations: input.maxReviewIterations,
+      paused: input.paused,
       roadmapAlias: input.roadmapAlias ?? null,
       tags: JSON.stringify(input.tags ?? []),
       reworkRequested: false,
@@ -229,6 +232,10 @@ export function updateTaskComment(
 
 export function getLatestHumanComment(taskId: string): CommentRow | undefined {
   return listTaskComments(taskId).filter((comment) => comment.author === "human").at(-1);
+}
+
+export function getLatestReworkComment(taskId: string): CommentRow | undefined {
+  return listTaskComments(taskId).at(-1);
 }
 
 export function listProjects(): ProjectRow[] {
@@ -338,7 +345,7 @@ export function findCoordinatorTaskCandidate(stage: CoordinatorStage): TaskRow |
   return getDb()
     .select()
     .from(tasks)
-    .where(stageFilter)
+    .where(and(stageFilter, eq(tasks.paused, false)))
     .orderBy(asc(tasks.position), asc(tasks.createdAt))
     .limit(1)
     .get();
@@ -351,6 +358,7 @@ export function listDueBlockedExternalTasks(nowIso: string): TaskRow[] {
     .where(
       and(
         eq(tasks.status, "blocked_external"),
+        eq(tasks.paused, false),
         isNotNull(tasks.retryAfter),
         lte(tasks.retryAfter, nowIso),
         isNotNull(tasks.blockedFromStatus),
@@ -363,7 +371,12 @@ export function listStaleInProgressTasks(): TaskRow[] {
   return getDb()
     .select()
     .from(tasks)
-    .where(inArray(tasks.status, ["planning", "implementing", "review"]))
+    .where(
+      and(
+        inArray(tasks.status, ["planning", "implementing", "review"]),
+        eq(tasks.paused, false),
+      ),
+    )
     .all();
 }
 

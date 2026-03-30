@@ -54,6 +54,7 @@ function insertTask(db: ReturnType<typeof createTestDb>, overrides: Record<strin
       position: 1000,
       autoMode: true,
       isFix: false,
+      paused: false,
       reworkRequested: false,
       lastHeartbeatAt: now,
       createdAt: now,
@@ -163,7 +164,7 @@ describe("recoverStaleInProgressTasks", () => {
 
   it("blocks stale planning task with auto-recover", () => {
     const db = testDb.current;
-    const staleTime = new Date(Date.now() - 25 * 60_000).toISOString();
+    const staleTime = new Date(Date.now() - 100 * 60_000).toISOString();
     const id = insertTask(db, {
       status: "planning",
       lastHeartbeatAt: staleTime,
@@ -182,7 +183,7 @@ describe("recoverStaleInProgressTasks", () => {
 
   it("quarantines task after max retries", () => {
     const db = testDb.current;
-    const staleTime = new Date(Date.now() - 25 * 60_000).toISOString();
+    const staleTime = new Date(Date.now() - 100 * 60_000).toISOString();
     const id = insertTask(db, {
       status: "implementing",
       lastHeartbeatAt: staleTime,

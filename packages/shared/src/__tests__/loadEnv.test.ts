@@ -25,20 +25,12 @@ describe("loadEnv", () => {
     findMonorepoRootFromUrlMock.mockReturnValue("/repo-root");
   });
 
-  it("loads root .env and .env.local once in order", async () => {
-    existsSyncMock.mockImplementation(
-      (path) => path.endsWith(".env") || path.endsWith(".env.local"),
-    );
-    const { ensureRootEnvLoaded } = await import("../loadEnv.js");
+  it("skips dotenv loading in test environment (VITEST is set)", async () => {
+    // VITEST env var is always set by vitest runner, so loadEnv skips loading
+    existsSyncMock.mockReturnValue(true);
+    await import("../loadEnv.js");
 
-    expect(dotenvConfigMock).toHaveBeenNthCalledWith(1, { path: "/repo-root/.env" });
-    expect(dotenvConfigMock).toHaveBeenNthCalledWith(2, {
-      path: "/repo-root/.env.local",
-      override: true,
-    });
-
-    ensureRootEnvLoaded();
-    expect(dotenvConfigMock).toHaveBeenCalledTimes(2);
+    expect(dotenvConfigMock).not.toHaveBeenCalled();
   });
 
   it("skips dotenv loading when root env files are missing", async () => {

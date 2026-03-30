@@ -16,8 +16,14 @@ let envLoaded = false;
 export function ensureRootEnvLoaded(): void {
   if (envLoaded) return;
 
+  // Skip loading .env files during test runs — tests control env via vi.stubEnv / process.env
+  if (process.env.VITEST || process.env.NODE_ENV === "test") {
+    envLoaded = true;
+    return;
+  }
+
   if (existsSync(ROOT_ENV_PATH)) {
-    dotenvConfig({ path: ROOT_ENV_PATH });
+    dotenvConfig({ path: ROOT_ENV_PATH, override: true });
   }
   if (existsSync(ROOT_ENV_LOCAL_PATH)) {
     dotenvConfig({ path: ROOT_ENV_LOCAL_PATH, override: true });

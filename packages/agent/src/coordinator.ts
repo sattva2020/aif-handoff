@@ -197,7 +197,12 @@ export async function pollAndProcess(): Promise<void> {
         }
       }
 
-      updateTaskStatus(task.id, stage.onSuccess, CLEAN_STATE_RESET);
+      updateTaskStatus(task.id, stage.onSuccess, {
+        ...CLEAN_STATE_RESET,
+        // Preserve review iteration count when transitioning implementing → review
+        // so the auto review gate can enforce max iterations across rework cycles.
+        reviewIterationCount: stage.label === "implementer" ? (task.reviewIterationCount ?? 0) : 0,
+      });
 
       log.info(
         { taskId: task.id, from: stage.inProgress, to: stage.onSuccess },
