@@ -273,6 +273,196 @@ describe("chat API", () => {
     );
   });
 
+  it("streams tool_use_summary as visible token", async () => {
+    mockQuery.mockImplementation(
+      streamOf([
+        { type: "tool_use_summary", summary: "Read 3 files in src/" },
+        { type: "result", subtype: "success" },
+      ]),
+    );
+
+    const res = await app.request("/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId: "project-1",
+        message: "read files",
+        clientId: "client-1",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockSendToClient).toHaveBeenCalledWith(
+      "client-1",
+      expect.objectContaining({
+        type: "chat:token",
+        payload: expect.objectContaining({ token: expect.stringContaining("Read 3 files") }),
+      }),
+    );
+  });
+
+  it("streams permission denials on success result", async () => {
+    mockQuery.mockImplementation(
+      streamOf([
+        {
+          type: "result",
+          subtype: "success",
+          permission_denials: [{ tool_name: "Bash", tool_use_id: "t1", tool_input: {} }],
+        },
+      ]),
+    );
+
+    const res = await app.request("/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId: "project-1",
+        message: "run something",
+        clientId: "client-1",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockSendToClient).toHaveBeenCalledWith(
+      "client-1",
+      expect.objectContaining({
+        type: "chat:token",
+        payload: expect.objectContaining({
+          token: expect.stringContaining("Permission denied"),
+        }),
+      }),
+    );
+  });
+
+  it("streams error details for error_max_turns result", async () => {
+    mockQuery.mockImplementation(
+      streamOf([{ type: "result", subtype: "error_max_turns", is_error: true, errors: [] }]),
+    );
+
+    const res = await app.request("/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId: "project-1",
+        message: "hello",
+        clientId: "client-1",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockSendToClient).toHaveBeenCalledWith(
+      "client-1",
+      expect.objectContaining({
+        type: "chat:token",
+        payload: expect.objectContaining({
+          token: expect.stringContaining("max turns"),
+        }),
+      }),
+    );
+  });
+
+  it("streams error details for error_max_budget_usd result", async () => {
+    mockQuery.mockImplementation(
+      streamOf([
+        {
+          type: "result",
+          subtype: "error_max_budget_usd",
+          is_error: true,
+          errors: [],
+          permission_denials: [{ tool_name: "Edit" }],
+        },
+      ]),
+    );
+
+    const res = await app.request("/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId: "project-1",
+        message: "hello",
+        clientId: "client-1",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    // Should contain both budget error and permission denial
+    const tokenCalls = mockSendToClient.mock.calls.filter(
+      (c: unknown[]) => (c[1] as { type: string }).type === "chat:token",
+    );
+    const allTokens = tokenCalls
+      .map((c: unknown[]) => (c[1] as { payload: { token: string } }).payload.token)
+      .join("");
+    expect(allTokens).toContain("Budget limit");
+    expect(allTokens).toContain("Permission denied");
+  });
+
+  it("streams generic error with errors array", async () => {
+    mockQuery.mockImplementation(
+      streamOf([
+        {
+          type: "result",
+          subtype: "error_during_execution",
+          is_error: true,
+          errors: ["Something went wrong"],
+        },
+      ]),
+    );
+
+    const res = await app.request("/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId: "project-1",
+        message: "hello",
+        clientId: "client-1",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockSendToClient).toHaveBeenCalledWith(
+      "client-1",
+      expect.objectContaining({
+        type: "chat:token",
+        payload: expect.objectContaining({
+          token: expect.stringContaining("Something went wrong"),
+        }),
+      }),
+    );
+  });
+
+  it("resolves task context when taskId is provided", async () => {
+    const mockTaskRow = { id: "task-1", title: "Fix bug", status: "implementing" };
+    mockFindTaskById.mockReturnValue(mockTaskRow);
+    mockToTaskResponse.mockReturnValue({
+      ...mockTaskRow,
+      description: "Some bug",
+      attachments: [],
+      tags: [],
+    });
+    mockQuery.mockImplementation(streamOf([{ type: "result", subtype: "success" }]));
+
+    const res = await app.request("/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId: "project-1",
+        message: "what is this task?",
+        clientId: "client-1",
+        taskId: "task-1",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockFindTaskById).toHaveBeenCalledWith("task-1");
+    expect(mockToTaskResponse).toHaveBeenCalledWith(mockTaskRow);
+    // System prompt should contain task context
+    const queryArgs = mockQuery.mock.calls[0][0] as {
+      options: { systemPrompt: { append: string } };
+    };
+    expect(queryArgs.options.systemPrompt.append).toContain("Fix bug");
+    expect(queryArgs.options.systemPrompt.append).toContain("implementing");
+  });
+
   it("returns 500 and generic message for non-limit errors", async () => {
     mockQuery.mockImplementation(() => {
       throw new Error("unexpected failure");
