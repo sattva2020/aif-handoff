@@ -85,6 +85,9 @@ function ensureTables(sqlite: Database.Database): void {
       roadmap_alias TEXT,
       tags TEXT NOT NULL DEFAULT '[]',
       rework_requested INTEGER NOT NULL DEFAULT 0,
+      review_iteration_count INTEGER NOT NULL DEFAULT 0,
+      max_review_iterations INTEGER NOT NULL DEFAULT 3,
+      paused INTEGER NOT NULL DEFAULT 0,
       last_heartbeat_at TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -153,6 +156,7 @@ function ensureTables(sqlite: Database.Database): void {
     "max_review_iterations",
     "max_review_iterations INTEGER NOT NULL DEFAULT 3",
   );
+  ensureColumn(sqlite, "tasks", "paused", "paused INTEGER NOT NULL DEFAULT 0");
   ensureColumn(sqlite, "task_comments", "author", "author TEXT NOT NULL DEFAULT 'human'");
   ensureColumn(sqlite, "task_comments", "attachments", "attachments TEXT NOT NULL DEFAULT '[]'");
 

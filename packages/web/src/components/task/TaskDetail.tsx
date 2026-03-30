@@ -40,6 +40,9 @@ export function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                 activeTab={activeTab}
                 onTabChange={setSelectedTab}
                 onActionClick={actions.handleActionClick}
+                onTogglePaused={() =>
+                  actions.updateTask.mutate({ id: task.id, input: { paused: !task.paused } })
+                }
                 isDisabled={actions.isSubmittingPlanChange}
                 isCheckingStartAi={actions.isCheckingStartAiPlanFile}
                 planChangeSuccess={actions.planChangeSuccess}

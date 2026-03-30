@@ -20,6 +20,7 @@ const baseTask: Task = {
   reworkRequested: false,
   reviewIterationCount: 0,
   maxReviewIterations: 3,
+  paused: false,
   lastHeartbeatAt: null,
   roadmapAlias: "RM-1",
   tags: ["backend", "rm:ignore"],
@@ -50,6 +51,7 @@ describe("TaskDetailHeader", () => {
         activeTab="implementation"
         onTabChange={vi.fn()}
         onActionClick={vi.fn()}
+        onTogglePaused={vi.fn()}
         isDisabled={false}
         isCheckingStartAi={false}
         planChangeSuccess={null}
@@ -67,6 +69,7 @@ describe("TaskDetailHeader", () => {
         activeTab="implementation"
         onTabChange={vi.fn()}
         onActionClick={vi.fn()}
+        onTogglePaused={vi.fn()}
         isDisabled={false}
         isCheckingStartAi={false}
         planChangeSuccess={null}
@@ -83,6 +86,7 @@ describe("TaskDetailHeader", () => {
         activeTab="implementation"
         onTabChange={vi.fn()}
         onActionClick={vi.fn()}
+        onTogglePaused={vi.fn()}
         isDisabled={false}
         isCheckingStartAi={false}
         planChangeSuccess={null}
@@ -99,6 +103,7 @@ describe("TaskDetailHeader", () => {
         activeTab="implementation"
         onTabChange={vi.fn()}
         onActionClick={vi.fn()}
+        onTogglePaused={vi.fn()}
         isDisabled={false}
         isCheckingStartAi={false}
         planChangeSuccess={null}
@@ -116,6 +121,7 @@ describe("TaskDetailHeader", () => {
         activeTab="implementation"
         onTabChange={vi.fn()}
         onActionClick={vi.fn()}
+        onTogglePaused={vi.fn()}
         isDisabled={false}
         isCheckingStartAi={false}
         planChangeSuccess={null}
@@ -135,6 +141,7 @@ describe("TaskDetailHeader", () => {
         activeTab="implementation"
         onTabChange={vi.fn()}
         onActionClick={vi.fn()}
+        onTogglePaused={vi.fn()}
         isDisabled={false}
         isCheckingStartAi={false}
         planChangeSuccess={null}
@@ -153,6 +160,7 @@ describe("TaskDetailHeader", () => {
         activeTab="implementation"
         onTabChange={vi.fn()}
         onActionClick={onActionClick}
+        onTogglePaused={vi.fn()}
         isDisabled={false}
         isCheckingStartAi={false}
         planChangeSuccess={null}
@@ -173,6 +181,7 @@ describe("TaskDetailHeader", () => {
         activeTab="implementation"
         onTabChange={onTabChange}
         onActionClick={vi.fn()}
+        onTogglePaused={vi.fn()}
         isDisabled={false}
         isCheckingStartAi={false}
         planChangeSuccess={null}
@@ -190,6 +199,7 @@ describe("TaskDetailHeader", () => {
         activeTab="implementation"
         onTabChange={vi.fn()}
         onActionClick={vi.fn()}
+        onTogglePaused={vi.fn()}
         isDisabled={false}
         isCheckingStartAi={false}
         planChangeSuccess="Fast fix applied."
@@ -199,6 +209,63 @@ describe("TaskDetailHeader", () => {
     expect(screen.getByText("Fast fix applied.")).toBeDefined();
   });
 
+  it("should render Pause button when task is not paused", () => {
+    render(
+      <TaskDetailHeader
+        task={baseTask}
+        activeTab="implementation"
+        onTabChange={vi.fn()}
+        onActionClick={vi.fn()}
+        onTogglePaused={vi.fn()}
+        isDisabled={false}
+        isCheckingStartAi={false}
+        planChangeSuccess={null}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Pause")).toBeDefined();
+    expect(screen.queryByText("Resume")).toBeNull();
+  });
+
+  it("should render Resume button and PAUSED badge when task is paused", () => {
+    const pausedTask = { ...baseTask, paused: true };
+    render(
+      <TaskDetailHeader
+        task={pausedTask}
+        activeTab="implementation"
+        onTabChange={vi.fn()}
+        onActionClick={vi.fn()}
+        onTogglePaused={vi.fn()}
+        isDisabled={false}
+        isCheckingStartAi={false}
+        planChangeSuccess={null}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Resume")).toBeDefined();
+    expect(screen.getByText("PAUSED")).toBeDefined();
+    expect(screen.queryByText("Pause")).toBeNull();
+  });
+
+  it("should call onTogglePaused when pause button is clicked", () => {
+    const onTogglePaused = vi.fn();
+    render(
+      <TaskDetailHeader
+        task={baseTask}
+        activeTab="implementation"
+        onTabChange={vi.fn()}
+        onActionClick={vi.fn()}
+        onTogglePaused={onTogglePaused}
+        isDisabled={false}
+        isCheckingStartAi={false}
+        planChangeSuccess={null}
+        onClose={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByText("Pause"));
+    expect(onTogglePaused).toHaveBeenCalledOnce();
+  });
+
   it("should render token stats", () => {
     render(
       <TaskDetailHeader
@@ -206,6 +273,7 @@ describe("TaskDetailHeader", () => {
         activeTab="implementation"
         onTabChange={vi.fn()}
         onActionClick={vi.fn()}
+        onTogglePaused={vi.fn()}
         isDisabled={false}
         isCheckingStartAi={false}
         planChangeSuccess={null}

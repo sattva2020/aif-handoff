@@ -20,6 +20,7 @@ const mockTask: Task = {
   reworkRequested: false,
   reviewIterationCount: 0,
   maxReviewIterations: 3,
+  paused: false,
   lastHeartbeatAt: null,
   roadmapAlias: null,
   tags: [],

@@ -268,6 +268,37 @@ describe("tasks API", () => {
       expect(body.isFix).toBe(true);
     });
 
+    it("should create a task with paused=true", async () => {
+      const res = await app.request("/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "Paused task",
+          projectId: "test-project",
+          paused: true,
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(body.paused).toBe(true);
+    });
+
+    it("should default paused to false", async () => {
+      const res = await app.request("/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "Default paused task",
+          projectId: "test-project",
+        }),
+      });
+
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(body.paused).toBe(false);
+    });
+
     it("should reject empty title", async () => {
       const res = await app.request("/tasks", {
         method: "POST",
@@ -379,6 +410,23 @@ describe("tasks API", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.useSubagents).toBe(false);
+    });
+
+    it("should update paused via PUT", async () => {
+      const db = testDb.current;
+      db.insert(tasks)
+        .values({ id: "upd-paused", projectId: "test-project", title: "Pause test" })
+        .run();
+
+      const res = await app.request("/tasks/upd-paused", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paused: true }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.paused).toBe(true);
     });
 
     it("should update autoMode via PUT", async () => {

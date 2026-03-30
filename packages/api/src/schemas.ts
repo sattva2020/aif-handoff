@@ -39,6 +39,7 @@ export const createTaskSchema = z.object({
     .min(1)
     .max(50)
     .default(getEnv().AGENT_MAX_REVIEW_ITERATIONS),
+  paused: z.boolean().default(false),
   roadmapAlias: z.string().max(200).optional(),
   tags: z.array(z.string().max(100)).max(50).default([]),
 });
@@ -68,6 +69,7 @@ export const updateTaskSchema = z.object({
   roadmapAlias: z.string().max(200).nullable().optional(),
   tags: z.array(z.string().max(100)).max(50).optional(),
   reworkRequested: z.boolean().optional(),
+  paused: z.boolean().optional(),
   lastHeartbeatAt: z.string().nullable().optional(),
 });
 

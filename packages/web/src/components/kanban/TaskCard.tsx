@@ -110,6 +110,13 @@ export function TaskCard({ task, onClick, overlay, density = "comfortable" }: Ta
         }`}
       >
         #{shortTaskId(task.id)} · {timeAgo(task.updatedAt)} · {task.autoMode ? "AI" : "MANUAL"}
+        {task.paused && (
+          <Badge
+            className={`ml-1.5 ${isCompact ? "px-1 py-0 text-[9px]" : "px-1.5 py-0 text-[10px]"} border-yellow-500/35 bg-yellow-500/15 text-yellow-600 dark:text-yellow-300`}
+          >
+            PAUSED
+          </Badge>
+        )}
       </div>
     </div>
   );

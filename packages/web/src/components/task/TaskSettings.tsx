@@ -12,6 +12,7 @@ interface Props {
 export function TaskSettings({ task, onSave }: Props) {
   const [open, setOpen] = useState(false);
   const [autoMode, setAutoMode] = useState(task.autoMode);
+  const [paused, setPaused] = useState(task.paused);
   const [skipReview, setSkipReview] = useState(task.skipReview);
   const [useSubagents, setUseSubagents] = useState(task.useSubagents);
   const [plannerMode, setPlannerMode] = useState<"full" | "fast">(
@@ -24,6 +25,7 @@ export function TaskSettings({ task, onSave }: Props) {
 
   const hasChanges =
     autoMode !== task.autoMode ||
+    paused !== task.paused ||
     skipReview !== task.skipReview ||
     useSubagents !== task.useSubagents ||
     maxReviewIterations !== task.maxReviewIterations ||
@@ -35,6 +37,7 @@ export function TaskSettings({ task, onSave }: Props) {
   function handleSave() {
     const input: UpdateTaskInput = {};
     if (autoMode !== task.autoMode) input.autoMode = autoMode;
+    if (paused !== task.paused) input.paused = paused;
     if (skipReview !== task.skipReview) input.skipReview = skipReview;
     if (useSubagents !== task.useSubagents) input.useSubagents = useSubagents;
     if (maxReviewIterations !== task.maxReviewIterations)
@@ -81,6 +84,7 @@ export function TaskSettings({ task, onSave }: Props) {
             className="h-6 px-2 text-[10px]"
             onClick={() => {
               setAutoMode(task.autoMode);
+              setPaused(task.paused);
               setSkipReview(task.skipReview);
               setUseSubagents(task.useSubagents);
               setMaxReviewIterations(task.maxReviewIterations);
@@ -99,6 +103,9 @@ export function TaskSettings({ task, onSave }: Props) {
       <div className="space-y-2">
         <Checkbox label="Auto mode" checked={autoMode} onChange={setAutoMode}>
           AI moves tasks between statuses automatically.
+        </Checkbox>
+        <Checkbox label="Paused" checked={paused} onChange={setPaused}>
+          Pause auto-mode processing for this task.
         </Checkbox>
         <Checkbox label="Skip review" checked={skipReview} onChange={setSkipReview}>
           After implementation, move directly to done without code review.

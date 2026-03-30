@@ -82,6 +82,7 @@ tasksRouter.post("/", zValidator("json", createTaskSchema as any), async (c) => 
     skipReview: body.skipReview,
     useSubagents: body.useSubagents,
     maxReviewIterations: body.maxReviewIterations,
+    paused: body.paused,
     roadmapAlias: body.roadmapAlias,
     tags: body.tags,
   });
