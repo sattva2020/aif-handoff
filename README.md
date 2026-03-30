@@ -18,9 +18,6 @@ Built on top of [AI Factory](https://github.com/lee-to/ai-factory) workflow and 
 - **Self-healing pipeline** — heartbeat + stale-stage watchdog auto-recovers stuck agent stages
 - **Human-in-the-loop** — approve plans, request changes, or let auto-mode handle everything
 
-![ui-light](https://github.com/lee-to/aif-handoff/blob/main/art/ui-light.png)
-![ui-dark](https://github.com/lee-to/aif-handoff/blob/main/art/ui-dark.png)
-
 ## Quick Start
 
 ```bash
@@ -138,6 +135,11 @@ AGENT_BYPASS_PERMISSIONS=true
 | [Architecture](docs/architecture.md)       | Agent pipeline, state machine, data flow |
 | [API Reference](docs/api.md)               | REST endpoints, WebSocket events         |
 | [Configuration](docs/configuration.md)     | Environment variables, logging, auth     |
+
+![ui-light](https://github.com/lee-to/aif-handoff/blob/main/art/ui-light.png)
+![ui-dark](https://github.com/lee-to/aif-handoff/blob/main/art/ui-dark.png)
+![ui-light-list](https://github.com/lee-to/aif-handoff/blob/main/art/ui-light-list.png)
+![ui-dark-list](https://github.com/lee-to/aif-handoff/blob/main/art/ui-dark-list.png)
 
 ## Contributing
 
