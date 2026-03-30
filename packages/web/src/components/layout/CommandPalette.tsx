@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useEffect, type KeyboardEvent } from "react";
 import type { Project, Task } from "@aif/shared/browser";
 import {
   Dialog,
@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
 interface CommandPaletteProps {
   open: boolean;
@@ -44,6 +45,8 @@ export function CommandPalette({
   onToggleDensity,
 }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const itemsRef = useRef<(HTMLButtonElement | null)[]>([]);
 
   const actions = useMemo<PaletteAction[]>(() => {
     const baseActions: PaletteAction[] = [
@@ -114,6 +117,34 @@ export function CommandPalette({
     );
   }, [actions, query]);
 
+  // Reset selection when filtered results change
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [query, filtered.length]);
+
+  // Scroll selected item into view
+  useEffect(() => {
+    const selectedItem = itemsRef.current[selectedIndex];
+    if (selectedItem) {
+      selectedItem.scrollIntoView({ block: "nearest" });
+    }
+  }, [selectedIndex]);
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (filtered.length === 0) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev + 1) % filtered.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev - 1 + filtered.length) % filtered.length);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      filtered[selectedIndex]?.run();
+    }
+  };
+
   return (
     <Dialog
       open={open}
@@ -133,22 +164,29 @@ export function CommandPalette({
             placeholder="Search tasks, projects, or commands..."
             value={query}
             onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={handleKeyDown}
             autoFocus
           />
         </div>
 
-        <div className="max-h-[52vh] overflow-y-auto p-2">
+        <div className="max-h-[52vh] overflow-y-auto p-2" role="listbox">
           {filtered.length === 0 ? (
             <div className="border border-dashed border-border p-4 text-sm text-muted-foreground">
               No matching commands
             </div>
           ) : (
-            filtered.map((action) => (
+            filtered.map((action, index) => (
               <button
+                ref={(el) => (itemsRef.current[index] = el)}
                 key={action.id}
-                className="mb-1 flex w-full items-center justify-between border border-transparent px-3 py-2 text-left text-sm transition-colors hover:border-border hover:bg-accent/40"
+                className={cn(
+                  "mb-1 flex w-full items-center justify-between border border-transparent px-3 py-2 text-left text-sm transition-colors hover:border-border hover:bg-accent/40",
+                  index === selectedIndex && "border-border bg-accent/60",
+                )}
                 onClick={action.run}
                 type="button"
+                role="option"
+                aria-selected={index === selectedIndex}
               >
                 <span className="truncate">{action.label}</span>
                 <span className="ml-3 shrink-0 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
