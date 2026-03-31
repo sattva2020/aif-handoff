@@ -20,11 +20,11 @@ Analyze a project and generate a complete, production-grade Docker setup: multi-
 
 **Three modes based on what exists:**
 
-| What exists | Mode | Action |
-|-------------|------|--------|
-| Nothing | `generate` | Create everything from scratch with interactive setup |
-| Only local Docker (no production files) | `enhance` | Audit & improve local, then create production config |
-| Full Docker setup (local + prod) | `audit` | Audit everything against checklist, fix gaps |
+| What exists                             | Mode       | Action                                                |
+| --------------------------------------- | ---------- | ----------------------------------------------------- |
+| Nothing                                 | `generate` | Create everything from scratch with interactive setup |
+| Only local Docker (no production files) | `enhance`  | Audit & improve local, then create production config  |
+| Full Docker setup (local + prod)        | `audit`    | Audit everything against checklist, fix gaps          |
 
 ---
 
@@ -44,6 +44,7 @@ This file contains project-specific rules accumulated by `/aif-evolve` from patc
 codebase conventions, and tech-stack analysis. These rules are tailored to the current project.
 
 **How to apply skill-context rules:**
+
 - Treat them as **project-level overrides** for this skill's general instructions
 - When a skill-context rule conflicts with a general rule written in this SKILL.md,
   **the skill-context rule wins** (more specific context takes priority — same principle as nested CLAUDE.md files)
@@ -70,6 +71,7 @@ Glob: Dockerfile, Dockerfile.*, docker-compose.yml, docker-compose.yaml, compose
 ```
 
 Classify found files into categories:
+
 - `HAS_DOCKERFILE`: Dockerfile exists
 - `HAS_LOCAL_COMPOSE`: compose.yml or docker-compose.yml exists
 - `HAS_DEV_OVERRIDE`: compose.override.yml exists
@@ -82,15 +84,18 @@ Classify found files into categories:
 **If `$ARGUMENTS` contains `--audit`** → set `MODE = "audit"` regardless.
 
 **Path A: Nothing exists** (`!HAS_DOCKERFILE && !HAS_LOCAL_COMPOSE`):
+
 - Set `MODE = "generate"`
 - Proceed to **Step 1.3: Interactive Setup**
 
 **Path B: Only local Docker** (`HAS_LOCAL_COMPOSE && !HAS_PROD_COMPOSE`):
+
 - Set `MODE = "enhance"`
 - Read all existing Docker files → store as `EXISTING_CONTENT`
 - Log: "Found local Docker setup. Will audit, improve, and create production configuration."
 
 **Path C: Full setup exists** (`HAS_LOCAL_COMPOSE && HAS_PROD_COMPOSE`):
+
 - Set `MODE = "audit"`
 - Read all existing Docker files → store as `EXISTING_CONTENT`
 - Log: "Found complete Docker setup. Will audit against security checklist and fix gaps."
@@ -133,6 +138,7 @@ Options:
 ```
 
 Store choices in `USER_INFRA_CHOICES`:
+
 - `database`: postgres | mysql | mongodb | sqlite | none
 - `reverse_proxy`: angie | nginx | traefik | none
 - `cache`: redis | memcached | none
@@ -141,10 +147,11 @@ Store choices in `USER_INFRA_CHOICES`:
 ### 1.4 Read Existing Files (Enhance / Audit Modes)
 
 Read all existing Docker files and store as `EXISTING_CONTENT`:
+
 - Dockerfile(s)
 - All compose files (local + override + production)
 - .dockerignore
-- deploy/scripts/*.sh (if any)
+- deploy/scripts/\*.sh (if any)
 
 ---
 
@@ -154,13 +161,13 @@ Scan the project thoroughly — every decision in the generated files depends on
 
 ### 2.1 Language & Runtime
 
-| File | Language | Base Image |
-|------|----------|------------|
-| `go.mod` | Go | `golang:<version>-alpine` / `distroless/static` |
-| `package.json` | Node.js | `node:<version>-alpine` |
-| `pyproject.toml` / `setup.py` | Python | `python:<version>-slim` |
-| `composer.json` | PHP | `php:<version>-fpm-alpine` |
-| `Cargo.toml` | Rust | `rust:<version>-slim` / `distroless` |
+| File                          | Language | Base Image                                      |
+| ----------------------------- | -------- | ----------------------------------------------- |
+| `go.mod`                      | Go       | `golang:<version>-alpine` / `distroless/static` |
+| `package.json`                | Node.js  | `node:<version>-alpine`                         |
+| `pyproject.toml` / `setup.py` | Python   | `python:<version>-slim`                         |
+| `composer.json`               | PHP      | `php:<version>-fpm-alpine`                      |
+| `Cargo.toml`                  | Rust     | `rust:<version>-slim` / `distroless`            |
 
 **`<version>` = read from project files** (see Step 4.1). Never hardcode — always match what the project requires.
 
@@ -169,6 +176,7 @@ Scan the project thoroughly — every decision in the generated files depends on
 Read dependency files to detect the framework:
 
 **Node.js** (`package.json` dependencies):
+
 - `next` → Next.js (port 3000, `next dev` / `next start`)
 - `nuxt` → Nuxt (port 3000, `nuxt dev` / `nuxt start`)
 - `express` → Express (port 3000, `nodemon` / `node`)
@@ -177,15 +185,18 @@ Read dependency files to detect the framework:
 - `hono` → Hono (port 3000)
 
 **Python** (`pyproject.toml` / requirements):
+
 - `fastapi` → FastAPI (port 8000, `uvicorn --reload` / `uvicorn`)
 - `django` → Django (port 8000, `manage.py runserver` / `gunicorn`)
 - `flask` → Flask (port 5000, `flask run --debug` / `gunicorn`)
 
 **PHP** (`composer.json` require):
+
 - `laravel/framework` → Laravel (port 8000, `artisan serve` / `php-fpm`)
 - `symfony/framework-bundle` → Symfony (port 8000, `symfony serve` / `php-fpm`)
 
 **Go** (`go.mod` require):
+
 - `gin-gonic/gin`, `labstack/echo`, `gofiber/fiber`, `go-chi/chi` → (port 8080, `air` / compiled binary)
 
 ### 2.3 Package Manager & Lock File
@@ -245,11 +256,13 @@ Grep: nodemailer|sendgrid|mailgun|postmark|smtp|MAIL_HOST
 ```
 
 For each detected dependency, record:
+
 - Service type (postgres, redis, rabbitmq, etc.)
 - Specific variant (MySQL vs PostgreSQL, Redis vs Memcached)
 - Connection string pattern found in code
 
 **Merge with `USER_INFRA_CHOICES`** (from Step 1.3 in Generate mode):
+
 - User choices override auto-detection for database and reverse proxy
 - Auto-detected services are added unless user explicitly chose "None"
 
@@ -292,6 +305,7 @@ If found, read it to understand required environment variables. This drives `env
 ### Summary
 
 Build `PROJECT_PROFILE`:
+
 - `language`, `language_version`
 - `framework`, `dev_command`, `prod_command`
 - `package_manager`, `lock_file`
@@ -313,12 +327,12 @@ Read skills/dockerize/references/SECURITY-CHECKLIST.md
 
 Select the Dockerfile template matching the language:
 
-| Language | Template |
-|----------|----------|
-| Go | `templates/dockerfile-go` |
-| Node.js | `templates/dockerfile-node` |
-| Python | `templates/dockerfile-python` |
-| PHP | `templates/dockerfile-php` |
+| Language | Template                      |
+| -------- | ----------------------------- |
+| Go       | `templates/dockerfile-go`     |
+| Node.js  | `templates/dockerfile-node`   |
+| Python   | `templates/dockerfile-python` |
+| PHP      | `templates/dockerfile-php`    |
 
 Read selected template and the compose templates:
 
@@ -341,6 +355,7 @@ Generate files customized from the project profile and templates.
 Using the language-specific template as a base:
 
 **Customize:**
+
 - Base image version **from the project**, not from template defaults:
   - Go: read `go` directive in `go.mod` → e.g. `go 1.24` → `golang:1.24-alpine`
   - Node.js: read `engines.node` in `package.json`, `.nvmrc`, or `.node-version` → e.g. `node:22-alpine`
@@ -356,6 +371,7 @@ Using the language-specific template as a base:
 - Lock file name in COPY
 
 **Stages:**
+
 1. `deps` — install production dependencies only
 2. `builder` — install all dependencies + build
 3. `development` — full dev environment with hot reload, debug port
@@ -364,6 +380,7 @@ Using the language-specific template as a base:
 **Verify infrastructure image versions online:**
 
 For infrastructure images (PostgreSQL, Redis, Angie, Nginx, etc.) — the version is NOT in project files. Before generating compose.yml, use `WebSearch` to check the current stable version of each infrastructure image:
+
 - Search for `<service> docker official image latest version` (e.g. `angie docker image latest version`)
 - Use the latest stable `major.minor` tag, never `:latest`
 - Example: `docker.angie.software/angie:1.11-alpine`, `postgres:17-alpine`, `redis:7-alpine`
@@ -432,6 +449,7 @@ Use the template as base, add language-specific exclusions:
 Verify generated content before passing to Step 6:
 
 **Correctness:**
+
 - [ ] Dockerfile has all 4 stages (deps, builder, development, production)
 - [ ] Production stage uses non-root user
 - [ ] Production stage uses minimal base image
@@ -444,6 +462,7 @@ Verify generated content before passing to Step 6:
 - [ ] .dockerignore excludes `.git`, dependencies, `.env*`, Docker files
 
 **Over-engineering check** (read `references/SECURITY-CHECKLIST.md` → "Over-Engineering Checklist"):
+
 - [ ] No services added that the code doesn't import/use
 - [ ] No reverse proxy for single-service apps with no SSL needs
 - [ ] No deploy scripts if project deploys via CI/CD
@@ -464,6 +483,7 @@ When `MODE = "enhance"` or `MODE = "audit"`, analyze `EXISTING_CONTENT` against 
 For detailed audit procedures, report format, fix flow, and enhance mode steps → read `references/AUDIT-GUIDE.md`
 
 **What to audit:**
+
 - **Dockerfile**: image pinning, minimal base, multi-stage, non-root user, no secrets in ENV/ARG, .dockerignore, BuildKit features, HEALTHCHECK
 - **Compose per-service**: read_only, no-new-privileges, cap_drop ALL, user, tmpfs, resource limits, healthcheck, log rotation, restart policy
 - **Network**: internal backend, no host networking, no Docker socket
@@ -517,3 +537,9 @@ Templates: `templates/deploy.sh`, `templates/update.sh`, `templates/logs.sh`, `t
 Display a summary of all created/updated files using the format from `references/SUMMARY-FORMAT.md`.
 
 Suggest follow-up: `/aif-build-automation` for Docker targets, `/aif-docs` for documentation.
+
+## Artifact Ownership and Config Policy
+
+- Primary ownership: Docker artifacts (`Dockerfile`, `compose*.yml`, `.dockerignore`, `docker/*`, `deploy/scripts/*`, and related `.env.example` scaffolding when created by this skill).
+- Allowed companion updates: none outside Docker and deployment artifacts by default.
+- Config policy: config-agnostic by design. This skill uses repository detection, explicit infrastructure choices, and fixed AI Factory context files rather than `config.yaml`.

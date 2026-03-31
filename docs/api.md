@@ -101,6 +101,26 @@ PUT /projects/:id
 
 **Response:** `200 OK` — the updated project object.
 
+### Check Roadmap Status
+
+```
+GET /projects/:id/roadmap/status
+```
+
+Checks whether `.ai-factory/ROADMAP.md` exists in the project root directory.
+
+**Response:** `200 OK`
+
+```json
+{
+  "exists": true
+}
+```
+
+**Errors:**
+
+- `404` — Project not found
+
 ### Import Roadmap Tasks
 
 ```

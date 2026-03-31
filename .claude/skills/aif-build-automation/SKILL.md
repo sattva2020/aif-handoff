@@ -18,6 +18,7 @@ metadata:
 Generate or enhance a build automation file for any project. Supports Makefile, Taskfile.yml, Justfile, and Magefile.go.
 
 **Two modes:**
+
 - **Generate** — No build file exists → create one from scratch using best-practice templates
 - **Enhance** — Build file already exists → analyze gaps, add missing targets, fix anti-patterns, preserve existing work
 
@@ -39,6 +40,7 @@ This file contains project-specific rules accumulated by `/aif-evolve` from patc
 codebase conventions, and tech-stack analysis. These rules are tailored to the current project.
 
 **How to apply skill-context rules:**
+
 - Treat them as **project-level overrides** for this skill's general instructions
 - When a skill-context rule conflicts with a general rule written in this SKILL.md,
   **the skill-context rule wins** (more specific context takes priority — same principle as nested CLAUDE.md files)
@@ -93,12 +95,12 @@ Options (dynamic, based on what exists):
 - Set `MODE = "generate"`
 - Parse `$ARGUMENTS` to determine tool:
 
-| Argument | Tool | Output File |
-|----------|------|-------------|
-| `makefile` or `make` | GNU Make | `Makefile` |
+| Argument             | Tool     | Output File    |
+| -------------------- | -------- | -------------- |
+| `makefile` or `make` | GNU Make | `Makefile`     |
 | `taskfile` or `task` | Taskfile | `Taskfile.yml` |
-| `justfile` or `just` | Just | `justfile` |
-| `mage` or `magefile` | Mage | `magefile.go` |
+| `justfile` or `just` | Just     | `justfile`     |
+| `mage` or `magefile` | Mage     | `magefile.go`  |
 
 - If `$ARGUMENTS` is empty or doesn't match, ask the user interactively:
 
@@ -124,34 +126,35 @@ Detect the project profile by scanning the repository. Run these checks using `G
 
 Check for these files (first match wins):
 
-| File | Language |
-|------|----------|
-| `go.mod` | Go |
-| `package.json` | Node.js / JavaScript / TypeScript |
-| `pyproject.toml` or `setup.py` or `setup.cfg` | Python |
-| `Cargo.toml` | Rust |
-| `composer.json` | PHP |
-| `Gemfile` | Ruby |
-| `build.gradle` or `pom.xml` | Java/Kotlin |
-| `*.csproj` or `*.sln` | C# / .NET |
+| File                                          | Language                          |
+| --------------------------------------------- | --------------------------------- |
+| `go.mod`                                      | Go                                |
+| `package.json`                                | Node.js / JavaScript / TypeScript |
+| `pyproject.toml` or `setup.py` or `setup.cfg` | Python                            |
+| `Cargo.toml`                                  | Rust                              |
+| `composer.json`                               | PHP                               |
+| `Gemfile`                                     | Ruby                              |
+| `build.gradle` or `pom.xml`                   | Java/Kotlin                       |
+| `*.csproj` or `*.sln`                         | C# / .NET                         |
 
 ### 2.2 Package Manager
 
 Check lock files:
 
-| File | Package Manager |
-|------|-----------------|
-| `bun.lockb` | bun |
-| `pnpm-lock.yaml` | pnpm |
-| `yarn.lock` | yarn |
-| `package-lock.json` | npm |
-| `poetry.lock` | poetry |
-| `uv.lock` | uv |
-| `Pipfile.lock` | pipenv |
+| File                | Package Manager |
+| ------------------- | --------------- |
+| `bun.lockb`         | bun             |
+| `pnpm-lock.yaml`    | pnpm            |
+| `yarn.lock`         | yarn            |
+| `package-lock.json` | npm             |
+| `poetry.lock`       | poetry          |
+| `uv.lock`           | uv              |
+| `Pipfile.lock`      | pipenv          |
 
 ### 2.3 Framework Detection
 
 For Node.js projects, check `package.json` dependencies for:
+
 - `next` → Next.js
 - `nuxt` → Nuxt
 - `@remix-run/node` → Remix
@@ -161,17 +164,20 @@ For Node.js projects, check `package.json` dependencies for:
 - `@nestjs/core` → NestJS
 
 For Python projects, check `pyproject.toml` or imports for:
+
 - `fastapi` → FastAPI
 - `django` → Django
 - `flask` → Flask
 
 For PHP projects, check `composer.json` require for:
+
 - `laravel/framework` → Laravel
 - `symfony/framework-bundle` → Symfony
 - `slim/slim` → Slim
 - `cakephp/cakephp` → CakePHP
 
 For Go projects, check `go.mod` for:
+
 - `gin-gonic/gin` → Gin
 - `labstack/echo` → Echo
 - `gofiber/fiber` → Fiber
@@ -186,18 +192,21 @@ Glob: Dockerfile, Dockerfile.*, docker-compose.yml, docker-compose.yaml, compose
 If any exist, set `HAS_DOCKER=true` and perform a deeper analysis:
 
 **Read the Dockerfile(s)** to detect:
+
 - Multi-stage builds (separate `dev` / `prod` stages) → `DOCKER_MULTISTAGE=true`
 - Exposed ports → `DOCKER_PORTS` (e.g., `3000`, `8080`)
 - Base image → `DOCKER_BASE` (e.g., `node:20-alpine`, `golang:1.22`)
 - Entrypoint/CMD → understand how the app is started inside the container
 
 **Read docker-compose / compose file** to detect:
+
 - Service names → `DOCKER_SERVICES` (e.g., `app`, `db`, `redis`, `worker`)
 - Volume mounts → understand dev vs prod setup
 - Profiles (if any) → `dev`, `production`, `test`
 - Dependency services (postgres, redis, rabbitmq, etc.) → `DOCKER_DEPS`
 
 Store as `DOCKER_PROFILE`:
+
 - `has_compose`: boolean
 - `has_multistage`: boolean
 - `services`: list of service names
@@ -222,6 +231,7 @@ Grep: prisma|drizzle|knex|typeorm|sequelize|alembic|django.*migrate|goose|migrat
 ```
 
 Check for:
+
 - `prisma/schema.prisma` → Prisma
 - `drizzle.config.ts` → Drizzle
 - `alembic/` directory → Alembic
@@ -229,12 +239,12 @@ Check for:
 
 ### 2.7 Test Framework
 
-| Language | Check For |
-|----------|-----------|
-| Node.js | `jest`, `vitest`, `mocha`, `ava` in package.json |
-| Python | `pytest` in pyproject.toml/requirements, `unittest` imports |
-| Go | Go has built-in testing; check for `testify` in go.mod |
-| Rust | Built-in; check for integration test directory `tests/` |
+| Language | Check For                                                   |
+| -------- | ----------------------------------------------------------- |
+| Node.js  | `jest`, `vitest`, `mocha`, `ava` in package.json            |
+| Python   | `pytest` in pyproject.toml/requirements, `unittest` imports |
+| Go       | Go has built-in testing; check for `testify` in go.mod      |
+| Rust     | Built-in; check for integration test directory `tests/`     |
 
 ### 2.8 Linters & Formatters
 
@@ -252,6 +262,7 @@ Glob: turbo.json, nx.json, lerna.json, pnpm-workspace.yaml
 ### Summary
 
 Build a `PROJECT_PROFILE` object with:
+
 - `language`: primary language
 - `package_manager`: detected PM
 - `framework`: detected framework (if any)
@@ -275,6 +286,7 @@ Read skills/build-automation/references/BEST-PRACTICES.md
 ```
 
 Focus on the section matching `TARGET_TOOL`:
+
 - Makefile → Section 1
 - Taskfile → Section 2
 - Justfile → Section 3
@@ -288,12 +300,12 @@ Also read the "Cross-Cutting Concerns" section for standard targets.
 
 Pick the closest matching template based on `language` + `TARGET_TOOL`:
 
-| Tool | Go | Node.js | Python | PHP | Other |
-|------|----|---------|--------|-----|-------|
-| Makefile | `makefile-go.mk` | `makefile-node.mk` | `makefile-python.mk` | `makefile-php.mk` | Use closest match |
-| Taskfile | `taskfile-go.yml` | `taskfile-node.yml` | `taskfile-python.yml` | `taskfile-php.yml` | Use closest match |
-| Justfile | `justfile-go` | `justfile-node` | `justfile-python` | `justfile-php` | Use closest match |
-| Magefile | `magefile-basic.go` | `magefile-full.go` | `magefile-full.go` | N/A (use Makefile) | `magefile-basic.go` |
+| Tool     | Go                  | Node.js             | Python                | PHP                | Other               |
+| -------- | ------------------- | ------------------- | --------------------- | ------------------ | ------------------- |
+| Makefile | `makefile-go.mk`    | `makefile-node.mk`  | `makefile-python.mk`  | `makefile-php.mk`  | Use closest match   |
+| Taskfile | `taskfile-go.yml`   | `taskfile-node.yml` | `taskfile-python.yml` | `taskfile-php.yml` | Use closest match   |
+| Justfile | `justfile-go`       | `justfile-node`     | `justfile-python`     | `justfile-php`     | Use closest match   |
+| Magefile | `magefile-basic.go` | `magefile-full.go`  | `magefile-full.go`    | N/A (use Makefile) | `magefile-basic.go` |
 
 For Magefile: use `magefile-full.go` if `HAS_DOCKER` or `has_migrations` is true, otherwise `magefile-basic.go`.
 
@@ -336,13 +348,13 @@ When `has_docker` is true, generate **two layers** of commands:
 
 **Layer 1 — Container lifecycle** (always when Docker detected):
 
-| Target | Purpose |
-|--------|---------|
-| `docker-build` or `docker:build` | Build the Docker image |
-| `docker-run` or `docker:run` | Run the container |
-| `docker-stop` or `docker:stop` | Stop running containers |
-| `docker-logs` or `docker:logs` | Tail container logs |
-| `docker-push` or `docker:push` | Push image to registry |
+| Target                           | Purpose                              |
+| -------------------------------- | ------------------------------------ |
+| `docker-build` or `docker:build` | Build the Docker image               |
+| `docker-run` or `docker:run`     | Run the container                    |
+| `docker-stop` or `docker:stop`   | Stop running containers              |
+| `docker-logs` or `docker:logs`   | Tail container logs                  |
+| `docker-push` or `docker:push`   | Push image to registry               |
 | `docker-clean` or `docker:clean` | Remove images and stopped containers |
 
 **Layer 2 — Dev vs Production separation** (when compose or multistage detected):
@@ -407,17 +419,20 @@ When `MODE = "enhance"`, do NOT replace the file from scratch. Instead, analyze 
 Compare `EXISTING_CONTENT` against the `PROJECT_PROFILE` and best practices. Build a gap analysis:
 
 **Missing preamble/config** — Check if the file has the recommended preamble:
+
 - Makefile: `SHELL := bash`, `.ONESHELL`, `.SHELLFLAGS`, `.DELETE_ON_ERROR`, `MAKEFLAGS`
 - Taskfile: `version: '3'`, `output:`, `dotenv:`
 - Justfile: `set shell`, `set dotenv-load`, `set export`
 - Magefile: `//go:build mage`, proper imports
 
 **Missing standard targets** — Check which of these are absent:
+
 - `help` / `default` (self-documenting)
 - `build`, `test`, `lint`, `clean`, `dev`, `fmt`
 - `ci` (aggregate target)
 
 **Missing project-specific targets** — Based on `PROJECT_PROFILE`, check for:
+
 - Docker targets (if `has_docker` but no docker targets in file)
 - Database/migration targets (if `has_migrations` but no db targets)
 - Typecheck target (if TypeScript/mypy detected but no typecheck target)
@@ -425,6 +440,7 @@ Compare `EXISTING_CONTENT` against the `PROJECT_PROFILE` and best practices. Bui
 - Coverage target (if test target exists but no coverage variant)
 
 **Quality issues** — Check for anti-patterns from best practices:
+
 - Targets without descriptions/documentation
 - Missing `.PHONY` declarations (Makefile)
 - Hardcoded tool paths that should be variables
@@ -458,6 +474,7 @@ CHANGES = [
 ### Quality Checks (Both Modes)
 
 Before writing the file, verify:
+
 - [ ] All targets have descriptions/documentation (## comments, desc:, [doc()], doc comments)
 - [ ] No hardcoded paths that should be variables
 - [ ] Package manager detection is correct
@@ -475,12 +492,12 @@ Before writing the file, verify:
 
 Write the generated content using the `Write` tool:
 
-| Tool | Output Path |
-|------|-------------|
-| Makefile | `Makefile` |
+| Tool     | Output Path    |
+| -------- | -------------- |
+| Makefile | `Makefile`     |
 | Taskfile | `Taskfile.yml` |
-| Justfile | `justfile` |
-| Magefile | `magefile.go` |
+| Justfile | `justfile`     |
+| Magefile | `magefile.go`  |
 
 **Mode A (Enhance Existing):**
 
@@ -498,3 +515,9 @@ After writing the build file, integrate quick commands into project docs.
 For detailed integration procedures (README, AGENTS.md, existing markdown) → read `references/DOC-INTEGRATION.md`
 
 Brief: scan for existing command sections, update or append quick reference, suggest AGENTS.md creation if missing.
+
+## Artifact Ownership and Config Policy
+
+- Primary ownership: generated or enhanced build automation files (`Makefile`, `Taskfile.yml`, `justfile`, `magefile.go`).
+- Allowed companion updates: quick command snippets in existing docs or `AGENTS.md` when directly tied to the generated build workflow.
+- Config policy: config-agnostic by design. This skill uses repository detection and fixed AI Factory context files rather than `config.yaml`.

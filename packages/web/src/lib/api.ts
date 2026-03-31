@@ -181,6 +181,11 @@ export const api = {
     return request<{ exists: boolean; path: string }>(`${API_BASE}/${id}/plan-file-status`);
   },
 
+  checkRoadmapStatus(projectId: string): Promise<{ exists: boolean }> {
+    console.debug("[api] GET /projects/%s/roadmap/status", projectId);
+    return request<{ exists: boolean }>(`/projects/${projectId}/roadmap/status`);
+  },
+
   importRoadmap(
     projectId: string,
     roadmapAlias: string,

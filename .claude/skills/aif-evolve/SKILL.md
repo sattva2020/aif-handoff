@@ -24,10 +24,11 @@ enhance skills with project-specific rules, guards, and patterns
 
 Use a two-layer learning model:
 
-1. **Raw patches** (`.ai-factory/patches/*.md`) are the source material.
+1. **Raw patches** (`paths.patches`, default: `.ai-factory/patches/*.md`) are the source material.
 2. **Skill-context rules** (`.ai-factory/skill-context/*`) are the compact, reusable output.
 
 Policy across workflow skills:
+
 - `/aif-evolve` is the primary raw-patch analyzer. It processes patches **incrementally** using a cursor.
 - `/aif-implement`, `/aif-fix`, and `/aif-improve` should prefer skill-context first; raw patches are fallback context only.
 - Force full re-analysis only when needed (e.g., reset cursor and rerun evolve).
@@ -38,6 +39,7 @@ Policy across workflow skills:
 All files in these directories are owned by ai-factory and will be overwritten on update — any direct edits will be lost.
 
 **ALWAYS write project-specific rules to skill-context:**
+
 ```
 .ai-factory/skill-context/<skill-name>/SKILL.md
 ```
@@ -52,12 +54,12 @@ This is the ONLY correct target for built-in skill improvements. No exceptions.
 
 **Normalize skill name from `$ARGUMENTS`:**
 
-| User input         | Resolved skill name |
-|--------------------|---------------------|
-| `plan`             | `aif-plan`          |
-| `aif-plan`         | `aif-plan`          |
-| `/aif-plan`        | `aif-plan`          |
-| `my-custom-skill`  | `my-custom-skill`   |
+| User input        | Resolved skill name |
+| ----------------- | ------------------- |
+| `plan`            | `aif-plan`          |
+| `aif-plan`        | `aif-plan`          |
+| `/aif-plan`       | `aif-plan`          |
+| `my-custom-skill` | `my-custom-skill`   |
 
 Rule: first, strip any leading `/` from the argument. Then: if the argument does not start with `aif-` AND a skill named `aif-<argument>` exists — use `aif-<argument>`. Otherwise use as-is.
 
@@ -68,15 +70,37 @@ If the skill is not found → report an error to the user and stop:
 all skills, or specify a valid skill name."
 
 **Determine which skills to evolve from `$ARGUMENTS`:**
+
 - If `$ARGUMENTS` contains a specific skill name → evolve only that skill
 - If `$ARGUMENTS` is "all" or empty → evolve all installed skills
 
 #### Step 0.2: Load Context
 
-**Read `.ai-factory/DESCRIPTION.md`** to understand:
+**FIRST:** Read `.ai-factory/config.yaml` if it exists to resolve:
+
+- **Paths:** `paths.description`, `paths.architecture`, `paths.rules_file`, `paths.rules`, `paths.patches`, and `paths.evolutions`
+- **Language:** `language.ui` for prompts and `language.artifacts` for generated reports
+- **Rules hierarchy:** `rules.base` plus any named `rules.<area>` entries
+
+If config.yaml doesn't exist, use defaults:
+
+- DESCRIPTION.md: `.ai-factory/DESCRIPTION.md`
+- ARCHITECTURE.md: `.ai-factory/ARCHITECTURE.md`
+- RULES.md: `.ai-factory/RULES.md`
+- rules/: `.ai-factory/rules/`
+- patches/: `.ai-factory/patches/`
+- evolutions/: `.ai-factory/evolutions/`
+- Language: `en` (English)
+
+**Note:** `.ai-factory/skill-context/` remains a fixed internal AI Factory path in the current schema. Patch and evolution-log locations are configurable via `paths.patches` and `paths.evolutions`.
+
+**THEN:** Read `.ai-factory/DESCRIPTION.md` (use path from config) to understand:
+
 - Tech stack
 - Architecture
 - Conventions
+
+**Also read `.ai-factory/ARCHITECTURE.md`** (use path from config) and the configured rules hierarchy when present. This context informs convention analysis and gap detection but does not change artifact ownership.
 
 **Read skill-context files for target skills:**
 
@@ -93,6 +117,7 @@ Keep them in memory — they affect gap analysis in Step 5.
 Skill-context rules are **project-level overrides** — when they conflict with the base SKILL.md of the target skill, skill-context wins (same principle as nested CLAUDE.md files).
 
 **How to apply evolve's own skill-context rules (`aif-evolve`):**
+
 - Treat them as **project-level overrides** for this skill's general instructions
 - When a skill-context rule conflicts with a general rule written in this SKILL.md,
   **the skill-context rule wins** (more specific context takes priority — same principle as nested CLAUDE.md files)
@@ -112,13 +137,13 @@ If any rule is violated — fix the output before presenting it to the user.
 **1.1: Read patches incrementally (cursor-based)**
 
 ```
-Glob: .ai-factory/patches/*.md
+Glob: <resolved patches dir>/*.md
 ```
 
 Cursor file:
 
 ```
-.ai-factory/evolutions/patch-cursor.json
+<resolved evolutions dir>/patch-cursor.json
 ```
 
 Recommended shape:
@@ -138,7 +163,7 @@ Processing rules:
 4. If cursor file exists but referenced patch is missing (deleted/renamed) → emit `WARN [evolve]` and do a full rescan.
 5. Historical edits/deletes for patches older than cursor are not reliably detectable without a saved baseline (snapshot/hash manifest). Do NOT emit this warning by default.
 6. Emit `WARN [evolve]` for historical drift only when a reliable baseline exists and drift is actually detected.
-7. Full rescan procedure: delete `.ai-factory/evolutions/patch-cursor.json`, then run `/aif-evolve` again.
+7. Full rescan procedure: delete `<resolved evolutions dir>/patch-cursor.json`, then run `/aif-evolve` again.
 8. **Do not advance cursor in Step 1.1.** Cursor is updated only after successful apply/log write in Step 7.3.
 
 **Overlap window (anti-miss guard):**
@@ -147,12 +172,15 @@ LLMs may miss prevention points on a single pass. To reduce the chance of "perma
 
 9. When running in incremental mode (cursor exists and referenced patch is present), ALSO read the newest 5 patches by filename (tail-5 of the sorted patch list), then de-duplicate by filename.
 10. Track these separately in your own notes:
-   - "New patches" = patches with filename `>` `last_processed_patch`
-   - "Overlap patches" = tail-5 patches
-   - "Processed patches" = union(New, Overlap)
+
+- "New patches" = patches with filename `>` `last_processed_patch`
+- "Overlap patches" = tail-5 patches
+- "Processed patches" = union(New, Overlap)
+
 11. Cursor updates in Step 7.3 MUST be based on "New patches" only (never advance cursor when only overlap patches were processed).
 
 Read every patch. For each one, extract:
+
 - **Problem categories** (null-check, async, validation, types, API, DB, etc.)
 - **Root cause patterns** (what classes of mistake were made)
 - **Prevention points** — each independent actionable rule from the Prevention/Solution section.
@@ -180,6 +208,7 @@ When the run is incremental, this registry reflects the processed patch set for 
 **1.2: Aggregate patterns**
 
 Group patches by tags and categories. Identify:
+
 - **Recurring problems** — same tag appears 3+ times? This is a systemic issue
 - **Tech-specific pitfalls** — problems tied to the stack (e.g., React re-renders, Laravel N+1)
 - **Missing guards** — what checks/patterns could have prevented these bugs
@@ -187,6 +216,7 @@ Group patches by tags and categories. Identify:
 **1.3: Read codebase conventions**
 
 Scan the project for patterns:
+
 - Linter configs (`.eslintrc`, `phpstan.neon`, `ruff.toml`, etc.)
 - Existing test patterns (test file structure, assertions used)
 - Error handling patterns (try/catch style, error types)
@@ -227,12 +257,12 @@ Even if the base file contains errors or incomplete rules — that is outside ev
    - Exact equivalent — same rule, same content
    - Base is a superset — base has everything skill-context has, plus more
      (e.g., skill-context has Wave 1+3, base now has Wave 1+2+3)
-   → Do NOT auto-remove. Do NOT ask the user yet.
-   → Collect for the report in Step 4 — include both rules and mark as
+     → Do NOT auto-remove. Do NOT ask the user yet.
+     → Collect for the report in Step 4 — include both rules and mark as
      "Fully covered by base — recommend removing from skill-context".
-   Note: if user chooses to keep the skill-context rule, this is valid —
-   skill-context has priority over base, so keeping it acts as a guarantee
-   that the complete/correct version is always applied.
+     Note: if user chooses to keep the skill-context rule, this is valid —
+     skill-context has priority over base, so keeping it acts as a guarantee
+     that the complete/correct version is always applied.
 
    **Case B — Contradicting rule found in base SKILL.md:**
    The base skill now has a rule that directly contradicts the skill-context rule.
@@ -245,13 +275,13 @@ Even if the base file contains errors or incomplete rules — that is outside ev
    - Base covers part of skill-context, but skill-context has unique parts too
    - Skill-context covers part of base, but base has unique parts too
      (e.g., skill-context has A→B→C, base has A→C→D — both have unique parts)
-   → Do NOT auto-narrow. Analyze whether parts depend on each other
+     → Do NOT auto-narrow. Analyze whether parts depend on each other
      (ordering, prerequisites, data flow).
-   → Collect this overlap for the report in Step 4 — include both rules, analysis, and mark as "Partial overlap — user decision required".
-   **Priority warning:** skill-context has priority over base on the same topic.
-   If user keeps skill-context as-is, the base's unique parts will likely be LOST
-   (AI uses skill-context version, ignores base version of the same rule).
-   Always explain this consequence in option descriptions.
+     → Collect this overlap for the report in Step 4 — include both rules, analysis, and mark as "Partial overlap — user decision required".
+     **Priority warning:** skill-context has priority over base on the same topic.
+     If user keeps skill-context as-is, the base's unique parts will likely be LOST
+     (AI uses skill-context version, ignores base version of the same rule).
+     Always explain this consequence in option descriptions.
 
    **Case D — No overlap:**
    The rule is still unique to the project context.
@@ -273,6 +303,7 @@ they are outside of evolve's scope.
 For each stale rule, present:
 
 ##### /aif-plan — Fully covered: [Rule Name]
+
 - **Base SKILL.md says:** [base rule text]
 - **Skill-context says:** [project rule text]
 - **Decision required:** Keep in skill-context (has priority over base — ensures
@@ -280,12 +311,14 @@ For each stale rule, present:
   Rewrite skill-context rule
 
 ##### /aif-plan — Conflict: [Rule Name]
+
 - **Base SKILL.md says:** [base rule text]
 - **Skill-context says:** [project rule text]
 - **Decision required:** Keep skill-context rule (has priority — base version will
   be ignored) / Remove skill-context rule (trust base) / Rewrite skill-context rule
 
 ##### /aif-fix — Partial overlap: [Rule Name]
+
 - **Base SKILL.md says:** [base rule text]
 - **Skill-context says:** [project rule text]
 - **Analysis:** [explain overlap and whether parts are independent or sequential]
@@ -325,6 +358,7 @@ For each skill, identify what's missing based on collected intelligence:
 **CRITICAL: Check each prevention point × each target skill independently.**
 
 Iterate over the Prevention Point Registry built in Step 1.1. For each row:
+
 1. For EACH target skill listed in that row:
    - Check if the base SKILL.md already covers this **specific** prevention action
    - Check if the skill-context already has a rule covering this **specific** prevention action
@@ -347,6 +381,7 @@ Note: in incremental mode, counts represent this run's processed patch set. For 
 **5.2: Tech-stack gaps**
 
 Compare project tech stack against skill instructions:
+
 - Skills reference generic patterns but project uses specific framework? → Add framework-specific guidance
 - Project uses TypeScript but skills show JS examples? → Update examples
 - Project uses specific ORM (Prisma, Eloquent)? → Add ORM-specific patterns
@@ -354,6 +389,7 @@ Compare project tech stack against skill instructions:
 **5.3: Convention gaps**
 
 Compare project conventions against skill instructions:
+
 - Project has specific error handling pattern? → Skills should enforce it
 - Project uses specific logger? → Skills should reference it
 - Project has specific file structure? → Skills should follow it
@@ -363,6 +399,7 @@ Compare project conventions against skill instructions:
 For each gap found, create a concrete improvement:
 
 **Quality rules for improvements:**
+
 - **One prevention point = one rule.** A single patch may contain multiple independent prevention
   items. Each one becomes a separate rule — do NOT merge them into a single vague summary.
 - **Preserve concrete formats and patterns** from patches. If a patch specifies an exact format,
@@ -430,11 +467,13 @@ Based on:
 **After presenting the full report, use `AskUserQuestion` to collect decisions:**
 
 For improvements — ask:
+
 - Yes, apply all improvements
 - Let me pick
 - No, just save report (no changes applied)
 
 **Based on choice:**
+
 - "Yes, apply all improvements" → proceed to 7.2 with all improvements
 - "Let me pick" → present improvements in batches of up to 4
   per `AskUserQuestion` call (same approach as Step 4 stale rules). For each
@@ -471,6 +510,7 @@ For each approved improvement, determine the target:
    (those were already updated in item 4).
 
 **If the skill is a custom/project skill** (not `aif-*`):
+
 1. Edit the skill's `SKILL.md` directly (existing behavior, unchanged)
 
 **Context file template:**
@@ -493,15 +533,16 @@ For each approved improvement, determine the target:
 
 **7.3: Save evolution log**
 
-Create `.ai-factory/evolutions/YYYY-MM-DD-HH.mm.md`:
+Create `<resolved evolutions dir>/YYYY-MM-DD-HH.mm.md`:
 
 ```bash
-mkdir -p .ai-factory/evolutions
+mkdir -p <resolved evolutions dir>
 ```
 
 After saving the evolution log, update cursor state:
 
 Definitions:
+
 - "New patches processed" = patches with filename `>` `last_processed_patch`.
   - If no cursor exists (first run): "New patches" is the full patch list.
   - Overlap patches do NOT count as "New patches".
@@ -524,6 +565,7 @@ Cursor update rules:
 # Evolution: YYYY-MM-DD HH:mm
 
 ## Intelligence Summary
+
 - Patches analyzed: X
 - Recurring patterns: [list]
 - Tech stack: [from DESCRIPTION.md]
@@ -531,14 +573,17 @@ Cursor update rules:
 ## Improvements Applied
 
 ### [skill-name] → skill-context
+
 - [change description] ← driven by patches: [patch filenames]
   **File:** `.ai-factory/skill-context/[skill-name]/SKILL.md`
 
 ### [skill-name] → SKILL.md (custom skill)
+
 - [change description] ← driven by: [tech stack / convention]
   **File:** `skills/[skill-name]/SKILL.md`
 
 ## Patterns Identified
+
 - [pattern]: [frequency] occurrences
 - [pattern]: [frequency] occurrences
 ```
@@ -561,6 +606,12 @@ Improvements applied: Y
 
 ### Context Cleanup
 
+## Artifact Ownership
+
+- Primary ownership: `.ai-factory/skill-context/*`, `<resolved evolutions dir>/*.md`, and `<resolved evolutions dir>/patch-cursor.json`.
+- Config use is partial here: `config.yaml` resolves description, rules, patches, and evolution-log paths, but skill-context remains a fixed AI Factory internal path.
+- Read-only context: roadmap, rules, research, and plan artifacts unless the user explicitly requests otherwise.
+
 After completing evolution, suggest `/clear` or `/compact` — context is heavy after patch analysis and skill processing.
 
 ## Rules
@@ -579,7 +630,7 @@ After completing evolution, suggest `/clear` or `/compact` — context is heavy 
     Merges in Step 7 (combining narrow rules into a broader one) are allowed as long
     as all prevention points are preserved in the merged rule.
 12. **Installed only** — do not evolve skills not installed in the project
-13. **Ownership boundary** — this command owns `.ai-factory/evolutions/*.md`, `.ai-factory/evolutions/patch-cursor.json`, and `.ai-factory/skill-context/*`; treat roadmap/rules/research/plan artifacts as read-only context unless explicitly asked
+13. **Ownership boundary** — this command owns `<resolved evolutions dir>/*.md`, `<resolved evolutions dir>/patch-cursor.json`, and `.ai-factory/skill-context/*`; treat roadmap/rules/research/plan artifacts as read-only context unless explicitly asked
 
 ## Example
 

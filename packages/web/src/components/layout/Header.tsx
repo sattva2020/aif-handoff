@@ -59,6 +59,8 @@ export function Header({
   const [roadmapLoading, setRoadmapLoading] = useState(false);
   const [roadmapError, setRoadmapError] = useState<string | null>(null);
   const [roadmapResult, setRoadmapResult] = useState<RoadmapImportResult | null>(null);
+  const [roadmapExists, setRoadmapExists] = useState<boolean | null>(null);
+  const [importLoading, setImportLoading] = useState(false);
   const { settings, setSettings } = useNotificationSettings();
   const permission = getDesktopNotificationPermission();
   const isCompact = density === "compact";
@@ -115,6 +117,26 @@ export function Header({
       setRoadmapLoading(false);
     }
   }, [selectedProject, roadmapAlias, roadmapVision]);
+
+  const handleRoadmapImport = useCallback(async () => {
+    if (!selectedProject || !roadmapAlias.trim()) return;
+    setImportLoading(true);
+    setRoadmapError(null);
+    setRoadmapResult(null);
+    try {
+      console.debug("[roadmap] Starting import with alias:", roadmapAlias);
+      const result = await api.importRoadmap(selectedProject.id, roadmapAlias.trim());
+      console.debug("[roadmap] Import complete:", result);
+      setRoadmapResult(result);
+      setImportLoading(false);
+      onRoadmapImportComplete?.(result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[roadmap] Import failed:", message);
+      setRoadmapError(message);
+      setImportLoading(false);
+    }
+  }, [selectedProject, roadmapAlias, onRoadmapImportComplete]);
 
   // Listen for roadmap WS events
   useEffect(() => {
@@ -232,7 +254,15 @@ export function Header({
               setRoadmapVision("");
               setRoadmapError(null);
               setRoadmapResult(null);
+              setRoadmapExists(null);
+              setImportLoading(false);
               setRoadmapOpen(true);
+              if (selectedProject) {
+                api.checkRoadmapStatus(selectedProject.id).then(
+                  ({ exists }) => setRoadmapExists(exists),
+                  () => setRoadmapExists(false),
+                );
+              }
             }}
             disabled={!selectedProject}
             className="inline-flex h-8 items-center gap-1 border border-border bg-card px-2 text-[10px] font-mono text-foreground transition-colors hover:border-primary/70 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40"
@@ -422,7 +452,7 @@ export function Header({
                   onChange={(e) => setRoadmapAlias(e.target.value)}
                   placeholder="e.g. v1.0, sprint-1, mvp"
                   className="w-full border border-border bg-background px-2 py-1.5 text-sm placeholder:text-muted-foreground focus:border-primary/70 focus:outline-none"
-                  disabled={roadmapLoading}
+                  disabled={roadmapLoading || importLoading}
                 />
               </div>
               <div>
@@ -437,24 +467,42 @@ export function Header({
                   placeholder="Describe what you want to build, priorities, or constraints..."
                   rows={3}
                   className="w-full border border-border bg-background px-2 py-1.5 text-sm placeholder:text-muted-foreground focus:border-primary/70 focus:outline-none resize-none"
-                  disabled={roadmapLoading}
+                  disabled={roadmapLoading || importLoading}
                 />
               </div>
               {roadmapError && <p className="text-xs text-destructive">{roadmapError}</p>}
-              <button
-                onClick={() => void handleRoadmapGenerate()}
-                disabled={roadmapLoading || !roadmapAlias.trim()}
-                className="w-full border border-border bg-card px-3 py-1.5 text-sm transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40 flex items-center justify-center gap-2"
-              >
-                {roadmapLoading ? (
-                  <>
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  "Generate Roadmap"
+              <div className={`grid gap-2 ${roadmapExists ? "grid-cols-2" : "grid-cols-1"}`}>
+                <button
+                  onClick={() => void handleRoadmapGenerate()}
+                  disabled={roadmapLoading || importLoading || !roadmapAlias.trim()}
+                  className="w-full border border-border bg-card px-3 py-1.5 text-sm transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40 flex items-center justify-center gap-2"
+                >
+                  {roadmapLoading ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    "Generate Roadmap"
+                  )}
+                </button>
+                {roadmapExists && (
+                  <button
+                    onClick={() => void handleRoadmapImport()}
+                    disabled={roadmapLoading || importLoading || !roadmapAlias.trim()}
+                    className="w-full border border-border bg-card px-3 py-1.5 text-sm transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40 flex items-center justify-center gap-2"
+                  >
+                    {importLoading ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Importing...
+                      </>
+                    ) : (
+                      "Import Existing"
+                    )}
+                  </button>
                 )}
-              </button>
+              </div>
             </div>
           )}
         </DialogContent>

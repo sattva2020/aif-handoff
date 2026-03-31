@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { projects } from "@aif/shared";
@@ -147,6 +147,40 @@ describe("projects API", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.mcpServers).toEqual({});
+  });
+
+  describe("GET /projects/:id/roadmap/status", () => {
+    it("returns exists: true when ROADMAP.md is present", async () => {
+      const rootPath = mkdtempSync(join(tmpdir(), "aif-roadmap-"));
+      const aifDir = join(rootPath, ".ai-factory");
+      mkdirSync(aifDir, { recursive: true });
+      writeFileSync(join(aifDir, "ROADMAP.md"), "# Roadmap\n");
+
+      const db = testDb.current;
+      db.insert(projects).values({ id: "rm-exists", name: "RM Exists", rootPath }).run();
+
+      const res = await app.request("/projects/rm-exists/roadmap/status");
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.exists).toBe(true);
+    });
+
+    it("returns exists: false when ROADMAP.md is missing", async () => {
+      const rootPath = mkdtempSync(join(tmpdir(), "aif-no-roadmap-"));
+
+      const db = testDb.current;
+      db.insert(projects).values({ id: "rm-missing", name: "RM Missing", rootPath }).run();
+
+      const res = await app.request("/projects/rm-missing/roadmap/status");
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.exists).toBe(false);
+    });
+
+    it("returns 404 for non-existent project", async () => {
+      const res = await app.request("/projects/no-such-project/roadmap/status");
+      expect(res.status).toBe(404);
+    });
   });
 
   it("creates project even when directory initialization fails", async () => {

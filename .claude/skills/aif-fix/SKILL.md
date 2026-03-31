@@ -12,35 +12,59 @@ Fix a specific bug or problem in the codebase. Supports two modes: immediate fix
 
 ## Workflow
 
-### Step 0: Check for Existing Fix Plan
+### Step 0: Load Config and Resolve Paths
 
-**BEFORE anything else**, check if `.ai-factory/FIX_PLAN.md` exists.
+**FIRST:** Read `.ai-factory/config.yaml` if it exists to resolve:
+
+- **Paths:** `paths.description`, `paths.architecture`, `paths.rules_file`, `paths.rules`, `paths.fix_plan`, and `paths.patches`
+- **Language:** `language.ui` for prompts
+- **Rules:** `rules.base` plus any named `rules.<area>` entries
+
+If config.yaml doesn't exist, use defaults:
+
+- DESCRIPTION.md: `.ai-factory/DESCRIPTION.md`
+- ARCHITECTURE.md: `.ai-factory/ARCHITECTURE.md`
+- RULES.md: `.ai-factory/RULES.md`
+- rules/: `.ai-factory/rules/`
+- FIX_PLAN.md: `.ai-factory/FIX_PLAN.md`
+- patches/: `.ai-factory/patches/`
+- Language: `en` (English)
+
+### Step 0.1: Check for Existing Fix Plan
+
+**BEFORE anything else after config resolution**, check the resolved fix plan path (default: `.ai-factory/FIX_PLAN.md`).
 
 **If the file EXISTS:**
-- Read `.ai-factory/FIX_PLAN.md`
+
+- Read the resolved fix plan file
 - Inform the user: "Found existing fix plan. Executing fix based on the plan."
-- Skip **Step 1** (problem intake/mode choice), but still run **Step 0.1** to load context
+- Skip **Step 1** (problem intake/mode choice), but still run **Step 0.2** to load context
 - Then continue to **Step 2: Investigate the Codebase**, using the plan as your guide
 - Follow each step of the plan sequentially
-- After the fix is fully applied and verified, **delete** `.ai-factory/FIX_PLAN.md`:
+- After the fix is fully applied and verified, **delete** the resolved fix plan file:
   ```bash
-  rm .ai-factory/FIX_PLAN.md
+  rm <resolved fix plan path>
   ```
 - Continue to Step 4 (Verify), Step 5 (Test suggestion), Step 6 (Patch)
 
 **If the file DOES NOT exist AND `$ARGUMENTS` is empty:**
+
 - Tell the user: "No fix plan found and no problem description provided. Please either provide a bug description (`/aif-fix <description>`) or create a fix plan first."
 - **STOP.**
 
 **If the file DOES NOT exist AND `$ARGUMENTS` is provided:**
-- Continue to Step 0.1 below.
 
-### Step 0.1: Load Project Context & Past Experience
+- Continue to Step 0.2 below.
 
-**Read `.ai-factory/DESCRIPTION.md`** if it exists to understand:
+### Step 0.2: Load Project Context & Past Experience
+
+**THEN:** Read `.ai-factory/DESCRIPTION.md` (use path from config) if it exists to understand:
+
 - Tech stack (language, framework, database)
 - Project architecture
 - Coding conventions
+
+**Also read `.ai-factory/ARCHITECTURE.md`** (use path from config), the resolved RULES.md path, and the configured rules hierarchy when present to avoid fixes that violate project structure or local conventions.
 
 **Read `.ai-factory/skill-context/aif-fix/SKILL.md`** — MANDATORY if the file exists.
 
@@ -48,6 +72,7 @@ This file contains project-specific rules accumulated by `/aif-evolve` from patc
 codebase conventions, and tech-stack analysis. These rules are tailored to the current project.
 
 **How to apply skill-context rules:**
+
 - Treat them as **project-level overrides** for this skill's general instructions
 - When a skill-context rule conflicts with a general rule written in this SKILL.md,
   **the skill-context rule wins** (more specific context takes priority — same principle as nested CLAUDE.md files)
@@ -64,8 +89,8 @@ If any rule is violated — fix the output before presenting it to the user.
 
 **Patch fallback (limited, only when skill-context is missing):**
 
-- If `.ai-factory/skill-context/aif-fix/SKILL.md` does not exist and `.ai-factory/patches/` exists:
-  - Use `Glob` to find `*.md` files in `.ai-factory/patches/`
+- If `.ai-factory/skill-context/aif-fix/SKILL.md` does not exist and the resolved patches dir exists:
+  - Use `Glob` to find `*.md` files in `<resolved patches dir>`
   - Sort patch filenames ascending (lexical), then select the last **10** (or fewer if less exist)
   - Read those selected patch files only
   - Prioritize recurring **Root Cause** and **Prevention** patterns
@@ -75,11 +100,13 @@ If any rule is violated — fix the output before presenting it to the user.
 ### Step 1: Understand the Problem & Choose Mode
 
 From `$ARGUMENTS`, identify:
+
 - Error message or unexpected behavior
 - Where it occurs (file, function, endpoint)
 - Steps to reproduce (if provided)
 
 If unclear, ask:
+
 ```
 To fix this effectively, I need more context:
 
@@ -94,10 +121,12 @@ To fix this effectively, I need more context:
 Question: "How would you like to proceed with the fix?"
 
 Options:
+
 1. **Fix now** — Investigate and apply the fix immediately
 2. **Plan first** — Create a fix plan for review, then fix later
 
 **Based on choice:**
+
 - "Plan first" → Proceed to **Step 1.1: Create Fix Plan**
 - "Fix now" → Skip Step 1.1, proceed directly to **Step 2: Investigate the Codebase**
 
@@ -108,11 +137,12 @@ Investigate the codebase enough to understand the problem and create a plan.
 **Use the same parallel exploration approach as Step 2** — launch Explore agents to investigate the problem area, related code, and past patterns simultaneously.
 
 After agents return, synthesize findings to:
+
 1. Identify the root cause (or most likely candidates)
 2. Map affected files and functions
 3. Assess impact scope
 
-Then create `.ai-factory/FIX_PLAN.md` with this structure:
+Then create the resolved fix plan file (default: `.ai-factory/FIX_PLAN.md`) with this structure:
 
 ```markdown
 # Fix Plan: [Brief title]
@@ -123,6 +153,7 @@ Then create `.ai-factory/FIX_PLAN.md` with this structure:
 ## Analysis
 
 What was found during investigation:
+
 - Root cause (or suspected root cause)
 - Affected files and functions
 - Impact scope
@@ -157,7 +188,7 @@ Step-by-step plan for implementing the fix:
 ```
 ## Fix Plan Created ✅
 
-Plan saved to `.ai-factory/FIX_PLAN.md`.
+Plan saved to the resolved fix plan path.
 
 Review the plan and when you're ready to execute, run:
 
@@ -193,11 +224,13 @@ Task(subagent_type: Explore, model: sonnet, prompt:
 ```
 
 **After agents return, synthesize findings to identify:**
+
 - The root cause (not just symptoms)
 - Related code that might be affected
 - Existing error handling
 
 **Fallback:** If Task tool is unavailable, investigate directly:
+
 - Find relevant files using Glob/Grep
 - Read the code around the issue
 - Trace the data flow
@@ -209,25 +242,26 @@ Task(subagent_type: Explore, model: sonnet, prompt:
 
 ```typescript
 // ✅ REQUIRED: Add logging around the fix
-console.log('[FIX] Processing user input', { userId, input });
+console.log("[FIX] Processing user input", { userId, input });
 
 try {
   // The actual fix
   const result = fixedLogic(input);
-  console.log('[FIX] Success', { userId, result });
+  console.log("[FIX] Success", { userId, result });
   return result;
 } catch (error) {
-  console.error('[FIX] Error in fixedLogic', {
+  console.error("[FIX] Error in fixedLogic", {
     userId,
     input,
     error: error.message,
-    stack: error.stack
+    stack: error.stack,
   });
   throw error;
 }
 ```
 
 **Logging is MANDATORY because:**
+
 - User needs to verify the fix works
 - If it doesn't work, logs help debug further
 - Feedback loop: user provides logs → we iterate
@@ -301,14 +335,14 @@ Options:
 
 ```typescript
 // Pattern for fixes
-const LOG_FIX = process.env.LOG_LEVEL === 'debug' || process.env.DEBUG_FIX;
+const LOG_FIX = process.env.LOG_LEVEL === "debug" || process.env.DEBUG_FIX;
 
 function fixedFunction(input) {
-  if (LOG_FIX) console.log('[FIX] Input:', input);
+  if (LOG_FIX) console.log("[FIX] Input:", input);
 
   // ... fix logic ...
 
-  if (LOG_FIX) console.log('[FIX] Output:', result);
+  if (LOG_FIX) console.log("[FIX] Output:", result);
   return result;
 }
 ```
@@ -320,6 +354,7 @@ function fixedFunction(input) {
 **User:** `/aif-fix TypeError: Cannot read property 'name' of undefined in UserProfile`
 
 **Actions:**
+
 1. Search for UserProfile component/function
 2. Find where `.name` is accessed
 3. Add null check with logging
@@ -330,6 +365,7 @@ function fixedFunction(input) {
 **User:** `/aif-fix /api/orders returns empty array for authenticated users`
 
 **Actions:**
+
 1. Find orders API endpoint
 2. Trace the query logic
 3. Find the bug (e.g., wrong filter)
@@ -341,6 +377,7 @@ function fixedFunction(input) {
 **User:** `/aif-fix email validation accepts invalid emails`
 
 **Actions:**
+
 1. Find email validation logic
 2. Check regex or validation library usage
 3. Fix the validation
@@ -349,17 +386,17 @@ function fixedFunction(input) {
 
 ## Important Rules
 
-1. **Check FIX_PLAN.md first** - Always check for existing plan before anything else
+1. **Check the fix plan first** - Always check the resolved fix plan path before anything else
 2. **Plan mode = plan only** - When user chooses "Plan first", create the plan and STOP. Do NOT fix.
-3. **Execute mode = follow the plan** - When FIX_PLAN.md exists, follow it step by step, then delete it
+3. **Execute mode = follow the plan** - When the resolved fix plan exists, follow it step by step, then delete it
 4. **NO reports** - Don't create summary documents (patches are learning artifacts, not reports)
 5. **ALWAYS log** - Every fix must have logging for feedback
 6. **ALWAYS suggest tests** - Help prevent regressions
 7. **Root cause** - Fix the actual problem, not symptoms
 8. **Minimal changes** - Don't refactor unrelated code
 9. **One fix at a time** - Don't scope creep
-10. **Clean up** - Delete FIX_PLAN.md after successful fix execution
-11. **Ownership boundary** - `/aif-fix` owns `.ai-factory/FIX_PLAN.md` and `.ai-factory/patches/*.md`; treat `.ai-factory/DESCRIPTION.md`, roadmap/rules/architecture context artifacts as read-only unless the user explicitly requests otherwise
+10. **Clean up** - Delete the resolved fix plan file after successful fix execution
+11. **Ownership boundary** - `/aif-fix` owns `paths.fix_plan` and `paths.patches`; treat `.ai-factory/DESCRIPTION.md`, roadmap, rules, and architecture context artifacts as read-only unless the user explicitly requests otherwise
 12. **Logging scope** - Keep `[FIX]` logging requirements for fixes; context-gate outputs in this command should use `WARN`/`ERROR` and must not change global logging policy in other skills
 
 ## After Fixing
@@ -386,8 +423,9 @@ function fixedFunction(input) {
 **Create the patch:**
 
 1. Create directory if it doesn't exist:
+
    ```bash
-   mkdir -p .ai-factory/patches
+   mkdir -p <resolved patches dir>
    ```
 
 2. Create a patch file with the current timestamp as filename.
@@ -411,6 +449,7 @@ Be specific — include the actual error or symptom.
 
 WHY the problem occurred. This is the most valuable part.
 Not "what was wrong" but "why it was wrong":
+
 - Logic error? Why was the logic incorrect?
 - Missing check? Why was it missing?
 - Wrong assumption? What was assumed?
@@ -424,6 +463,7 @@ Include the approach, not just "changed line X".
 ## Prevention
 
 How to prevent this class of problems in the future:
+
 - What pattern/practice should be followed?
 - What should be checked during code review?
 - What test would catch this?
@@ -481,9 +521,10 @@ Suggest the user to free up context space if needed: `/clear` (full reset) or `/
 ---
 
 **DO NOT:**
-- ❌ Apply a fix when user chose "Plan first" — only create FIX_PLAN.md and stop
-- ❌ Skip the FIX_PLAN.md check at the start
-- ❌ Leave FIX_PLAN.md after successful fix execution — always delete it
+
+- ❌ Apply a fix when user chose "Plan first" - only create the fix plan and stop
+- ❌ Skip the fix-plan check at the start
+- ❌ Leave the fix plan after successful fix execution - always delete it
 - ❌ Generate reports or summaries (patches are NOT reports — they are learning artifacts)
 - ❌ Refactor unrelated code
 - ❌ Add features while fixing

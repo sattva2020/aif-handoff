@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { logger } from "@aif/shared";
@@ -69,6 +71,24 @@ projectsRouter.get("/:id/mcp", (c) => {
   }
 
   return c.json({ mcpServers: getProjectMcpServers(id) });
+});
+
+// GET /projects/:id/roadmap/status — check if ROADMAP.md exists for the project
+projectsRouter.get("/:id/roadmap/status", (c) => {
+  const { id } = c.req.param();
+  const project = findProjectById(id);
+  if (!project) {
+    return c.json({ error: "Project not found" }, 404);
+  }
+
+  const roadmapPath = join(project.rootPath, ".ai-factory", "ROADMAP.md");
+  const exists = existsSync(roadmapPath);
+  log.debug({ projectId: id, roadmapPath, exists }, "Roadmap status check");
+  if (exists) {
+    log.info({ projectId: id }, "ROADMAP.md found");
+  }
+
+  return c.json({ exists });
 });
 
 // POST /projects/:id/roadmap/generate — start async roadmap generation + import
