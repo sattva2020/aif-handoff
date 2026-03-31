@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
-import { logger, parseAttachments } from "@aif/shared";
+import { logger, parseAttachments, getProjectConfig } from "@aif/shared";
 import {
   createTaskSchema,
   updateTaskSchema,
@@ -32,7 +32,7 @@ import {
   updateTaskPlan,
   syncTaskPlanFromFile,
 } from "../repositories/tasks.js";
-import { findProjectById } from "../repositories/projects.js";
+import { findProjectById } from "@aif/data";
 
 const log = logger("tasks-route");
 
@@ -66,6 +66,12 @@ tasksRouter.get("/", (c) => {
 tasksRouter.post("/", zValidator("json", createTaskSchema as any), async (c) => {
   const body = c.req.valid("json");
 
+  // Resolve planPath default from project config.yaml (if present)
+  const project = findProjectById(body.projectId);
+  const defaultPlanPath = project
+    ? getProjectConfig(project.rootPath).paths.plan
+    : ".ai-factory/PLAN.md";
+
   // Pre-create the task to get an ID, then persist attachments to storage
   const created = createTask({
     projectId: body.projectId,
@@ -76,7 +82,7 @@ tasksRouter.post("/", zValidator("json", createTaskSchema as any), async (c) => 
     autoMode: body.autoMode,
     isFix: body.isFix,
     plannerMode: body.plannerMode,
-    planPath: body.planPath,
+    planPath: body.planPath ?? defaultPlanPath,
     planDocs: body.planDocs,
     planTests: body.planTests,
     skipReview: body.skipReview,
@@ -90,7 +96,6 @@ tasksRouter.post("/", zValidator("json", createTaskSchema as any), async (c) => 
 
   // Persist attachments to project files and update the task with path-based metadata
   if (body.attachments.length > 0) {
-    const project = findProjectById(body.projectId);
     if (project) {
       const persisted = await persistAttachments(body.attachments, {
         projectRoot: project.rootPath,
@@ -266,11 +271,10 @@ tasksRouter.put("/:id", zValidator("json", updateTaskSchema as any), async (c) =
     if (project) {
       const oldAttachments = parseAttachments(existing.attachments);
       cleanupReplacedAttachments(project.rootPath, oldAttachments, incomingAttachments);
-      const persisted = await persistAttachments(incomingAttachments, {
-        projectRoot: project.rootPath,
-        taskId: id,
-      });
-      (updatePayload as Record<string, unknown>).attachments = persisted;
+      (updatePayload as Record<string, unknown>).attachments = await persistAttachments(
+        incomingAttachments,
+        { projectRoot: project.rootPath, taskId: id },
+      );
     }
   }
 

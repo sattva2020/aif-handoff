@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { findProjectById, findTaskById, listTaskComments, persistTaskPlanForTask } from "@aif/data";
-import { logger, formatAttachmentsForPrompt } from "@aif/shared";
+import { logger, formatAttachmentsForPrompt, getProjectConfig } from "@aif/shared";
 import { executeSubagentQuery } from "../subagentQuery.js";
 
 const log = logger("planner");
@@ -30,9 +30,10 @@ function normalizeExtractedPlanPath(pathText: string): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
-function normalizePlanPath(path: string | null | undefined): string {
-  if (!path) return ".ai-factory/PLAN.md";
-  return path.trim().replace(/^@+/, "") || ".ai-factory/PLAN.md";
+function normalizePlanPath(path: string | null | undefined, projectRoot: string): string {
+  const defaultPlan = getProjectConfig(projectRoot).paths.plan;
+  if (!path) return defaultPlan;
+  return path.trim().replace(/^@+/, "") || defaultPlan;
 }
 
 function readPlanFromDisk(
@@ -41,11 +42,9 @@ function readPlanFromDisk(
   isFix: boolean,
   customPlanPath?: string,
 ): string | null {
-  const normalizedPlanPath = normalizePlanPath(customPlanPath);
-  const canonicalPlanPath = resolve(
-    projectRoot,
-    isFix ? ".ai-factory/FIX_PLAN.md" : normalizedPlanPath,
-  );
+  const cfg = getProjectConfig(projectRoot);
+  const normalizedPlanPath = normalizePlanPath(customPlanPath, projectRoot);
+  const canonicalPlanPath = resolve(projectRoot, isFix ? cfg.paths.fix_plan : normalizedPlanPath);
   const candidatePaths = new Set<string>([canonicalPlanPath]);
   const pathFromResult = extractPlanPathFromResult(resultText);
   if (pathFromResult) {
@@ -59,7 +58,7 @@ function readPlanFromDisk(
   if (isFix) {
     candidatePaths.add(resolve(projectRoot, "FIX_PLAN.md"));
   } else {
-    candidatePaths.add(resolve(projectRoot, ".ai-factory/PLAN.md"));
+    candidatePaths.add(resolve(projectRoot, cfg.paths.plan));
     candidatePaths.add(resolve(projectRoot, "PLAN.md"));
   }
 
@@ -133,7 +132,7 @@ export async function runPlanner(taskId: string, projectRoot: string): Promise<v
   const commentsForPrompt = formatCommentsForPrompt(comments);
 
   const plannerMode = task.plannerMode || "full";
-  const planPath = normalizePlanPath(task.planPath);
+  const planPath = normalizePlanPath(task.planPath, projectRoot);
   const planDocs = task.planDocs ? "true" : "false";
   const planTests = task.planTests ? "true" : "false";
   const taskContext = `Title: ${task.title}

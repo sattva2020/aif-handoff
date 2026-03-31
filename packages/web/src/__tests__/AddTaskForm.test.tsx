@@ -3,12 +3,13 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 
 const mutateCreateTask = vi.fn();
 
+const mockApi = {
+  getSettings: vi.fn((): Promise<unknown> => new Promise(() => {})),
+  getProjectDefaults: vi.fn((): Promise<unknown> => new Promise(() => {})),
+};
+
 vi.mock("@/lib/api", () => ({
-  api: {
-    // Keep settings request pending in tests to avoid async state updates
-    // from useEffect that can trigger noisy act(...) warnings.
-    getSettings: vi.fn(() => new Promise<never>(() => {})),
-  },
+  api: mockApi,
 }));
 
 vi.mock("@/hooks/useTasks", () => ({
@@ -126,17 +127,104 @@ describe("AddTaskForm", () => {
     });
   });
 
+  it("loads plan path default from project config", async () => {
+    mockApi.getProjectDefaults.mockResolvedValueOnce({
+      paths: { plan: "custom/MY_PLAN.md" },
+      workflow: {},
+    });
+
+    render(<AddTaskForm projectId="p-1" />);
+
+    await act(async () => {
+      // wait for useEffect to resolve
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    fireEvent.click(screen.getByText("Add task"));
+    fireEvent.click(screen.getByRole("button", { name: "Planner settings" }));
+
+    const planInput = screen.getByDisplayValue("custom/MY_PLAN.md");
+    expect(planInput).toBeDefined();
+  });
+
+  it("keeps default plan path when config has no plan path", async () => {
+    mockApi.getProjectDefaults.mockResolvedValueOnce({
+      paths: {},
+      workflow: {},
+    });
+
+    render(<AddTaskForm projectId="p-1" />);
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    fireEvent.click(screen.getByText("Add task"));
+    fireEvent.click(screen.getByRole("button", { name: "Planner settings" }));
+
+    const planInput = screen.getByDisplayValue(".ai-factory/PLAN.md");
+    expect(planInput).toBeDefined();
+  });
+
+  it("keeps default plan path when project defaults fail", async () => {
+    mockApi.getProjectDefaults.mockRejectedValueOnce(new Error("not found"));
+
+    render(<AddTaskForm projectId="p-1" />);
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    fireEvent.click(screen.getByText("Add task"));
+    fireEvent.click(screen.getByRole("button", { name: "Planner settings" }));
+
+    const planInput = screen.getByDisplayValue(".ai-factory/PLAN.md");
+    expect(planInput).toBeDefined();
+  });
+
+  it("handles create task error without crashing", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    render(<AddTaskForm projectId="p-1" />);
+
+    fireEvent.click(screen.getByText("Add task"));
+    fireEvent.change(screen.getByPlaceholderText("Task title"), {
+      target: { value: "Failing task" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    const options = mutateCreateTask.mock.calls[0][1] as { onError?: (e: Error) => void };
+    await act(async () => {
+      options.onError?.(new Error("server error"));
+    });
+
+    // Form should still be open after error
+    expect(screen.getByPlaceholderText("Task title")).toBeDefined();
+    consoleSpy.mockRestore();
+  });
+
   it("submits planner settings from advanced options", () => {
     render(<AddTaskForm projectId="p-1" />);
 
     fireEvent.click(screen.getByText("Add task"));
     fireEvent.click(screen.getByRole("button", { name: "Planner settings" }));
+    // Toggle through both planner modes to cover both onChange branches
+    fireEvent.click(screen.getByLabelText("Full"));
     fireEvent.click(screen.getByLabelText("Fast"));
     fireEvent.click(screen.getByLabelText("Docs"));
     fireEvent.click(screen.getByLabelText("Tests"));
     fireEvent.change(screen.getByPlaceholderText(".ai-factory/PLAN.md"), {
       target: { value: ".ai-factory/custom-plan.md" },
     });
+    // Toggle skip review and use subagents
+    const checkboxes = screen.getAllByRole("checkbox");
+    const skipReviewCheckbox = checkboxes.find((cb) =>
+      cb.closest("label")?.textContent?.includes("Skip review"),
+    )!;
+    const useSubagentsCheckbox = checkboxes.find((cb) =>
+      cb.closest("label")?.textContent?.includes("Use subagents"),
+    )!;
+    fireEvent.click(skipReviewCheckbox);
+    fireEvent.click(useSubagentsCheckbox);
     fireEvent.change(screen.getByPlaceholderText("Task title"), {
       target: { value: "Task with planner options" },
     });
@@ -150,6 +238,8 @@ describe("AddTaskForm", () => {
         planPath: ".ai-factory/custom-plan.md",
         planDocs: true,
         planTests: true,
+        skipReview: true,
+        useSubagents: false,
       }),
       expect.any(Object),
     );

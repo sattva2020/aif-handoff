@@ -10,6 +10,8 @@ interface Props {
   projectId: string;
 }
 
+const DEFAULT_PLAN_PATH = ".ai-factory/PLAN.md";
+
 export function AddTaskForm({ projectId }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const [title, setTitle] = useState("");
@@ -18,7 +20,8 @@ export function AddTaskForm({ projectId }: Props) {
   const [isFix, setIsFix] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [plannerMode, setPlannerMode] = useState<"full" | "fast">("fast");
-  const [planPath, setPlanPath] = useState(".ai-factory/PLAN.md");
+  const [defaultPlanPath, setDefaultPlanPath] = useState(DEFAULT_PLAN_PATH);
+  const [planPath, setPlanPath] = useState(DEFAULT_PLAN_PATH);
   const [planDocs, setPlanDocs] = useState(false);
   const [planTests, setPlanTests] = useState(false);
   const [skipReview, setSkipReview] = useState(false);
@@ -66,6 +69,22 @@ export function AddTaskForm({ projectId }: Props) {
       });
   }, []);
 
+  // Load project-specific defaults from config.yaml
+  useEffect(() => {
+    if (!projectId) return;
+    api
+      .getProjectDefaults(projectId)
+      .then((d) => {
+        if (d.paths?.plan) {
+          setDefaultPlanPath(d.paths.plan);
+          setPlanPath(d.paths.plan);
+        }
+      })
+      .catch(() => {
+        // keep hardcoded defaults when config.yaml absent
+      });
+  }, [projectId]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
@@ -79,7 +98,7 @@ export function AddTaskForm({ projectId }: Props) {
         autoMode,
         isFix,
         plannerMode,
-        planPath: planPath.trim() || ".ai-factory/PLAN.md",
+        planPath: planPath.trim() || defaultPlanPath,
         planDocs,
         planTests,
         skipReview,
@@ -94,7 +113,7 @@ export function AddTaskForm({ projectId }: Props) {
           setIsFix(false);
           setShowAdvanced(false);
           setPlannerMode("full");
-          setPlanPath(".ai-factory/PLAN.md");
+          setPlanPath(defaultPlanPath);
           setPlanDocs(false);
           setPlanTests(false);
           setSkipReview(false);
@@ -237,7 +256,7 @@ export function AddTaskForm({ projectId }: Props) {
                 <Input
                   value={planPath}
                   onChange={(e) => setPlanPath(e.target.value)}
-                  placeholder=".ai-factory/PLAN.md"
+                  placeholder={defaultPlanPath}
                   className="h-7 text-xs"
                 />
               </div>
@@ -309,7 +328,7 @@ export function AddTaskForm({ projectId }: Props) {
             setIsFix(false);
             setShowAdvanced(false);
             setPlannerMode("full");
-            setPlanPath(".ai-factory/PLAN.md");
+            setPlanPath(defaultPlanPath);
             setPlanDocs(false);
             setPlanTests(false);
             setSkipReview(false);

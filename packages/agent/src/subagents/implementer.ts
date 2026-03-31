@@ -15,6 +15,7 @@ import {
   formatAttachmentsForPrompt,
   looksLikeFullPlanUpdate,
   modelOption,
+  getProjectConfig,
 } from "@aif/shared";
 import { logActivity } from "../hooks.js";
 import { executeSubagentQuery } from "../subagentQuery.js";
@@ -22,8 +23,6 @@ import { computePendingPlanLayers, computePlanLayers } from "../planLayers.js";
 
 const log = logger("implementer");
 const AGENT_NAME = "implement-coordinator";
-const FIX_PLAN_PATH = ".ai-factory/FIX_PLAN.md";
-const PLAN_PATH = ".ai-factory/PLAN.md";
 
 function formatReworkCommentForPrompt(
   comment: {
@@ -58,16 +57,17 @@ function readCanonicalPlan(
   task: { isFix: boolean; planPath: string },
   projectRoot: string,
 ): string | null {
+  const cfg = getProjectConfig(projectRoot);
   const preferredPath = resolve(
     projectRoot,
-    task.isFix ? FIX_PLAN_PATH : task.planPath || PLAN_PATH,
+    task.isFix ? cfg.paths.fix_plan : task.planPath || cfg.paths.plan,
   );
   if (existsSync(preferredPath)) {
     const content = readFileSync(preferredPath, "utf8").trim();
     if (content.length > 0) return content;
   }
 
-  const fallbackPath = resolve(projectRoot, task.isFix ? PLAN_PATH : FIX_PLAN_PATH);
+  const fallbackPath = resolve(projectRoot, task.isFix ? cfg.paths.plan : cfg.paths.fix_plan);
   if (existsSync(fallbackPath)) {
     const content = readFileSync(fallbackPath, "utf8").trim();
     if (content.length > 0) return content;
@@ -162,9 +162,10 @@ export async function runImplementer(taskId: string, projectRoot: string): Promi
   const implementerBudget = project?.implementerMaxBudgetUsd ?? null;
   const useSubagents = task.useSubagents;
   const executionName = useSubagents ? AGENT_NAME : "aif-implement";
+  const cfg = getProjectConfig(projectRoot);
   const canonicalPlan = readCanonicalPlan(task, projectRoot);
   const selectedPlan = canonicalPlan ?? task.plan;
-  const effectivePlanPath = task.isFix ? FIX_PLAN_PATH : task.planPath || PLAN_PATH;
+  const effectivePlanPath = task.isFix ? cfg.paths.fix_plan : task.planPath || cfg.paths.plan;
   const planSection = `@${effectivePlanPath}`;
   const layerComputation = selectedPlan
     ? computePendingPlanLayers(selectedPlan)

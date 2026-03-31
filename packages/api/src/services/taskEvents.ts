@@ -1,6 +1,11 @@
 import { existsSync, unlinkSync } from "node:fs";
 import { resolve } from "node:path";
-import { applyHumanTaskEvent, looksLikeFullPlanUpdate, type TaskEvent } from "@aif/shared";
+import {
+  applyHumanTaskEvent,
+  looksLikeFullPlanUpdate,
+  getProjectConfig,
+  type TaskEvent,
+} from "@aif/shared";
 import {
   findProjectById,
   findTaskById,
@@ -51,9 +56,8 @@ async function handleFastFix(input: EventHandlerInput): Promise<EventHandlerResu
   if (!previousPlan) {
     return { ok: false, status: 409, error: "fast_fix requires an existing plan on the task" };
   }
-  const effectivePlanPath = task.isFix
-    ? ".ai-factory/FIX_PLAN.md"
-    : task.planPath || ".ai-factory/PLAN.md";
+  const cfg = getProjectConfig(project.rootPath);
+  const effectivePlanPath = task.isFix ? cfg.paths.fix_plan : task.planPath || cfg.paths.plan;
 
   let firstAttempt = "";
   try {
@@ -142,10 +146,11 @@ function handleRegularTransition(input: EventHandlerInput): EventHandlerResult {
     }
 
     // For fix tasks, always remove canonical FIX_PLAN.md.
-    // For regular tasks, use configured planPath (defaults to .ai-factory/PLAN.md).
+    // For regular tasks, use configured planPath (defaults from config.yaml).
+    const cfg = getProjectConfig(project.rootPath);
     const planFilePath = task.isFix
-      ? resolve(project.rootPath, ".ai-factory/FIX_PLAN.md")
-      : resolve(project.rootPath, task.planPath || ".ai-factory/PLAN.md");
+      ? resolve(project.rootPath, cfg.paths.fix_plan)
+      : resolve(project.rootPath, task.planPath || cfg.paths.plan);
 
     if (existsSync(planFilePath)) {
       unlinkSync(planFilePath);

@@ -194,6 +194,69 @@ When both variables are set, every `task:moved` event sends a short message with
 
 To get your user ID, message [@userinfobot](https://t.me/userinfobot) or any similar bot on Telegram.
 
+## Project Config (config.yaml)
+
+Per-project configuration is stored in `.ai-factory/config.yaml` at the project root. When present, its values override built-in defaults for artifact paths and workflow settings. When absent, the system uses hardcoded defaults transparently.
+
+The config is editable via the **Global Settings** dialog in the web UI (gear icon in the header).
+
+### Sections
+
+**`language`** — controls AI-generated content language:
+
+| Key               | Default | Options                                                    |
+| ----------------- | ------- | ---------------------------------------------------------- |
+| `ui`              | `en`    | `en`, `ru`, `de`, `fr`, `es`, `zh`, `ja`, `ko`, `pt`, `it` |
+| `artifacts`       | `en`    | Same as `ui`                                               |
+| `technical_terms` | `keep`  | `keep`, `translate`                                        |
+
+**`paths`** — custom paths for AI Factory artifacts (relative to project root):
+
+| Key            | Default                       |
+| -------------- | ----------------------------- |
+| `plan`         | `.ai-factory/PLAN.md`         |
+| `plans`        | `.ai-factory/plans/`          |
+| `fix_plan`     | `.ai-factory/FIX_PLAN.md`     |
+| `roadmap`      | `.ai-factory/ROADMAP.md`      |
+| `description`  | `.ai-factory/DESCRIPTION.md`  |
+| `architecture` | `.ai-factory/ARCHITECTURE.md` |
+| `docs`         | `docs/`                       |
+| `rules_file`   | `.ai-factory/RULES.md`        |
+| `references`   | `.ai-factory/references/`     |
+
+**`workflow`** — controls AI Factory workflow behavior:
+
+| Key                            | Default  | Options                       |
+| ------------------------------ | -------- | ----------------------------- |
+| `auto_create_dirs`             | `true`   | boolean                       |
+| `plan_id_format`               | `slug`   | `slug`, `timestamp`, `uuid`   |
+| `analyze_updates_architecture` | `true`   | boolean                       |
+| `architecture_updates_roadmap` | `true`   | boolean                       |
+| `verify_mode`                  | `normal` | `strict`, `normal`, `lenient` |
+
+**`git`** — git-aware workflow settings:
+
+| Key                      | Default    | Description                        |
+| ------------------------ | ---------- | ---------------------------------- |
+| `enabled`                | `true`     | Use git-aware workflows            |
+| `base_branch`            | `main`     | Default branch for diff/review     |
+| `create_branches`        | `true`     | Auto-create feature branches       |
+| `branch_prefix`          | `feature/` | Prefix for branch names            |
+| `skip_push_after_commit` | `false`    | Skip push prompt after /aif-commit |
+
+### API Endpoints
+
+| Method | Path                      | Description                                |
+| ------ | ------------------------- | ------------------------------------------ |
+| GET    | `/settings/config/status` | Check if config.yaml exists                |
+| GET    | `/settings/config`        | Read parsed config as JSON                 |
+| PUT    | `/settings/config`        | Write config (accepts JSON, saves as YAML) |
+| GET    | `/projects/:id/defaults`  | Get resolved paths/workflow for a project  |
+
+### How It Works
+
+The `getProjectConfig(projectRoot)` utility in `@aif/shared` reads and caches config.yaml per project. All consumers (planner, implementer, task events, roadmap generation) call this function instead of using hardcoded paths. The cache is invalidated when the file's mtime changes.
+
 ## See Also
 
 - [Getting Started](getting-started.md) — installation and first run

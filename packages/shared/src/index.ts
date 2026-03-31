@@ -84,5 +84,14 @@ export {
   insertPlanAnnotation,
 } from "./sync.js";
 
+// Project config (config.yaml)
+export {
+  getProjectConfig,
+  clearProjectConfigCache,
+  type AifProjectConfig,
+  type AifProjectPaths,
+  type AifProjectWorkflow,
+} from "./projectConfig.js";
+
 // Utilities
 export { withTimeout } from "./withTimeout.js";

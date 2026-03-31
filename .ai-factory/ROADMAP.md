@@ -16,7 +16,7 @@
 - [ ] **Docker Generation Action** — add a dedicated UI button/action to generate Docker configuration.
 - [ ] **CI Generation Action** — add a dedicated UI button/action to generate CI configuration.
 - [ ] **Automation Generation Action** — add a dedicated UI button/action to generate build/automation configuration.
-- [ ] **Bidirectional Handoff ↔ AIF Sync** — implement two-way synchronization between Handoff and AI Factory via MCP server, keeping tasks, plans, and status in sync across both systems. Plans should include task ID annotations for traceability.
+- [x] **Bidirectional Handoff ↔ AIF Sync** — implement two-way synchronization between Handoff and AI Factory via MCP server, keeping tasks, plans, and status in sync across both systems. Plans should include task ID annotations for traceability.
 
 ## Completed
 

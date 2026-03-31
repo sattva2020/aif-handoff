@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { z } from "zod";
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import { logger, getEnv, modelOption } from "@aif/shared";
+import { logger, getEnv, modelOption, getProjectConfig } from "@aif/shared";
 import {
   createTask,
   findProjectById,
@@ -71,8 +71,9 @@ export async function generateRoadmapFile(
   }
 
   // Read project context
-  const descriptionPath = join(project.rootPath, ".ai-factory", "DESCRIPTION.md");
-  const architecturePath = join(project.rootPath, ".ai-factory", "ARCHITECTURE.md");
+  const projectCfg = getProjectConfig(project.rootPath);
+  const descriptionPath = join(project.rootPath, projectCfg.paths.description);
+  const architecturePath = join(project.rootPath, projectCfg.paths.architecture);
 
   const description = existsSync(descriptionPath) ? readFileSync(descriptionPath, "utf8") : null;
   const architecture = existsSync(architecturePath) ? readFileSync(architecturePath, "utf8") : null;
@@ -100,6 +101,7 @@ export async function generateRoadmapFile(
   });
 
   let rawResult = "";
+  let failedSubtype: string | null = null;
   try {
     for await (const message of query({
       prompt,
@@ -118,20 +120,20 @@ export async function generateRoadmapFile(
     })) {
       if (message.type !== "result") continue;
       if (message.subtype !== "success") {
-        throw new RoadmapGenerationError(
-          "AGENT_FAILED",
-          `Agent SDK query failed: ${message.subtype}`,
-        );
+        failedSubtype = message.subtype;
+        break;
       }
       rawResult = message.result.trim();
     }
   } catch (err) {
-    if (err instanceof RoadmapGenerationError) throw err;
     log.error({ err, projectId }, "Agent SDK roadmap generation error");
     throw new RoadmapGenerationError(
       "AGENT_UNAVAILABLE",
       `Agent SDK unavailable: ${err instanceof Error ? err.message : String(err)}`,
     );
+  }
+  if (failedSubtype) {
+    throw new RoadmapGenerationError("AGENT_FAILED", `Agent SDK query failed: ${failedSubtype}`);
   }
 
   if (!rawResult) {
@@ -142,7 +144,8 @@ export async function generateRoadmapFile(
   const content = rawResult.replace(/^```(?:markdown)?\s*/m, "").replace(/\s*```\s*$/m, "");
 
   // Write ROADMAP.md
-  const roadmapPath = join(project.rootPath, ".ai-factory", "ROADMAP.md");
+  const cfg = getProjectConfig(project.rootPath);
+  const roadmapPath = join(project.rootPath, cfg.paths.roadmap);
   mkdirSync(dirname(roadmapPath), { recursive: true });
   writeFileSync(roadmapPath, content, "utf8");
 
@@ -215,7 +218,8 @@ export async function generateRoadmapTasks(
     throw new RoadmapGenerationError("PROJECT_NOT_FOUND", `Project ${projectId} not found`);
   }
 
-  const roadmapPath = join(project.rootPath, ".ai-factory", "ROADMAP.md");
+  const tasksCfg = getProjectConfig(project.rootPath);
+  const roadmapPath = join(project.rootPath, tasksCfg.paths.roadmap);
   if (!existsSync(roadmapPath)) {
     throw new RoadmapGenerationError(
       "ROADMAP_NOT_FOUND",
@@ -230,6 +234,7 @@ export async function generateRoadmapTasks(
   const prompt = buildExtractionPrompt(roadmapContent, roadmapAlias);
 
   let rawResult = "";
+  let failedSubtype: string | null = null;
   try {
     for await (const message of query({
       prompt,
@@ -254,20 +259,20 @@ export async function generateRoadmapTasks(
         });
       }
       if (message.subtype !== "success") {
-        throw new RoadmapGenerationError(
-          "AGENT_FAILED",
-          `Agent SDK query failed: ${message.subtype}`,
-        );
+        failedSubtype = message.subtype;
+        break;
       }
       rawResult = message.result.trim();
     }
   } catch (err) {
-    if (err instanceof RoadmapGenerationError) throw err;
     log.error({ err, projectId, roadmapAlias }, "Agent SDK query error");
     throw new RoadmapGenerationError(
       "AGENT_UNAVAILABLE",
       `Agent SDK unavailable: ${err instanceof Error ? err.message : String(err)}`,
     );
+  }
+  if (failedSubtype) {
+    throw new RoadmapGenerationError("AGENT_FAILED", `Agent SDK query failed: ${failedSubtype}`);
   }
 
   log.debug({ rawResultLength: rawResult.length }, "Raw agent output received");

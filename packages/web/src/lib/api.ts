@@ -11,6 +11,49 @@ import type {
   ChatRequest,
 } from "@aif/shared/browser";
 
+export interface AifConfig {
+  language?: {
+    ui?: string;
+    artifacts?: string;
+    technical_terms?: string;
+  };
+  paths?: {
+    description?: string;
+    architecture?: string;
+    docs?: string;
+    roadmap?: string;
+    research?: string;
+    rules_file?: string;
+    plan?: string;
+    plans?: string;
+    fix_plan?: string;
+    security?: string;
+    references?: string;
+    patches?: string;
+    evolutions?: string;
+    evolution?: string;
+    specs?: string;
+    rules?: string;
+  };
+  workflow?: {
+    auto_create_dirs?: boolean;
+    plan_id_format?: string;
+    analyze_updates_architecture?: boolean;
+    architecture_updates_roadmap?: boolean;
+    verify_mode?: string;
+  };
+  git?: {
+    enabled?: boolean;
+    base_branch?: string;
+    create_branches?: boolean;
+    branch_prefix?: string;
+    skip_push_after_commit?: boolean;
+  };
+  rules?: {
+    base?: string;
+  };
+}
+
 const API_BASE = "/tasks";
 const REQUEST_TIMEOUT_MS = 15000;
 const FAST_FIX_TIMEOUT_MS = 120000;
@@ -91,6 +134,13 @@ export const api = {
   deleteProject(id: string): Promise<void> {
     console.debug("[api] DELETE /projects/%s", id);
     return request(`/projects/${id}`, { method: "DELETE" });
+  },
+
+  getProjectDefaults(id: string): Promise<{
+    paths: NonNullable<AifConfig["paths"]>;
+    workflow: NonNullable<AifConfig["workflow"]>;
+  }> {
+    return request(`/projects/${id}/defaults`);
   },
 
   getProjectMcp(id: string): Promise<{ mcpServers: Record<string, unknown> }> {
@@ -235,6 +285,21 @@ export const api = {
 
   removeMcp(): Promise<{ success: boolean }> {
     return request("/settings/mcp", { method: "DELETE" });
+  },
+
+  getConfigStatus(): Promise<{ exists: boolean; path: string }> {
+    return request("/settings/config/status");
+  },
+
+  getConfig(): Promise<{ config: AifConfig }> {
+    return request("/settings/config");
+  },
+
+  saveConfig(config: AifConfig): Promise<{ success: boolean }> {
+    return request("/settings/config", {
+      method: "PUT",
+      body: JSON.stringify({ config }),
+    });
   },
 
   sendChatMessage(input: ChatRequest): Promise<{ conversationId: string }> {

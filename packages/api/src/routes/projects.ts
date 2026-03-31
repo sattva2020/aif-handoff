@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { logger } from "@aif/shared";
+import { logger, getProjectConfig } from "@aif/shared";
 import { findTaskById } from "@aif/data";
 import { createProjectSchema, roadmapImportSchema, roadmapGenerateSchema } from "../schemas.js";
 import { broadcast } from "../ws.js";
@@ -14,7 +14,7 @@ import {
   deleteProject,
   getProjectMcpServers,
 } from "../repositories/projects.js";
-import { toTaskResponse } from "../repositories/tasks.js";
+import { toTaskResponse } from "@aif/data";
 import {
   generateRoadmapFile,
   generateRoadmapTasks,
@@ -73,6 +73,18 @@ projectsRouter.get("/:id/mcp", (c) => {
   return c.json({ mcpServers: getProjectMcpServers(id) });
 });
 
+// GET /projects/:id/defaults — return resolved config defaults for a project
+projectsRouter.get("/:id/defaults", (c) => {
+  const { id } = c.req.param();
+  const project = findProjectById(id);
+  if (!project) {
+    return c.json({ error: "Project not found" }, 404);
+  }
+
+  const cfg = getProjectConfig(project.rootPath);
+  return c.json({ paths: cfg.paths, workflow: cfg.workflow });
+});
+
 // GET /projects/:id/roadmap/status — check if ROADMAP.md exists for the project
 projectsRouter.get("/:id/roadmap/status", (c) => {
   const { id } = c.req.param();
@@ -81,7 +93,8 @@ projectsRouter.get("/:id/roadmap/status", (c) => {
     return c.json({ error: "Project not found" }, 404);
   }
 
-  const roadmapPath = join(project.rootPath, ".ai-factory", "ROADMAP.md");
+  const cfg = getProjectConfig(project.rootPath);
+  const roadmapPath = join(project.rootPath, cfg.paths.roadmap);
   const exists = existsSync(roadmapPath);
   log.debug({ projectId: id, roadmapPath, exists }, "Roadmap status check");
   if (exists) {

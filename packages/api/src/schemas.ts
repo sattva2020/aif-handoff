@@ -28,7 +28,7 @@ export const createTaskSchema = z.object({
   autoMode: z.boolean().default(true),
   isFix: z.boolean().default(false),
   plannerMode: z.enum(["fast", "full"]).default("fast"),
-  planPath: z.string().max(500).default(".ai-factory/PLAN.md"),
+  planPath: z.string().max(500).optional(),
   planDocs: z.boolean().default(false),
   planTests: z.boolean().default(false),
   skipReview: z.boolean().default(false),

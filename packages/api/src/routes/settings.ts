@@ -1,7 +1,9 @@
 import { Hono } from "hono";
 import { readFile, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import YAML from "yaml";
 import { logger, findMonorepoRoot, getEnv } from "@aif/shared";
 
 const log = logger("api:settings");
@@ -40,6 +42,8 @@ function buildMcpServerEntry() {
   };
 }
 
+const CONFIG_PATH = join(MONOREPO_ROOT, ".ai-factory", "config.yaml");
+
 export const settingsRoutes = new Hono();
 
 /** Check if handoff MCP server is configured globally */
@@ -72,7 +76,10 @@ settingsRoutes.post("/mcp/install", async (c) => {
 
     return c.json({ success: true, serverName: MCP_SERVER_NAME });
   } catch (error) {
-    log.error({ error: error instanceof Error ? error.message : String(error) }, "Failed to install MCP");
+    log.error(
+      { error: error instanceof Error ? error.message : String(error) },
+      "Failed to install MCP",
+    );
     return c.json({ error: "Failed to install MCP server" }, 500);
   }
 });
@@ -88,7 +95,57 @@ settingsRoutes.delete("/mcp", async (c) => {
     }
     return c.json({ success: true });
   } catch (error) {
-    log.error({ error: error instanceof Error ? error.message : String(error) }, "Failed to remove MCP");
+    log.error(
+      { error: error instanceof Error ? error.message : String(error) },
+      "Failed to remove MCP",
+    );
     return c.json({ error: "Failed to remove MCP server" }, 500);
+  }
+});
+
+/** Check if .ai-factory/config.yaml exists */
+settingsRoutes.get("/config/status", (c) => {
+  return c.json({ exists: existsSync(CONFIG_PATH), path: CONFIG_PATH });
+});
+
+/** Read .ai-factory/config.yaml as parsed JSON */
+settingsRoutes.get("/config", async (c) => {
+  if (!existsSync(CONFIG_PATH)) {
+    return c.json({ error: "config.yaml not found" }, 404);
+  }
+  try {
+    const raw = await readFile(CONFIG_PATH, "utf-8");
+    const config = YAML.parse(raw) as Record<string, unknown>;
+    return c.json({ config });
+  } catch (error) {
+    log.error(
+      { error: error instanceof Error ? error.message : String(error) },
+      "Failed to read config.yaml",
+    );
+    return c.json({ error: "Failed to read config.yaml" }, 500);
+  }
+});
+
+/** Write .ai-factory/config.yaml from JSON */
+settingsRoutes.put("/config", async (c) => {
+  try {
+    const { config } = await c.req.json<{ config: Record<string, unknown> }>();
+    if (!config || typeof config !== "object") {
+      return c.json({ error: "config must be an object" }, 400);
+    }
+    const yaml = YAML.stringify(config, {
+      lineWidth: 0,
+      defaultKeyType: "PLAIN",
+      defaultStringType: "PLAIN",
+    });
+    await writeFile(CONFIG_PATH, yaml, "utf-8");
+    log.info("config.yaml updated");
+    return c.json({ success: true });
+  } catch (error) {
+    log.error(
+      { error: error instanceof Error ? error.message : String(error) },
+      "Failed to write config.yaml",
+    );
+    return c.json({ error: "Failed to write config.yaml" }, 500);
   }
 });

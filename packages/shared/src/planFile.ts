@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { getProjectConfig } from "./projectConfig.js";
 
 interface CanonicalPlanInput {
   projectRoot: string;
@@ -12,10 +13,11 @@ interface SyncCanonicalPlanInput extends CanonicalPlanInput {
 }
 
 export function getCanonicalPlanPath(input: CanonicalPlanInput): string {
+  const cfg = getProjectConfig(input.projectRoot);
   if (input.isFix) {
-    return resolve(input.projectRoot, ".ai-factory/FIX_PLAN.md");
+    return resolve(input.projectRoot, cfg.paths.fix_plan);
   }
-  return resolve(input.projectRoot, input.planPath || ".ai-factory/PLAN.md");
+  return resolve(input.projectRoot, input.planPath || cfg.paths.plan);
 }
 
 export function syncPlanTextToCanonicalFile(input: SyncCanonicalPlanInput): string {
