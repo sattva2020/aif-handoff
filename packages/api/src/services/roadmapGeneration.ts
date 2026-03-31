@@ -313,7 +313,7 @@ Required output format (JSON only, no markdown fences):
 }
 
 Rules:
-- Every milestone/checkbox item should become a task
+- Only include unchecked milestones (- [ ]). Skip completed milestones (- [x]) entirely — do NOT create tasks for them
 - Task titles should be short, imperative, and specific
 - Descriptions should include enough context for implementation
 - Phase numbers must be sequential (1, 2, 3, ...)
