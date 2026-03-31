@@ -104,6 +104,7 @@ export function useChat(projectId: string | null, taskId: string | null = null) 
       setChatErrorCode(null);
       accumulatorRef.current = "";
       streamErrorHandledRef.current = false;
+      if (explore) setExplore(false);
 
       console.debug("[useChat] Sending message:", {
         projectId,

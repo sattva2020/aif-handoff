@@ -9,6 +9,30 @@ const apiTarget = `http://localhost:${API_PORT}`;
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  build: {
+    rolldownOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules/react-dom") || id.includes("node_modules/react/")) {
+            return "vendor";
+          }
+          if (
+            id.includes("react-markdown") ||
+            id.includes("remark-") ||
+            id.includes("rehype-") ||
+            id.includes("mdast") ||
+            id.includes("micromark") ||
+            id.includes("unified")
+          ) {
+            return "markdown";
+          }
+          if (id.includes("@dnd-kit")) {
+            return "dnd";
+          }
+        },
+      },
+    },
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

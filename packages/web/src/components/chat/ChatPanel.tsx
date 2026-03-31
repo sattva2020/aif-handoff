@@ -136,16 +136,11 @@ function MessageBubble({
   );
 }
 
-function TypingIndicator() {
+function TypingIndicator({ hasAssistantMessage }: { hasAssistantMessage: boolean }) {
   return (
-    <div className="flex gap-2.5 px-3 py-2">
-      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-600 text-white text-xs">
-        <Bot className="h-3.5 w-3.5" />
-      </div>
-      <div className="flex items-center gap-1 rounded-lg bg-violet-600/15 px-3 py-2">
-        <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-400" />
-        <span className="text-xs text-muted-foreground">Thinking...</span>
-      </div>
+    <div className={cn("flex items-center gap-1.5 px-3 py-1.5", hasAssistantMessage && "pl-12")}>
+      <Loader2 className="h-3 w-3 animate-spin text-violet-400" />
+      <span className="text-xs text-muted-foreground">Working...</span>
     </div>
   );
 }
@@ -209,8 +204,6 @@ export function ChatPanel({ isOpen, projectId, taskId, onClose }: ChatPanelProps
     }
   };
 
-  const showTypingIndicator = isStreaming && messages[messages.length - 1]?.role !== "assistant";
-
   return (
     <div
       ref={panelRef}
@@ -230,15 +223,6 @@ export function ChatPanel({ isOpen, projectId, taskId, onClose }: ChatPanelProps
             <span className="text-sm font-semibold">AI Chat</span>
           </div>
           <div className="flex items-center gap-3">
-            <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
-              <input
-                type="checkbox"
-                checked={explore}
-                onChange={(e) => setExplore(e.target.checked)}
-                className="accent-primary h-3.5 w-3.5"
-              />
-              Explore
-            </label>
             <button
               onClick={clearMessages}
               className="text-muted-foreground hover:text-foreground transition-colors"
@@ -299,12 +283,25 @@ export function ChatPanel({ isOpen, projectId, taskId, onClose }: ChatPanelProps
             onTaskCreated={handleTaskCreated}
           />
         ))}
-        {showTypingIndicator && <TypingIndicator />}
+        {isStreaming && (
+          <TypingIndicator
+            hasAssistantMessage={messages[messages.length - 1]?.role === "assistant"}
+          />
+        )}
         <div ref={messagesEndRef} />
       </div>
 
       {/* Input area */}
       <div className="border-t border-border p-3">
+        <label className="mb-1.5 flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+          <input
+            type="checkbox"
+            checked={explore}
+            onChange={(e) => setExplore(e.target.checked)}
+            className="accent-primary h-3.5 w-3.5"
+          />
+          <span title="Brainstorm, research or explore a topic">Explore</span>
+        </label>
         <div className="flex items-end gap-2">
           <textarea
             ref={textareaRef}

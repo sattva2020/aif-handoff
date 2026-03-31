@@ -100,17 +100,17 @@ describe("ChatPanel", () => {
     mockIsStreaming = true;
     mockMessages = [{ role: "user", content: "Hello" }];
     render(<ChatPanel isOpen={true} projectId="p-1" taskId={null} onClose={mockOnClose} />);
-    expect(screen.getByText("Thinking...")).toBeDefined();
+    expect(screen.getByText("Working...")).toBeDefined();
   });
 
-  it("does not show typing indicator when streaming and assistant message exists", () => {
+  it("shows typing indicator when streaming even with assistant message", () => {
     mockIsStreaming = true;
     mockMessages = [
       { role: "user", content: "Hello" },
       { role: "assistant", content: "Partial..." },
     ];
     render(<ChatPanel isOpen={true} projectId="p-1" taskId={null} onClose={mockOnClose} />);
-    expect(screen.queryByText("Thinking...")).toBeNull();
+    expect(screen.getByText("Working...")).toBeDefined();
   });
 
   it("clears messages on clear button click", () => {
