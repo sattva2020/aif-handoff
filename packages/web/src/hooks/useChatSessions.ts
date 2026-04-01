@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ChatSession, ChatSessionMessage } from "@aif/shared/browser";
 import { api } from "../lib/api.js";
@@ -7,7 +7,7 @@ export function useChatSessions(projectId: string | null) {
   const queryClient = useQueryClient();
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   // When true, user explicitly started a new chat — don't auto-select
-  const newChatModeRef = useRef(false);
+  const [newChatMode, setNewChatMode] = useState(false);
 
   const sessionsQuery = useQuery<ChatSession[]>({
     queryKey: ["chatSessions", projectId],
@@ -16,16 +16,8 @@ export function useChatSessions(projectId: string | null) {
   });
 
   // Auto-select the most recent session when sessions load and none is active
-  const resolvedSessionId = useMemo(() => {
-    if (activeSessionId) return activeSessionId;
-    if (newChatModeRef.current) return null;
-    if (sessionsQuery.data?.length) {
-      const latest = sessionsQuery.data[0];
-      console.debug("[useChatSessions] Auto-selecting latest session %s", latest.id);
-      return latest.id;
-    }
-    return null;
-  }, [sessionsQuery.data, activeSessionId]);
+  const resolvedSessionId =
+    activeSessionId ?? (newChatMode ? null : (sessionsQuery.data?.[0]?.id ?? null));
 
   // Listen for WS events to invalidate sessions
   useEffect(() => {
@@ -95,12 +87,12 @@ export function useChatSessions(projectId: string | null) {
   );
 
   const selectSession = useCallback((id: string) => {
-    newChatModeRef.current = false;
+    setNewChatMode(false);
     setActiveSessionId(id);
   }, []);
 
   const clearActiveSession = useCallback(() => {
-    newChatModeRef.current = true;
+    setNewChatMode(true);
     setActiveSessionId(null);
   }, []);
 

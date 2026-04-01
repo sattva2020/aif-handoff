@@ -6,11 +6,10 @@ services:
       target: api
     ports:
       - "${PORT:-3009}:3009"
+    env_file: .env
     environment:
       - DATABASE_URL=/data/aif.sqlite
       - PORT=3009
-      - LOG_LEVEL=debug
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     volumes:
       - db-data:/data
       - ${PROJECTS_DIR:-./projects}:${PROJECTS_MOUNT:-/home/www}
@@ -33,12 +32,11 @@ services:
       context: .
       dockerfile: .docker/Dockerfile
       target: agent
+    env_file: .env
     environment:
       - DATABASE_URL=/data/aif.sqlite
       - API_BASE_URL=http://api:3009
       - AGENT_BYPASS_PERMISSIONS=true
-      - LOG_LEVEL=debug
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     volumes:
       - db-data:/data
       - ${PROJECTS_DIR:-./projects}:${PROJECTS_MOUNT:-/home/www}
@@ -54,11 +52,11 @@ services:
       target: mcp
     ports:
       - "${MCP_PORT:-3100}:3100"
+    env_file: .env
     environment:
       - DATABASE_URL=/data/aif.sqlite
       - MCP_TRANSPORT=http
       - MCP_PORT=3100
-      - LOG_LEVEL=debug
     volumes:
       - db-data:/data
       - ${PROJECTS_DIR:-./projects}:${PROJECTS_MOUNT:-/home/www}
