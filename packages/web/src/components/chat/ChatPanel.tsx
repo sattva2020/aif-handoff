@@ -3,6 +3,7 @@ import {
   useEffect,
   useState,
   useCallback,
+  memo,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import {
@@ -93,7 +94,7 @@ function CreateTaskCard({
   );
 }
 
-function MessageBubble({
+const MessageBubble = memo(function MessageBubble({
   message,
   projectId,
   onTaskCreated,
@@ -138,7 +139,7 @@ function MessageBubble({
       )}
     </>
   );
-}
+});
 
 function TypingIndicator({ hasAssistantMessage }: { hasAssistantMessage: boolean }) {
   return (
@@ -183,7 +184,7 @@ export function ChatPanel({ isOpen, projectId, taskId, onClose }: ChatPanelProps
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    messagesEndRef.current?.scrollIntoView({ behavior: isStreaming ? "auto" : "smooth" });
   }, [messages, isStreaming]);
 
   // Focus textarea when panel opens
@@ -265,12 +266,12 @@ export function ChatPanel({ isOpen, projectId, taskId, onClose }: ChatPanelProps
     <div
       ref={panelRef}
       className={cn(
-        "fixed bottom-0 left-0 z-[55] flex h-[calc(100vh-4rem)] w-[800px] flex-col",
-        "border-r border-border bg-background/90 backdrop-blur shadow-xl supports-[backdrop-filter]:bg-background/65",
+        "fixed bottom-0 left-0 z-[55] flex w-[800px] flex-col",
+        "border-r border-border bg-background",
         "transition-transform duration-300 ease-in-out",
         isOpen ? "translate-x-0" : "-translate-x-full",
       )}
-      style={{ top: "4rem" }}
+      style={{ top: "var(--header-height, 65px)" }}
     >
       {/* Header */}
       <div className="border-b border-border px-4 py-3">

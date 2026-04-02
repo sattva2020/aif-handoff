@@ -44,12 +44,8 @@ function Sheet({ open, onOpenChange, children }: SheetProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50" style={{ top: "4rem" }}>
-      <div
-        className="fixed inset-0 bg-black/85 backdrop-blur-[1px]"
-        style={{ top: "4rem" }}
-        onClick={() => onOpenChange(false)}
-      />
+    <div className="fixed inset-0 z-50">
+      <div className="fixed inset-0 bg-black/85" onClick={() => onOpenChange(false)} />
       {children}
     </div>
   );
@@ -59,10 +55,10 @@ function SheetContent({ className, children, ...props }: React.HTMLAttributes<HT
   return (
     <div
       className={cn(
-        "fixed right-0 bottom-0 z-50 w-full max-w-lg border-l border-border bg-card p-6 shadow-[0_0_0_1px_rgba(255,255,255,0.03)] transition-transform duration-200",
+        "fixed right-0 bottom-0 z-50 w-full max-w-lg border-l border-border bg-card p-6 transition-transform duration-200",
         className,
       )}
-      style={{ top: "4rem", ...props.style }}
+      style={{ top: "var(--header-height, 65px)", ...props.style }}
       {...props}
     >
       {children}

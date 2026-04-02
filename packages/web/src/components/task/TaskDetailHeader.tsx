@@ -85,9 +85,9 @@ export function TaskDetailHeader({
           <Badge
             className="text-[10px]"
             style={{
-              backgroundColor: STATUS_CONFIG[task.status].color + "20",
+              backgroundColor: `${STATUS_CONFIG[task.status].color}20`,
               color: STATUS_CONFIG[task.status].color,
-              borderColor: STATUS_CONFIG[task.status].color + "40",
+              borderColor: `${STATUS_CONFIG[task.status].color}40`,
             }}
           >
             {STATUS_CONFIG[task.status].label}

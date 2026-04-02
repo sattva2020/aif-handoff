@@ -22,9 +22,9 @@ describe("ChatBubble", () => {
     expect(onToggle).toHaveBeenCalledOnce();
   });
 
-  it("applies pulse-glow animation when closed", () => {
+  it("does not apply pulse-glow animation", () => {
     const { container } = render(<ChatBubble isOpen={false} onToggle={() => {}} />);
     const button = container.querySelector("button");
-    expect(button?.className).toContain("animate-pulse-glow");
+    expect(button?.className).not.toContain("animate-pulse-glow");
   });
 });

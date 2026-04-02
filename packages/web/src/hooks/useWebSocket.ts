@@ -35,6 +35,8 @@ export function useWebSocket() {
   const statusCacheRef = useRef<Map<string, TaskStatus>>(new Map());
   const intentionalCloseRef = useRef(false);
   const connectRef = useRef<() => void>(() => undefined);
+  const invalidateTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const pendingTaskIds = useRef<Set<string>>(new Set());
   const { settings } = useNotificationSettings();
 
   const findTaskStatusInCache = useCallback(
@@ -163,15 +165,18 @@ export function useWebSocket() {
         }
       }
 
-      // Invalidate tasks query to trigger refetch
-      queryClient.invalidateQueries({ queryKey: ["tasks"] });
-
-      // If task detail is open, also invalidate individual task
+      // Batch invalidation: debounce 150ms to coalesce rapid WS events
       if (hasIdPayload(data.payload)) {
-        queryClient.invalidateQueries({
-          queryKey: ["task", data.payload.id],
-        });
+        pendingTaskIds.current.add(data.payload.id);
       }
+      clearTimeout(invalidateTimer.current);
+      invalidateTimer.current = setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["tasks"] });
+        for (const id of pendingTaskIds.current) {
+          queryClient.invalidateQueries({ queryKey: ["task", id] });
+        }
+        pendingTaskIds.current.clear();
+      }, 150);
     };
 
     ws.onclose = () => {
@@ -198,6 +203,7 @@ export function useWebSocket() {
     connect();
     return () => {
       clearTimeout(reconnectTimer.current);
+      clearTimeout(invalidateTimer.current);
       const ws = wsRef.current;
       if (!ws) return;
 

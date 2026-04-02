@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Bell,
   Moon,
@@ -64,6 +64,15 @@ export function Header({
   onRoadmapImportComplete,
 }: Props) {
   const { theme, toggleTheme } = useTheme();
+  const headerRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el) return;
+    const h = `${el.offsetHeight}px`;
+    document.documentElement.style.setProperty("--header-height", h);
+  }, [density]);
+
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [metricsOpen, setMetricsOpen] = useState(false);
   const [roadmapOpen, setRoadmapOpen] = useState(false);
@@ -186,12 +195,8 @@ export function Header({
     };
   }, [selectedProject, onRoadmapImportComplete]);
 
-  const anyDialogOpen = settingsOpen || metricsOpen || roadmapOpen || globalSettingsOpen;
-
   return (
-    <header
-      className={`sticky top-0 z-60 border-b border-border ${anyDialogOpen ? "bg-background" : "bg-background/90 backdrop-blur supports-backdrop-filter:bg-background/65"}`}
-    >
+    <header ref={headerRef} className="sticky top-0 z-60 border-b border-border bg-background">
       <div
         className={`mx-auto flex w-full max-w-420 items-center ${isCompact ? "h-14 px-4 md:px-5" : "h-16 px-6 md:px-8"}`}
       >

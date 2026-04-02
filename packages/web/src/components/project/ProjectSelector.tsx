@@ -3,8 +3,19 @@ import { useQuery } from "@tanstack/react-query";
 import { FolderOpen, Plus, ChevronDown, Pencil, Trash2, Plug } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { useProjects, useCreateProject, useUpdateProject, useDeleteProject } from "@/hooks/useProjects";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  useProjects,
+  useCreateProject,
+  useUpdateProject,
+  useDeleteProject,
+} from "@/hooks/useProjects";
 import { api } from "@/lib/api";
 import type { Project } from "@aif/shared/browser";
 
@@ -64,13 +75,13 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
     setRootPath(p.rootPath);
     setPlannerMaxBudgetUsd(p.plannerMaxBudgetUsd == null ? "" : String(p.plannerMaxBudgetUsd));
     setPlanCheckerMaxBudgetUsd(
-      p.planCheckerMaxBudgetUsd == null ? "" : String(p.planCheckerMaxBudgetUsd)
+      p.planCheckerMaxBudgetUsd == null ? "" : String(p.planCheckerMaxBudgetUsd),
     );
     setImplementerMaxBudgetUsd(
-      p.implementerMaxBudgetUsd == null ? "" : String(p.implementerMaxBudgetUsd)
+      p.implementerMaxBudgetUsd == null ? "" : String(p.implementerMaxBudgetUsd),
     );
     setReviewSidecarMaxBudgetUsd(
-      p.reviewSidecarMaxBudgetUsd == null ? "" : String(p.reviewSidecarMaxBudgetUsd)
+      p.reviewSidecarMaxBudgetUsd == null ? "" : String(p.reviewSidecarMaxBudgetUsd),
     );
     setDropdownOpen(false);
     setDialogOpen(true);
@@ -89,7 +100,9 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !rootPath.trim()) return;
-    const parsedPlannerBudget = plannerMaxBudgetUsd.trim() ? Number(plannerMaxBudgetUsd) : undefined;
+    const parsedPlannerBudget = plannerMaxBudgetUsd.trim()
+      ? Number(plannerMaxBudgetUsd)
+      : undefined;
     const parsedPlanCheckerBudget = planCheckerMaxBudgetUsd.trim()
       ? Number(planCheckerMaxBudgetUsd)
       : undefined;
@@ -125,7 +138,7 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
             onSelect(project);
             setDialogOpen(false);
           },
-        }
+        },
       );
     } else if (editingId) {
       updateProject.mutate(
@@ -145,7 +158,7 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
             if (selectedId === editingId) onSelect(project);
             setDialogOpen(false);
           },
-        }
+        },
       );
     }
   };
@@ -191,7 +204,7 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
         </Button>
 
         {dropdownOpen && (
-          <div className="absolute left-0 top-full z-50 mt-2 min-w-[280px] border border-border bg-popover p-1.5 shadow-[0_8px_32px_rgba(0,0,0,0.45)]">
+          <div className="absolute left-0 top-full z-50 mt-2 min-w-[280px] border border-border bg-popover p-1.5">
             {projects?.map((p) => (
               <div
                 key={p.id}
@@ -207,9 +220,7 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
                   }}
                 >
                   <div className="font-medium tracking-tight">{p.name}</div>
-                  <div className="truncate text-[11px] text-muted-foreground">
-                    {p.rootPath}
-                  </div>
+                  <div className="truncate text-[11px] text-muted-foreground">{p.rootPath}</div>
                 </button>
                 <button
                   className="p-1.5 opacity-0 transition-opacity group-hover:opacity-70 hover:!opacity-100"
@@ -229,9 +240,7 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
             ))}
 
             {projects?.length === 0 && (
-              <div className="px-3 py-2 text-sm text-muted-foreground">
-                // no projects yet
-              </div>
+              <div className="px-3 py-2 text-sm text-muted-foreground">// no projects yet</div>
             )}
 
             <div className="mt-1 border-t border-border pt-1">
@@ -251,9 +260,7 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
         <DialogContent className="max-w-md">
           <DialogClose onClose={() => setDialogOpen(false)} />
           <DialogHeader>
-            <DialogTitle>
-              {dialogMode === "create" ? "Create Project" : "Edit Project"}
-            </DialogTitle>
+            <DialogTitle>{dialogMode === "create" ? "Create Project" : "Edit Project"}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>

@@ -36,14 +36,10 @@ function Dialog({ open, onOpenChange, children }: DialogProps) {
   if (!open || typeof document === "undefined") return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-50" style={{ top: "4rem" }}>
-      <div
-        className="fixed inset-0 bg-black/85 animate-in fade-in-0 backdrop-blur-[1px]"
-        style={{ top: "4rem" }}
-      />
+    <div className="fixed inset-0 z-50">
+      <div className="fixed inset-0 bg-black/85 animate-in fade-in-0" />
       <div
         className="fixed inset-0 flex items-center justify-center p-4"
-        style={{ top: "4rem" }}
         onMouseDown={(event) => {
           if (event.target === event.currentTarget) {
             onOpenChange(false);
@@ -61,7 +57,7 @@ function DialogContent({ className, children, ...props }: React.HTMLAttributes<H
   return (
     <div
       className={cn(
-        "relative z-50 w-full max-w-lg rounded-none border border-border bg-card p-6 shadow-[0_0_0_1px_rgba(255,255,255,0.03)] animate-in fade-in-0 zoom-in-95",
+        "relative z-50 w-full max-w-lg rounded-none border border-border bg-card p-6 animate-in fade-in-0 zoom-in-95",
         className,
       )}
       {...props}

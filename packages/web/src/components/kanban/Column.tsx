@@ -62,7 +62,7 @@ export function Column({
       }`}
     >
       <div
-        className={`sticky top-0 z-20 -mx-1 border-b border-border bg-card/70 px-1 backdrop-blur ${
+        className={`sticky top-0 z-20 -mx-1 border-b border-border bg-card px-1 ${
           isCompact ? "mb-2.5 pb-1.5" : "mb-3 pb-2"
         }`}
       >
@@ -87,7 +87,7 @@ export function Column({
           className={`${isCompact ? "h-[3px]" : "h-1"} overflow-hidden border border-border bg-secondary/60`}
         >
           <div
-            className="h-full transition-all duration-200"
+            className="h-full transition-[width] duration-200"
             style={{ width: `${share}%`, backgroundColor: config.color }}
           />
         </div>

@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Bot, Download, User } from "lucide-react";
 import { useTaskComments } from "@/hooks/useTasks";
 import { Markdown } from "@/components/ui/markdown";
@@ -14,6 +15,7 @@ function formatWhen(iso: string): string {
 
 export function TaskComments({ taskId }: TaskCommentsProps) {
   const { data: comments, isLoading } = useTaskComments(taskId);
+  const reversedComments = useMemo(() => (comments ? [...comments].reverse() : []), [comments]);
 
   if (isLoading) {
     return <div className="text-sm text-muted-foreground italic">Loading comments...</div>;
@@ -25,7 +27,7 @@ export function TaskComments({ taskId }: TaskCommentsProps) {
 
   return (
     <div className="space-y-3">
-      {[...comments].reverse().map((comment) => (
+      {reversedComments.map((comment) => (
         <div
           key={comment.id}
           className={`border p-3 ${

@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { STATUS_CONFIG, type Task } from "@aif/shared/browser";
 import { Badge } from "@/components/ui/badge";
 import { timeAgo } from "@/lib/utils";
@@ -28,7 +29,7 @@ export function TaskCard({ task, onClick, overlay, density = "comfortable" }: Ta
 
   if (overlay) {
     return (
-      <div className="w-80 rotate-1 border border-border bg-card p-3 shadow-[0_8px_32px_rgba(0,0,0,0.45)]">
+      <div className="w-80 rotate-1 border border-border bg-card p-3">
         <div className="text-sm font-medium tracking-tight">{task.title}</div>
       </div>
     );
@@ -37,20 +38,21 @@ export function TaskCard({ task, onClick, overlay, density = "comfortable" }: Ta
   return (
     <div
       onClick={onClick}
-      className={`group relative cursor-pointer overflow-hidden border border-border bg-card/95 transition duration-150 hover:-translate-y-0.5 ${
+      className={`group relative cursor-pointer overflow-hidden border border-border bg-card/95 transition-transform duration-150 hover:-translate-y-0.5 ${
         isCompact ? "p-2" : "p-3"
       }`}
+      style={{ "--status-color": STATUS_CONFIG[task.status].color } as CSSProperties}
     >
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 border opacity-0 transition-opacity duration-150 group-hover:opacity-60"
-        style={{ borderColor: STATUS_CONFIG[task.status].color }}
+        style={{ borderColor: `var(--status-color)` }}
       />
 
       <div
         aria-hidden
         className={`absolute inset-y-0 left-0 ${isCompact ? "w-1" : "w-1.5"}`}
-        style={{ backgroundColor: STATUS_CONFIG[task.status].color }}
+        style={{ backgroundColor: `var(--status-color)` }}
       />
 
       <div className={`flex items-start justify-between ${isCompact ? "gap-1.5" : "gap-2"}`}>
