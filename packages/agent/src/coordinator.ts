@@ -99,7 +99,11 @@ function updateTaskStatus(
   info: TaskNotificationInfo = {},
 ): void {
   updateTaskStatusRow(taskId, status, extra);
-  void notifyTaskBroadcast(taskId, "task:moved", { ...info, toStatus: status });
+  // When status didn't actually change (e.g. plan-checker: plan_ready → plan_ready),
+  // send WS broadcast (UI needs to refresh plan content) but skip Telegram notification.
+  const broadcastType =
+    info.fromStatus && info.fromStatus === status ? "task:updated" : "task:moved";
+  void notifyTaskBroadcast(taskId, broadcastType, { ...info, toStatus: status });
 }
 
 export async function pollAndProcess(): Promise<void> {

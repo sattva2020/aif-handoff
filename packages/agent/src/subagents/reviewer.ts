@@ -38,7 +38,12 @@ export async function runReviewer(taskId: string, projectRoot: string): Promise<
 
   log.info({ taskId, title: task.title, useSubagents }, "Starting review stage");
 
+  const scopeConstraint = `IMPORTANT: Your working directory is ${projectRoot}
+All file reads, searches, and analysis must stay within this directory. Do NOT navigate to parent directories or other projects.`;
+
   const reviewPromptBase = `Review the implementation for this task:
+
+${scopeConstraint}
 
 Title: ${task.title}
 Description: ${task.description}
@@ -51,6 +56,8 @@ ${task.implementationLog ?? "No implementation log available."}
 Review changed code for correctness, regression risks, performance, and maintainability.`;
 
   const securityPromptBase = `Audit the implementation for security risks:
+
+${scopeConstraint}
 
 Title: ${task.title}
 Description: ${task.description}

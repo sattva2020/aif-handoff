@@ -12,6 +12,7 @@ import type { ToolContext } from "./index.js";
 import { rateLimitError, toMcpError, validationError } from "../middleware/errorHandler.js";
 import { resolveConflict } from "../sync/conflictResolver.js";
 import { compactTaskResponse } from "../utils/compactResponse.js";
+import { broadcastTaskChange } from "../utils/broadcast.js";
 
 const log = logger("mcp:tool:sync-status");
 
@@ -43,6 +44,34 @@ export function register(server: McpServer, context: ToolContext): void {
         throw validationError(`Task not found: ${args.taskId}`, {
           taskId: ["Task does not exist"],
         });
+      }
+
+      // Guard: terminal statuses (done, verified) cannot be overwritten by sync.
+      // Only human events (request_changes, approve_done) can transition out of these.
+      if (row.status === "done" || row.status === "verified") {
+        log.warn(
+          {
+            taskId: args.taskId,
+            currentStatus: row.status,
+            requestedStatus: args.newStatus,
+            direction: args.direction,
+          },
+          "Rejecting sync: task is in terminal status, only human events can change it",
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({
+                applied: false,
+                conflict: false,
+                reason: `Task is in terminal status '${row.status}'. Use human events (request_changes, approve_done) to transition.`,
+                task: compactTaskResponse(toTaskResponse(row)),
+                lastSyncedAt: row.lastSyncedAt,
+              }),
+            },
+          ],
+        };
       }
 
       // If status is already the same, no-op
@@ -124,6 +153,12 @@ export function register(server: McpServer, context: ToolContext): void {
           },
           "Status sync applied",
         );
+
+        void broadcastTaskChange(args.taskId, "task:moved", {
+          title: row.title,
+          fromStatus: row.status,
+          toStatus: args.newStatus,
+        });
 
         return {
           content: [

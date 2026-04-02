@@ -14,8 +14,22 @@ export interface ConflictCheckInput {
  * Compares source timestamp against target (Handoff task's updatedAt).
  */
 export function resolveConflict(input: ConflictCheckInput): ConflictResolution {
-  const sourceTime = new Date(input.sourceTimestamp).getTime();
+  let sourceTime = new Date(input.sourceTimestamp).getTime();
   const targetTime = new Date(input.targetTimestamp).getTime();
+
+  // Guard: if sourceTimestamp is truly invalid (NaN or epoch zero — e.g. a midnight
+  // placeholder from an LLM that approximated "now"), fall back to server time.
+  // A merely-older-but-valid source timestamp should NOT trigger the fallback;
+  // instead the target should win the conflict normally.
+  const EPOCH_ZERO = 0;
+  if (Number.isNaN(sourceTime) || sourceTime === EPOCH_ZERO) {
+    const now = Date.now();
+    log.warn(
+      { ...input, fallbackNow: new Date(now).toISOString() },
+      "sourceTimestamp is invalid (NaN or epoch zero), using server time as fallback",
+    );
+    sourceTime = now;
+  }
 
   if (sourceTime >= targetTime) {
     log.debug({ ...input, winner: "source" }, "Conflict resolved: source wins");

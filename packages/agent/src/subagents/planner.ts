@@ -142,10 +142,17 @@ ${taskAttachmentsForPrompt}
 User comments and replanning feedback:
 ${commentsForPrompt}`;
   let prompt: string;
+  const handoffContext = `HANDOFF_MODE: 1\nHANDOFF_TASK_ID: ${taskId}`;
+  const scopeConstraint = `IMPORTANT: Your working directory is ${projectRoot}\nAll files must be created and modified inside this directory. Do NOT navigate to parent directories or other projects.`;
+
   if (task.isFix) {
-    prompt = buildFixCommandText(taskContext);
+    prompt = `${handoffContext}\n${scopeConstraint}\n\n${buildFixCommandText(taskContext)}`;
   } else if (useSubagents) {
     prompt = `Plan the implementation for the following task.
+
+${handoffContext}
+${scopeConstraint}
+
 Mode: ${plannerMode}, tests: ${planTests}, docs: ${planDocs}.
 Plan file: @${planPath}
 
@@ -154,7 +161,7 @@ ${taskContext}
 Create or refine an implementation-ready markdown checklist plan.
 Always write the final plan to @${planPath}.`;
   } else {
-    prompt = `/aif-plan ${plannerMode} @${planPath} docs:${planDocs} tests:${planTests}
+    prompt = `${handoffContext}\n${scopeConstraint}\n\n/aif-plan ${plannerMode} @${planPath} docs:${planDocs} tests:${planTests}
 
 ${taskContext}`;
   }

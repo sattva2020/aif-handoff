@@ -202,15 +202,40 @@ describe("MCP tools", () => {
       expect(result.winner).toBe("source");
     });
 
-    it("target wins when newer", () => {
+    it("older source timestamp loses to newer target", () => {
       const result = resolveConflict({
         sourceTimestamp: "2026-01-01T00:00:00.000Z",
         targetTimestamp: "2026-01-02T00:00:00.000Z",
         field: "status",
       });
+      // Older-but-valid source should lose — no fallback applied
       expect(result.applied).toBe(false);
       expect(result.conflict).toBe(true);
       expect(result.winner).toBe("target");
+    });
+
+    it("invalid NaN source timestamp gets server-time fallback and wins", () => {
+      const result = resolveConflict({
+        sourceTimestamp: "not-a-date",
+        targetTimestamp: "2026-01-02T00:00:00.000Z",
+        field: "status",
+      });
+      // NaN fallback: replaced with Date.now(), which is newer
+      expect(result.applied).toBe(true);
+      expect(result.conflict).toBe(false);
+      expect(result.winner).toBe("source");
+    });
+
+    it("epoch-zero source timestamp gets server-time fallback and wins", () => {
+      const result = resolveConflict({
+        sourceTimestamp: "1970-01-01T00:00:00.000Z",
+        targetTimestamp: "2026-01-02T00:00:00.000Z",
+        field: "status",
+      });
+      // Epoch-zero fallback: replaced with Date.now(), which is newer
+      expect(result.applied).toBe(true);
+      expect(result.conflict).toBe(false);
+      expect(result.winner).toBe("source");
     });
 
     it("source wins on equal timestamps", () => {
@@ -286,7 +311,7 @@ describe("MCP tools", () => {
       expect(updated!.paused).toBe(false);
     });
 
-    it("detects conflict when target is newer", () => {
+    it("older source timestamp in flow loses to newer target", () => {
       const task = seedTask();
       setTaskFields(task!.id, { updatedAt: "2026-01-02T00:00:00.000Z" });
 
@@ -295,6 +320,7 @@ describe("MCP tools", () => {
         targetTimestamp: "2026-01-02T00:00:00.000Z",
         field: "status",
       });
+      // Older-but-valid source loses — no fallback applied
       expect(resolution.conflict).toBe(true);
       expect(resolution.applied).toBe(false);
     });
