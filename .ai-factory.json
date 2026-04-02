@@ -1,5 +1,5 @@
 {
-  "version": "2.8.1",
+  "version": "2.9.1",
   "agents": [
     {
       "id": "claude",
@@ -29,34 +29,6 @@
         "aif-skill-generator",
         "aif-verify"
       ],
-      "subagentsDir": ".claude/agents",
-      "installedSubagents": [
-        "best-practices-sidecar.md",
-        "commit-preparer.md",
-        "docs-auditor.md",
-        "implement-coordinator.md",
-        "implement-worker.md",
-        "loop-critic.md",
-        "loop-evaluator.md",
-        "loop-invariant-prep.md",
-        "loop-orchestrator.md",
-        "loop-perf-prep.md",
-        "loop-planner.md",
-        "loop-producer.md",
-        "loop-refiner.md",
-        "loop-test-prep.md",
-        "plan-coordinator.md",
-        "plan-polisher.md",
-        "review-sidecar.md",
-        "security-sidecar.md"
-      ],
-      "mcp": {
-        "github": false,
-        "filesystem": false,
-        "postgres": false,
-        "chromeDevtools": false,
-        "playwright": true
-      },
       "managedSkills": {
         "aif": {
           "sourceHash": "1797e98dcbff84464d1648ea4bb7c5b72b45711badc81ce2cff1a4423773f4c7",
@@ -99,16 +71,16 @@
           "installedHash": "bf289d00626ede144455a2900abb3fde92118bbdc6d2e66f030d68da71a95ace"
         },
         "aif-fix": {
-          "sourceHash": "51619195ba5ea97a3356468bf7ef26e4b87749ddf0fe4b864b246fd29543bc6f",
-          "installedHash": "5a11dc246c91cfbbaed423ef7b60c5f7cfb0e22a0bdf5bb3bfbacf0d52d2002c"
+          "sourceHash": "c57f267b77b96fadc9a60d70087bd6738297c578137bdf7f6831c214d3bf4cf7",
+          "installedHash": "d6e76c90cba5e67fad46b4f7477e3642b91533ee613395b9b235f52931d3a3a9"
         },
         "aif-grounded": {
           "sourceHash": "96eb67434f47d51e655dc3923ca847231d1f80a5a91c75f91e9a509d31a50680",
           "installedHash": "11a25f6e08c468e798a77ee28f8ed62c881c2c161f02761d9cc54ed946ddcc9f"
         },
         "aif-implement": {
-          "sourceHash": "af5a97ec82f1d97b343393c7ccdf79012f1780c617fef4bbf4a421e6533dec81",
-          "installedHash": "10c6406f06cd7ad1f20b7337bf4eb8ce932583a73032c9799a29cacd14bc78da"
+          "sourceHash": "725c19765ca7240b302f2d470d94a9fc98d3272c5a0f7bbdf6390746f3ec25f3",
+          "installedHash": "07e743ed1a5d4aea66b5d2fe53b0234f9cb9368705666436c8d7164a311051fd"
         },
         "aif-improve": {
           "sourceHash": "bcad15befd3b623c16c3ab9829916c058378693c6c5c9b6b8411ebe7369dce2e",
@@ -119,8 +91,8 @@
           "installedHash": "688bfaee782bd10bf3bec648ca3e185a83038a340f95b19e512e044719cf504b"
         },
         "aif-plan": {
-          "sourceHash": "485178a31bb24ccb6b01b17a9c14bcd0639f6aef3a34b17869de565cfd20f091",
-          "installedHash": "80ba69bbc995c2047d626e174db8d7db7458ed2ae6ed81a58b4ea0d66523cd4f"
+          "sourceHash": "5e00438d8dc8368a8f1b46d4c845cd328657bd4d3f31beb368a78e0440ac93ef",
+          "installedHash": "6e8dfe59879df5553be491e4cb0d226cc7ca88751e7812201929112c9e13164c"
         },
         "aif-reference": {
           "sourceHash": "3a191dc096ecfe54c99862ff80752f4600b38c8fd162326843f0ab037ec9f83c",
@@ -151,6 +123,27 @@
           "installedHash": "02e4020d0a60f0f5fa8a893d5728cf4edb4d715e97f68e64907143daf669037f"
         }
       },
+      "subagentsDir": ".claude/agents",
+      "installedSubagents": [
+        "best-practices-sidecar.md",
+        "commit-preparer.md",
+        "docs-auditor.md",
+        "implement-coordinator.md",
+        "implement-worker.md",
+        "loop-critic.md",
+        "loop-evaluator.md",
+        "loop-invariant-prep.md",
+        "loop-orchestrator.md",
+        "loop-perf-prep.md",
+        "loop-planner.md",
+        "loop-producer.md",
+        "loop-refiner.md",
+        "loop-test-prep.md",
+        "plan-coordinator.md",
+        "plan-polisher.md",
+        "review-sidecar.md",
+        "security-sidecar.md"
+      ],
       "managedSubagents": {
         "best-practices-sidecar.md": {
           "sourceHash": "ff915b26a91645f8145418c354fdcef2ea4ecde3d7385204a2473ceceda7e513",
@@ -165,12 +158,12 @@
           "installedHash": "f71dd1b0a2e87995db15ca3c23f601a8b6cef8a189af27230552b08d693c5057"
         },
         "implement-coordinator.md": {
-          "sourceHash": "7696dd2a597b6c78e7fefca66e883169c9270fbfb169c7a4cbd9e581cdd9a4ca",
-          "installedHash": "7696dd2a597b6c78e7fefca66e883169c9270fbfb169c7a4cbd9e581cdd9a4ca"
+          "sourceHash": "5441235af6d019627fe5ee0a0e9d6429325c6cb609b649dfcaefe319b1433b01",
+          "installedHash": "5441235af6d019627fe5ee0a0e9d6429325c6cb609b649dfcaefe319b1433b01"
         },
         "implement-worker.md": {
-          "sourceHash": "e9edd5dbbc5cac96d1095cb4f15b0012f680713c82ebeac4045e3417f4e46c69",
-          "installedHash": "e9edd5dbbc5cac96d1095cb4f15b0012f680713c82ebeac4045e3417f4e46c69"
+          "sourceHash": "d35bb37c781f3a7cd06615c05aaf496c9a1c089cb52ec55516231dc8f703f3b8",
+          "installedHash": "d35bb37c781f3a7cd06615c05aaf496c9a1c089cb52ec55516231dc8f703f3b8"
         },
         "loop-critic.md": {
           "sourceHash": "92bd4234ccbc6bccd3270c63ae5dc64624b68152ca24f3cb54d9682f78faeea1",
@@ -209,12 +202,12 @@
           "installedHash": "f86d07fe3193f0c3e6adf280eee0ea1bb0196e982d16cf12dff947a292baa7ff"
         },
         "plan-coordinator.md": {
-          "sourceHash": "50167f1c6471008db19492fa972bd916c703079501b6d7230913b4dd97fca870",
-          "installedHash": "50167f1c6471008db19492fa972bd916c703079501b6d7230913b4dd97fca870"
+          "sourceHash": "5517792ef031858b101694271dd44ce18ef5b91596c19207ee91fd9dc00aca46",
+          "installedHash": "5517792ef031858b101694271dd44ce18ef5b91596c19207ee91fd9dc00aca46"
         },
         "plan-polisher.md": {
-          "sourceHash": "06185fcda855203d2ec54d98162efb1d021552b3e242614e9cb67a02af9faf32",
-          "installedHash": "06185fcda855203d2ec54d98162efb1d021552b3e242614e9cb67a02af9faf32"
+          "sourceHash": "834a1a9d7cd44930a0afef7392be0ceef1e6dfda49cd7721307d66656cdc88e9",
+          "installedHash": "834a1a9d7cd44930a0afef7392be0ceef1e6dfda49cd7721307d66656cdc88e9"
         },
         "review-sidecar.md": {
           "sourceHash": "bd6cb7314062c6569f80bca8cea040e53cf7292f710a2b8e24e833d7b019ae4f",
@@ -224,6 +217,13 @@
           "sourceHash": "e4a3ac8fb185a9530331b9732bf81f131847eb16d7692ef1ffe56ee0daf230de",
           "installedHash": "e4a3ac8fb185a9530331b9732bf81f131847eb16d7692ef1ffe56ee0daf230de"
         }
+      },
+      "mcp": {
+        "github": false,
+        "filesystem": false,
+        "postgres": false,
+        "chromeDevtools": false,
+        "playwright": true
       }
     },
     {
@@ -254,13 +254,6 @@
         "aif-skill-generator",
         "aif-verify"
       ],
-      "mcp": {
-        "github": false,
-        "filesystem": false,
-        "postgres": false,
-        "chromeDevtools": false,
-        "playwright": false
-      },
       "managedSkills": {
         "aif": {
           "sourceHash": "1797e98dcbff84464d1648ea4bb7c5b72b45711badc81ce2cff1a4423773f4c7",
@@ -303,16 +296,16 @@
           "installedHash": "b9adc1c8611f716e6c6d6439266b6f41fb796fff4e459a72c69b190982b5172e"
         },
         "aif-fix": {
-          "sourceHash": "51619195ba5ea97a3356468bf7ef26e4b87749ddf0fe4b864b246fd29543bc6f",
-          "installedHash": "cf50d02685955dcc2f828cc7718df0c7c5a16a242a23cbd0aa7ab821d1701772"
+          "sourceHash": "c57f267b77b96fadc9a60d70087bd6738297c578137bdf7f6831c214d3bf4cf7",
+          "installedHash": "510d300f983fa8605da840f864f6d37b82381be30004bec19df4bc1b4344f30a"
         },
         "aif-grounded": {
           "sourceHash": "96eb67434f47d51e655dc3923ca847231d1f80a5a91c75f91e9a509d31a50680",
           "installedHash": "29d4b5cb4ddb8ae44e69a8cac8db561baed8c16872a74f8f516acb2fdb199db7"
         },
         "aif-implement": {
-          "sourceHash": "af5a97ec82f1d97b343393c7ccdf79012f1780c617fef4bbf4a421e6533dec81",
-          "installedHash": "6e49ef2d48edbe598a1f162a8ce2cde94b644a9d0b9bbdc17a602e81574dc8c6"
+          "sourceHash": "725c19765ca7240b302f2d470d94a9fc98d3272c5a0f7bbdf6390746f3ec25f3",
+          "installedHash": "39b4252d9da2371f80523cd70ec04eb6f9929431352713262744cacfef3d9d6e"
         },
         "aif-improve": {
           "sourceHash": "bcad15befd3b623c16c3ab9829916c058378693c6c5c9b6b8411ebe7369dce2e",
@@ -323,8 +316,8 @@
           "installedHash": "679f31ab7465ec92d4957d6fb9ba12a14dea131aee73258fff33f57e80c54eb5"
         },
         "aif-plan": {
-          "sourceHash": "485178a31bb24ccb6b01b17a9c14bcd0639f6aef3a34b17869de565cfd20f091",
-          "installedHash": "881dc1aa7866cd061fe951a7edc97a30f01cd941de6dd73c05739d3a69af2ca2"
+          "sourceHash": "5e00438d8dc8368a8f1b46d4c845cd328657bd4d3f31beb368a78e0440ac93ef",
+          "installedHash": "bcd9abc236bd3bef42edf9bcd87107b6757a0138bc0f6dea5d707d6f82324025"
         },
         "aif-reference": {
           "sourceHash": "3a191dc096ecfe54c99862ff80752f4600b38c8fd162326843f0ab037ec9f83c",
@@ -354,6 +347,15 @@
           "sourceHash": "e11b397ea6c5ab5fcf430e45d3f24246ec40691ea2e7b2f1b0f3a0d5db023afb",
           "installedHash": "b351f4a5564ee6fbba6e17fe8554053ae0c8a3d78ff423d7ca47438db75ba044"
         }
+      },
+      "installedSubagents": [],
+      "managedSubagents": {},
+      "mcp": {
+        "github": false,
+        "filesystem": false,
+        "postgres": false,
+        "chromeDevtools": false,
+        "playwright": false
       }
     }
   ],
