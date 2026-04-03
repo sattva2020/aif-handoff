@@ -8,6 +8,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
+- **Per-project parallel task execution** — coordinator processes multiple tasks concurrently for projects with "Parallel Execution" enabled; non-parallel projects unchanged (1 task at a time)
+- Lease-based task claiming with `lockedBy`/`lockedUntil` columns and atomic UPDATE pattern
+- Global concurrency cap (`COORDINATOR_MAX_CONCURRENT_TASKS`, default 3) across all stages and projects
+- Heartbeat-based lock renewal — locks stay alive as long as the agent process is running
+- Stale claim recovery — expired TTL or dead heartbeat auto-releases orphaned locks
+- Graceful shutdown lock release on SIGINT/SIGTERM
+- Per-stage semaphore with global total-active limit
+- API validation: parallel projects force `plannerMode=full`, reject `fast` with 400
+- UI: mode selector and plan path locked in parallel mode (AddTaskForm + TaskSettings)
+- Real-time agent activity broadcast via WebSocket
+- Auto-commit on task approval (`/aif-commit` integration)
+- File attachment support in chat with disk persistence and download
+- Open Task button after task creation in chat
+- Inline SVG logo supporting dark/light themes
+- Highlighted agent activity cards in timeline
+- Chat message markdown rendering for user messages
 - Dynamic full mode plan path for flexible planning workflows
 - YAML-based configuration support
 - Telegram notifications on task status changes (best-effort, with stage-aware transitions)
@@ -31,6 +47,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Fixed
 
+- Sheet portal rendering and dialog overflow on small viewports
+- Auto-focus chat input on new session creation
+- Hide empty message bubble when response is only an action block
+- Per-session streaming state and stricter task creation prompt
+- Handoff sync: inline MCP instructions, conflict resolver fallback, terminal status guard
+- Bidirectional aif-plan sync problems
+- Chat cosmetics and z-index layering
+- Web env loading
 - Telegram: use `stage.inProgress` as `fromStatus` for post-stage notifications
 - Telegram: skip notifications when status doesn't actually change
 - MCP: return compact responses from mutation tools to reduce context usage
