@@ -19,27 +19,3 @@ export function Section({
     </div>
   );
 }
-
-export function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      className={`border px-2 py-1 text-[10px] transition-colors ${
-        active
-          ? "border-primary/40 bg-primary/15 text-primary"
-          : "border-border bg-background/50 text-muted-foreground hover:bg-background"
-      }`}
-      onClick={onClick}
-      type="button"
-    >
-      {children}
-    </button>
-  );
-}

@@ -5,7 +5,7 @@ import { SheetHeader, SheetTitle, SheetClose } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatTokenCount, formatUsd } from "@/lib/formatters";
-import { TabButton } from "./Section";
+import { Tabs } from "@/components/ui/tabs";
 
 export type TaskDetailTab = "implementation" | "review" | "comments" | "activity";
 
@@ -178,23 +178,17 @@ export function TaskDetailHeader({
         </div>
       )}
 
-      <div className="mt-3 flex flex-wrap gap-2 border border-border bg-background/55 p-2">
-        <TabButton
-          active={activeTab === "implementation"}
-          onClick={() => onTabChange("implementation")}
-        >
-          Implementation
-        </TabButton>
-        <TabButton active={activeTab === "review"} onClick={() => onTabChange("review")}>
-          Review
-        </TabButton>
-        <TabButton active={activeTab === "comments"} onClick={() => onTabChange("comments")}>
-          Comments
-        </TabButton>
-        <TabButton active={activeTab === "activity"} onClick={() => onTabChange("activity")}>
-          Activity
-        </TabButton>
-      </div>
+      <Tabs
+        className="mt-3 border border-border bg-background/55 p-2"
+        items={[
+          { value: "implementation", label: "Implementation" },
+          { value: "review", label: "Review" },
+          { value: "comments", label: "Comments" },
+          { value: "activity", label: "Activity" },
+        ]}
+        value={activeTab}
+        onValueChange={(v) => onTabChange(v as TaskDetailTab)}
+      />
     </div>
   );
 }
