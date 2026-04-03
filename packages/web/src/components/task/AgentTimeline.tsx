@@ -5,8 +5,8 @@ interface AgentTimelineProps {
   activityLog: string | null;
 }
 
-type ActivityKind = "tool" | "error" | "info";
-type ActivityFilter = "all" | "tool" | "error";
+type ActivityKind = "tool" | "error" | "agent" | "info";
+type ActivityFilter = "all" | "tool" | "error" | "agent";
 
 interface ParsedEntry {
   raw: string;
@@ -34,8 +34,9 @@ function parseEntry(line: string): ParsedEntry {
   }
 
   const lower = content.toLowerCase();
-  const kind: ActivityKind =
-    lower.includes("failed") || lower.includes("error") ? "error" : "info";
+  const isAgent = lower.includes("agent") || lower.includes("subagent");
+  const isError = lower.includes("failed") || lower.includes("error");
+  const kind: ActivityKind = isError ? "error" : isAgent ? "agent" : "info";
 
   return {
     raw: line,
@@ -51,6 +52,11 @@ function kindBadge(kind: ActivityKind): { label: string; className: string } {
       return {
         label: "TOOL",
         className: "border-cyan-500/35 bg-cyan-500/10 text-cyan-300",
+      };
+    case "agent":
+      return {
+        label: "AGENT",
+        className: "border-violet-500/35 bg-violet-500/10 text-violet-300",
       };
     case "error":
       return {
@@ -69,11 +75,8 @@ export function AgentTimeline({ activityLog }: AgentTimelineProps) {
   const [filter, setFilter] = useState<ActivityFilter>("all");
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const entries = useMemo(
-    () =>
-      (activityLog ?? "")
-        .split("\n")
-        .filter((line) => line.trim().length > 0),
-    [activityLog]
+    () => (activityLog ?? "").split("\n").filter((line) => line.trim().length > 0),
+    [activityLog],
   );
   const parsedEntries = useMemo(() => entries.map((entry) => parseEntry(entry)), [entries]);
   const visibleEntries = useMemo(
@@ -82,7 +85,7 @@ export function AgentTimeline({ activityLog }: AgentTimelineProps) {
         if (filter === "all") return true;
         return entry.kind === filter;
       }),
-    [filter, parsedEntries]
+    [filter, parsedEntries],
   );
 
   useEffect(() => {
@@ -92,51 +95,63 @@ export function AgentTimeline({ activityLog }: AgentTimelineProps) {
   }, [activityLog, filter]);
 
   if (!activityLog) {
-    return (
-      <div className="text-sm text-muted-foreground italic">
-        No agent activity yet
-      </div>
-    );
+    return <div className="text-sm text-muted-foreground italic">No agent activity yet</div>;
   }
 
   return (
     <div className="border border-border bg-secondary/35 p-3">
       <div className="mb-2 flex items-center gap-2">
         <FilterButton label="All" active={filter === "all"} onClick={() => setFilter("all")} />
+        <FilterButton
+          label="Agents"
+          active={filter === "agent"}
+          onClick={() => setFilter("agent")}
+        />
         <FilterButton label="Tools" active={filter === "tool"} onClick={() => setFilter("tool")} />
-        <FilterButton label="Errors" active={filter === "error"} onClick={() => setFilter("error")} />
+        <FilterButton
+          label="Errors"
+          active={filter === "error"}
+          onClick={() => setFilter("error")}
+        />
         <span className="ml-auto text-[10px] text-muted-foreground">{visibleEntries.length}</span>
       </div>
 
       <div ref={scrollRef} className="max-h-64 space-y-2 overflow-y-auto">
-      {visibleEntries.map((parsed, i) => {
-        const badge = kindBadge(parsed.kind);
+        {visibleEntries.map((parsed, i) => {
+          const badge = kindBadge(parsed.kind);
 
-        return (
-          <div key={i} className="border border-border bg-background/60 p-2 text-xs">
-            <div className="mb-1 flex items-center gap-2">
-              <Bot className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-              <span className={`inline-flex border px-1.5 py-0.5 text-[10px] ${badge.className}`}>
-                {badge.label}
-              </span>
-              {parsed.timestamp && (
-                <span className="ml-auto text-[10px] text-muted-foreground font-mono">
-                  {parsed.timestamp}
+          return (
+            <div
+              key={i}
+              className={`border p-2 text-xs ${
+                parsed.kind === "agent"
+                  ? "border-violet-500/30 bg-violet-500/5"
+                  : "border-border bg-background/60"
+              }`}
+            >
+              <div className="mb-1 flex items-center gap-2">
+                <Bot className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <span className={`inline-flex border px-1.5 py-0.5 text-[10px] ${badge.className}`}>
+                  {badge.label}
                 </span>
-              )}
+                {parsed.timestamp && (
+                  <span className="ml-auto text-[10px] text-muted-foreground font-mono">
+                    {parsed.timestamp}
+                  </span>
+                )}
+              </div>
+              <div className="font-mono text-foreground/80">
+                {parsed.toolName ? (
+                  <>
+                    <span className="text-muted-foreground">Tool:</span> {parsed.toolName}
+                  </>
+                ) : (
+                  parsed.message
+                )}
+              </div>
             </div>
-            <div className="font-mono text-foreground/80">
-              {parsed.toolName ? (
-                <>
-                  <span className="text-muted-foreground">Tool:</span> {parsed.toolName}
-                </>
-              ) : (
-                parsed.message
-              )}
-            </div>
-          </div>
-        );
-      })}
+          );
+        })}
       </div>
     </div>
   );

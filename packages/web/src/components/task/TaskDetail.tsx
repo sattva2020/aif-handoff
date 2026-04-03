@@ -32,7 +32,7 @@ export function TaskDetail({ taskId, onClose }: TaskDetailProps) {
   return (
     <>
       <Sheet open={!!taskId} onOpenChange={() => onClose()}>
-        <SheetContent className="h-full w-full overflow-hidden p-0 md:w-[88vw] md:max-w-none">
+        <SheetContent className="w-full overflow-hidden p-0 md:w-[88vw] md:max-w-none">
           {task && (
             <div className="flex h-full flex-col">
               <TaskDetailHeader

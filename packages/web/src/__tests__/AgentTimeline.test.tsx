@@ -11,8 +11,10 @@ describe("AgentTimeline", () => {
   it("renders parsed tool entries with TOOL badge", () => {
     render(
       <AgentTimeline
-        activityLog={"[2026-01-01T10:00:00.000Z] Tool: Read\n[2026-01-01T10:00:01.000Z] Tool: Write"}
-      />
+        activityLog={
+          "[2026-01-01T10:00:00.000Z] Tool: Read\n[2026-01-01T10:00:01.000Z] Tool: Write"
+        }
+      />,
     );
 
     expect(screen.getAllByText("TOOL")).toHaveLength(2);
@@ -22,9 +24,7 @@ describe("AgentTimeline", () => {
 
   it("renders error entries with ERROR badge", () => {
     render(
-      <AgentTimeline
-        activityLog={"[2026-01-01T10:00:02.000Z] Planning failed: rate limit"}
-      />
+      <AgentTimeline activityLog={"[2026-01-01T10:00:02.000Z] Planning failed: rate limit"} />,
     );
 
     expect(screen.getByText("ERROR")).toBeDefined();
@@ -39,12 +39,43 @@ describe("AgentTimeline", () => {
           "[2026-01-01T10:00:01.000Z] Planning failed: rate limit\n" +
           "[2026-01-01T10:00:02.000Z] Implementation complete"
         }
-      />
+      />,
     );
 
     fireEvent.click(screen.getByText("Tools"));
     expect(screen.getByText("Read")).toBeDefined();
     expect(screen.queryByText("Planning failed: rate limit")).toBeNull();
+    expect(screen.queryByText("Implementation complete")).toBeNull();
+  });
+
+  it("renders agent entries with AGENT badge and violet styling", () => {
+    render(
+      <AgentTimeline
+        activityLog={
+          "[2026-01-01T10:00:00.000Z] Agent started planning\n[2026-01-01T10:00:01.000Z] Subagent completed review"
+        }
+      />,
+    );
+
+    expect(screen.getAllByText("AGENT")).toHaveLength(2);
+    expect(screen.getByText("Agent started planning")).toBeDefined();
+    expect(screen.getByText("Subagent completed review")).toBeDefined();
+  });
+
+  it("filters entries by Agents", () => {
+    render(
+      <AgentTimeline
+        activityLog={
+          "[2026-01-01T10:00:00.000Z] Tool: Read\n" +
+          "[2026-01-01T10:00:01.000Z] Agent started planning\n" +
+          "[2026-01-01T10:00:02.000Z] Implementation complete"
+        }
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Agents"));
+    expect(screen.getByText("Agent started planning")).toBeDefined();
+    expect(screen.queryByText("Read")).toBeNull();
     expect(screen.queryByText("Implementation complete")).toBeNull();
   });
 
@@ -55,7 +86,7 @@ describe("AgentTimeline", () => {
           "[2026-01-01T10:00:00.000Z] Tool: Read\n" +
           "[2026-01-01T10:00:01.000Z] Planning failed: rate limit"
         }
-      />
+      />,
     );
 
     fireEvent.click(screen.getByText("Errors"));

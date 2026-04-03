@@ -532,7 +532,7 @@ describe("TaskDetail", () => {
   });
 
   it("should upload task attachment and call update mutation", async () => {
-    const { container } = render(<TaskDetail taskId="detail-1" onClose={vi.fn()} />, {
+    render(<TaskDetail taskId="detail-1" onClose={vi.fn()} />, {
       wrapper: Wrapper,
     });
 
