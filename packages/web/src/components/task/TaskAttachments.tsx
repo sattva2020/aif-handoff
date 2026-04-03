@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Download } from "lucide-react";
+import { Download } from "lucide-react";
 import type { TaskCommentAttachment } from "@aif/shared/browser";
 import { Button } from "@/components/ui/button";
+import { ToggleButton } from "@/components/ui/toggle-button";
 
 interface TaskAttachmentsProps {
   taskId: string;
@@ -27,14 +28,9 @@ export function TaskAttachments({
 
   return (
     <div className="space-y-3">
-      <button
-        type="button"
-        className="inline-flex items-center gap-1 border border-border bg-background/60 px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
-        onClick={() => setExpanded((prev) => !prev)}
-      >
-        {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+      <ToggleButton expanded={expanded} onClick={() => setExpanded((prev) => !prev)}>
         {expanded ? "Hide attachments" : `Show attachments (${attachments.length})`}
-      </button>
+      </ToggleButton>
 
       {expanded && (
         <>

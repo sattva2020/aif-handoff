@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Bot } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FilterButton } from "@/components/ui/filter-button";
 
 interface AgentTimelineProps {
   activityLog: string | null;
@@ -102,18 +103,18 @@ export function AgentTimeline({ activityLog }: AgentTimelineProps) {
   return (
     <div className="border border-border bg-secondary/35 p-3">
       <div className="mb-2 flex items-center gap-2">
-        <FilterButton label="All" active={filter === "all"} onClick={() => setFilter("all")} />
-        <FilterButton
-          label="Agents"
-          active={filter === "agent"}
-          onClick={() => setFilter("agent")}
-        />
-        <FilterButton label="Tools" active={filter === "tool"} onClick={() => setFilter("tool")} />
-        <FilterButton
-          label="Errors"
-          active={filter === "error"}
-          onClick={() => setFilter("error")}
-        />
+        <FilterButton size="sm" active={filter === "all"} onClick={() => setFilter("all")}>
+          All
+        </FilterButton>
+        <FilterButton size="sm" active={filter === "agent"} onClick={() => setFilter("agent")}>
+          Agents
+        </FilterButton>
+        <FilterButton size="sm" active={filter === "tool"} onClick={() => setFilter("tool")}>
+          Tools
+        </FilterButton>
+        <FilterButton size="sm" active={filter === "error"} onClick={() => setFilter("error")}>
+          Errors
+        </FilterButton>
         <span className="ml-auto text-[10px] text-muted-foreground">{visibleEntries.length}</span>
       </div>
 
@@ -155,29 +156,5 @@ export function AgentTimeline({ activityLog }: AgentTimelineProps) {
         })}
       </div>
     </div>
-  );
-}
-
-function FilterButton({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      className={`border px-2 py-0.5 text-[10px] transition-colors ${
-        active
-          ? "border-primary/40 bg-primary/15 text-primary"
-          : "border-border bg-background/50 text-muted-foreground hover:bg-background"
-      }`}
-      onClick={onClick}
-      type="button"
-    >
-      {label}
-    </button>
   );
 }
