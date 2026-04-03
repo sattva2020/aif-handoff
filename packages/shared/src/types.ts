@@ -196,7 +196,8 @@ export type WsEventType =
   | "sync:task_created"
   | "sync:task_updated"
   | "sync:status_changed"
-  | "sync:plan_pushed";
+  | "sync:plan_pushed"
+  | "task:activity";
 
 export interface RoadmapCompletePayload {
   projectId: string;

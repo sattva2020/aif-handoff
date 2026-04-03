@@ -1,6 +1,7 @@
 import { appendTaskActivityLog } from "@aif/data";
 import { logger, findMonorepoRootFromUrl, getEnv, findClaudePath } from "@aif/shared";
 import type { HookCallback } from "@anthropic-ai/claude-agent-sdk";
+import { notifyTaskBroadcast } from "./notifier.js";
 
 const log = logger("agent-hooks");
 
@@ -40,9 +41,10 @@ const taskQueues = new Map<string, QueueEntry[]>();
 /** Per-task flush timer handles. */
 const flushTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-/** Append new log lines to a task's agentActivityLog in the database. */
+/** Append new log lines to a task's agentActivityLog in the database and broadcast to UI. */
 function appendActivityLogToDb(taskId: string, newLines: string): void {
   appendTaskActivityLog(taskId, newLines);
+  void notifyTaskBroadcast(taskId, "task:activity");
 }
 
 /**

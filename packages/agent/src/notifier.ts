@@ -2,7 +2,7 @@ import { logger, getEnv, sendTelegramNotification } from "@aif/shared";
 
 const log = logger("agent-notifier");
 
-type BroadcastType = "task:updated" | "task:moved";
+type BroadcastType = "task:updated" | "task:moved" | "task:activity";
 
 export interface TaskNotificationInfo {
   title?: string;
@@ -39,7 +39,9 @@ export async function notifyTaskBroadcast(
   }
 
   // Best-effort Telegram notification — fire and forget.
+  // Skip Telegram for activity-only broadcasts (too noisy).
   // Skip when status didn't actually change (e.g. implementing → implementing).
+  if (type === "task:activity") return;
   if (type === "task:moved" && (!info.fromStatus || info.fromStatus !== info.toStatus)) {
     void sendTelegramNotification({
       taskId,

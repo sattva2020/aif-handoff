@@ -89,7 +89,7 @@ export const reorderTaskSchema = z.object({
 });
 
 export const broadcastTaskSchema = z.object({
-  type: z.enum(["task:updated", "task:moved"]).default("task:updated"),
+  type: z.enum(["task:updated", "task:moved", "task:activity"]).default("task:updated"),
 });
 
 export const roadmapImportSchema = z.object({

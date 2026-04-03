@@ -142,6 +142,12 @@ export function useWebSocket() {
         }
       }
 
+      // Activity-only update: refresh task detail without touching the board list
+      if (data.type === "task:activity" && hasIdPayload(data.payload)) {
+        queryClient.invalidateQueries({ queryKey: ["task", data.payload.id] });
+        return;
+      }
+
       if (data.type === "task:deleted" && hasIdPayload(data.payload)) {
         statusCacheRef.current.delete(data.payload.id);
         // Remove the individual task query from cache instead of invalidating
