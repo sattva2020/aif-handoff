@@ -1,4 +1,5 @@
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { X } from "lucide-react";
 import {
@@ -43,11 +44,12 @@ function Sheet({ open, onOpenChange, children }: SheetProps) {
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50">
       <div className="fixed inset-0 bg-black/85" onClick={() => onOpenChange(false)} />
       {children}
-    </div>
+    </div>,
+    document.body,
   );
 }
 

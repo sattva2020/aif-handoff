@@ -48,7 +48,7 @@ function Dialog({ open, onOpenChange, children }: DialogProps) {
     <div className="fixed inset-0 z-50">
       <div className="fixed inset-0 bg-black/85 animate-in fade-in-0" />
       <div
-        className="fixed inset-0 flex items-center justify-center p-4"
+        className="fixed inset-0 flex items-start justify-center overflow-y-auto p-4 pt-[10vh]"
         onMouseDown={(event) => {
           if (event.target === event.currentTarget) {
             onOpenChange(false);

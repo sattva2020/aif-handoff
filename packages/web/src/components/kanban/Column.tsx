@@ -62,9 +62,7 @@ export function Column({
       }`}
     >
       <div
-        className={`sticky top-0 z-20 -mx-1 border-b border-border bg-card px-1 ${
-          isCompact ? "mb-2.5 pb-1.5" : "mb-3 pb-2"
-        }`}
+        className={`-mx-1 border-b border-border px-1 ${isCompact ? "mb-2.5 pb-1.5" : "mb-3 pb-2"}`}
       >
         <div className={`flex items-center gap-2 ${isCompact ? "mb-1.5" : "mb-2"}`}>
           <div
