@@ -522,7 +522,7 @@ describe("TaskDetail", () => {
   it("should render review comments in review tab", () => {
     render(<TaskDetail taskId="detail-review" onClose={vi.fn()} />, { wrapper: Wrapper });
 
-    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Review" }));
     expect(screen.getByText("Looks good after minor cleanup")).toBeDefined();
   });
 
@@ -570,7 +570,7 @@ describe("TaskDetail", () => {
     render(<TaskDetail taskId="detail-with-attachment" onClose={vi.fn()} />, { wrapper: Wrapper });
 
     fireEvent.click(screen.getByText("Show attachments (1)"));
-    fireEvent.click(screen.getByText("Remove"));
+    fireEvent.click(screen.getByLabelText("Remove old.txt"));
 
     expect(mutateUpdateTask).toHaveBeenCalledWith({
       id: "detail-with-attachment",

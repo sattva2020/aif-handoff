@@ -1,7 +1,9 @@
 import { useMemo } from "react";
-import { Bot, Download, User } from "lucide-react";
+import { Download } from "lucide-react";
 import { useTaskComments } from "@/hooks/useTasks";
 import { Markdown } from "@/components/ui/markdown";
+import { EmptyState } from "@/components/ui/empty-state";
+import { AuthorBadge } from "@/components/ui/author-badge";
 
 interface TaskCommentsProps {
   taskId: string;
@@ -18,11 +20,11 @@ export function TaskComments({ taskId }: TaskCommentsProps) {
   const reversedComments = useMemo(() => (comments ? [...comments].reverse() : []), [comments]);
 
   if (isLoading) {
-    return <div className="text-sm text-muted-foreground italic">Loading comments...</div>;
+    return <EmptyState message="Loading comments..." />;
   }
 
   if (!comments || comments.length === 0) {
-    return <div className="text-sm text-muted-foreground italic">No comments yet</div>;
+    return <EmptyState message="No comments yet" />;
   }
 
   return (
@@ -36,25 +38,14 @@ export function TaskComments({ taskId }: TaskCommentsProps) {
               : "border-violet-500/30 bg-violet-500/5"
           }`}
         >
-          <div className="mb-2 flex items-center justify-between text-[11px] text-muted-foreground">
-            <span
-              className={`flex items-center gap-1.5 ${
-                comment.author === "human" ? "text-blue-400" : "text-violet-400"
-              }`}
-            >
-              {comment.author === "human" ? (
-                <User className="h-3.5 w-3.5" />
-              ) : (
-                <Bot className="h-3.5 w-3.5" />
-              )}
-              {comment.author === "human" ? "Human" : "Agent"}
-            </span>
+          <div className="mb-2 flex items-center justify-between text-2xs text-muted-foreground">
+            <AuthorBadge author={comment.author} />
             <span>{formatWhen(comment.createdAt)}</span>
           </div>
           <Markdown content={comment.message} className="text-sm text-foreground/90" />
           {comment.attachments.length > 0 && (
             <div className="mt-3 border-t border-border pt-2">
-              <p className="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+              <p className="mb-1 text-2xs uppercase tracking-wide text-muted-foreground">
                 Attachments
               </p>
               <ul className="space-y-1 text-xs text-foreground/80">
@@ -66,9 +57,7 @@ export function TaskComments({ taskId }: TaskCommentsProps) {
                     <span className="truncate">
                       {file.name} ({file.mimeType || "unknown"}, {file.size} bytes)
                       {file.content == null && !file.path && (
-                        <span className="ml-1 text-[10px] text-muted-foreground">
-                          (metadata only)
-                        </span>
+                        <span className="ml-1 text-3xs text-muted-foreground">(metadata only)</span>
                       )}
                     </span>
                     {file.path && (

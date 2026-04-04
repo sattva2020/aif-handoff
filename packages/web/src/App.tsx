@@ -9,6 +9,7 @@ import { useProjects } from "./hooks/useProjects";
 import { useTasks } from "./hooks/useTasks";
 import { useTheme } from "./hooks/useTheme";
 import { useAgentReadiness } from "./hooks/useSettings";
+import { useKeyboardShortcut } from "./hooks/useKeyboardShortcut";
 import { ChatBubble } from "./components/chat/ChatBubble";
 import { ChatPanel } from "./components/chat/ChatPanel";
 import { Button } from "./components/ui/button";
@@ -107,22 +108,13 @@ function AppContent() {
     return () => window.removeEventListener("popstate", onPopState);
   }, [projects]);
 
-  useEffect(() => {
-    const handler = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.code === "KeyK") {
-        event.preventDefault();
-        setCommandOpen((prev) => !prev);
-      }
-      if ((event.metaKey || event.ctrlKey) && event.code === "KeyN") {
-        event.preventDefault();
-        // Dispatch custom event to trigger task creation
-        window.dispatchEvent(new CustomEvent("task:create"));
-      }
-    };
-
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, []);
+  const toggleCommandPalette = useCallback(() => setCommandOpen((prev) => !prev), []);
+  const dispatchCreateTask = useCallback(
+    () => window.dispatchEvent(new CustomEvent("task:create")),
+    [],
+  );
+  useKeyboardShortcut({ key: "KeyK", meta: true }, toggleCommandPalette);
+  useKeyboardShortcut({ key: "KeyN", meta: true }, dispatchCreateTask);
 
   const handleSelectProject = useCallback((p: Project) => {
     setProject(p);

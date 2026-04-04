@@ -1,11 +1,14 @@
 import type { Task, TaskEvent, TaskStatus } from "@aif/shared/browser";
 import { STATUS_CONFIG } from "@aif/shared/browser";
+import { statusColorStyle } from "@/hooks/useStatusColor";
 import { Pause, Play } from "lucide-react";
 import { SheetHeader, SheetTitle, SheetClose } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
+import { TaskTagsList } from "@/components/ui/task-tags-list";
 import { Button } from "@/components/ui/button";
 import { formatTokenCount, formatUsd } from "@/lib/formatters";
-import { TabButton } from "./Section";
+import { Tabs } from "@/components/ui/tabs";
+import { AlertBox } from "@/components/ui/alert-box";
 
 export type TaskDetailTab = "implementation" | "review" | "comments" | "activity";
 
@@ -82,53 +85,35 @@ export function TaskDetailHeader({
       <SheetClose onClose={onClose} />
       <SheetHeader className="mb-3">
         <div className="mb-1 flex items-center gap-2">
-          <Badge
-            className="text-[10px]"
-            style={{
-              backgroundColor: `${STATUS_CONFIG[task.status].color}20`,
-              color: STATUS_CONFIG[task.status].color,
-              borderColor: `${STATUS_CONFIG[task.status].color}40`,
-            }}
-          >
+          <Badge size="sm" style={statusColorStyle(task.status)}>
             {STATUS_CONFIG[task.status].label}
           </Badge>
           {task.paused && (
-            <Badge className="text-[10px] border-yellow-500/35 bg-yellow-500/15 text-yellow-600 dark:text-yellow-300">
+            <Badge
+              size="sm"
+              className="border-yellow-500/35 bg-yellow-500/15 text-yellow-600 dark:text-yellow-300"
+            >
               PAUSED
             </Badge>
           )}
           {task.priority > 0 && (
-            <Badge variant="outline" className="text-[10px]">
+            <Badge variant="outline" size="sm">
               P{task.priority}
             </Badge>
           )}
-          {task.roadmapAlias && (
-            <Badge className="text-[10px] border-violet-500/35 bg-violet-500/15 text-violet-600 dark:text-violet-300">
-              {task.roadmapAlias}
-            </Badge>
-          )}
-          {task.tags
-            ?.filter((t) => !t.startsWith("rm:") && t !== "roadmap")
-            .map((tag) => (
-              <Badge
-                key={tag}
-                className="text-[10px] border-slate-500/35 bg-slate-500/15 text-slate-600 dark:text-slate-300"
-              >
-                {tag}
-              </Badge>
-            ))}
+          <TaskTagsList tags={task.tags} roadmapAlias={task.roadmapAlias ?? undefined} />
         </div>
         <div className="mb-2 flex flex-wrap gap-1.5">
-          <Badge variant="outline" className="text-[10px]">
+          <Badge variant="outline" size="sm">
             in: {formatTokenCount(task.tokenInput)}
           </Badge>
-          <Badge variant="outline" className="text-[10px]">
+          <Badge variant="outline" size="sm">
             out: {formatTokenCount(task.tokenOutput)}
           </Badge>
-          <Badge variant="outline" className="text-[10px]">
+          <Badge variant="outline" size="sm">
             total: {formatTokenCount(task.tokenTotal)}
           </Badge>
-          <Badge variant="outline" className="text-[10px]">
+          <Badge variant="outline" size="sm">
             cost: {formatUsd(task.costUsd)}
           </Badge>
         </div>
@@ -171,30 +156,24 @@ export function TaskDetailHeader({
             ))}
           </div>
           {planChangeSuccess && (
-            <div className="mt-2 border border-emerald-500/40 bg-emerald-500/10 px-2 py-1.5 text-xs text-emerald-300">
+            <AlertBox variant="success" className="mt-2 px-2 py-1.5 text-xs">
               {planChangeSuccess}
-            </div>
+            </AlertBox>
           )}
         </div>
       )}
 
-      <div className="mt-3 flex flex-wrap gap-2 border border-border bg-background/55 p-2">
-        <TabButton
-          active={activeTab === "implementation"}
-          onClick={() => onTabChange("implementation")}
-        >
-          Implementation
-        </TabButton>
-        <TabButton active={activeTab === "review"} onClick={() => onTabChange("review")}>
-          Review
-        </TabButton>
-        <TabButton active={activeTab === "comments"} onClick={() => onTabChange("comments")}>
-          Comments
-        </TabButton>
-        <TabButton active={activeTab === "activity"} onClick={() => onTabChange("activity")}>
-          Activity
-        </TabButton>
-      </div>
+      <Tabs
+        className="mt-3 border border-border bg-background/55 p-2"
+        items={[
+          { value: "implementation", label: "Implementation" },
+          { value: "review", label: "Review" },
+          { value: "comments", label: "Comments" },
+          { value: "activity", label: "Activity" },
+        ]}
+        value={activeTab}
+        onValueChange={(v) => onTabChange(v as TaskDetailTab)}
+      />
     </div>
   );
 }

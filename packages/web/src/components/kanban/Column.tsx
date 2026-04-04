@@ -69,12 +69,12 @@ export function Column({
             className={`${isCompact ? "h-2 w-2" : "h-2.5 w-2.5"} rounded-full`}
             style={{ backgroundColor: config.color }}
           />
-          <h3 className={`${isCompact ? "text-xs" : "text-[13px]"} font-semibold tracking-tight`}>
+          <h3 className={`${isCompact ? "text-xs" : "text-xs"} font-semibold tracking-tight`}>
             {config.label}
           </h3>
           <span
             className={`ml-auto border border-border bg-secondary text-muted-foreground ${
-              isCompact ? "px-1.5 py-0 text-[10px]" : "px-2 py-0.5 text-[11px]"
+              isCompact ? "px-1.5 py-0 text-3xs" : "px-2 py-0.5 text-2xs"
             }`}
           >
             {tasks.length}
@@ -95,7 +95,7 @@ export function Column({
         {owners.map((owner) => (
           <span
             key={owner.label}
-            className={`inline-flex border ${isCompact ? "px-1.5 py-0 text-[9px]" : "px-2 py-0.5 text-[10px]"} ${owner.className}`}
+            className={`inline-flex border ${isCompact ? "px-1.5 py-0 text-4xs" : "px-2 py-0.5 text-3xs"} ${owner.className}`}
           >
             {owner.label}
           </span>
@@ -119,7 +119,7 @@ export function Column({
         ))}
 
         {tasks.length === 0 && (
-          <div className="border border-dashed border-border py-8 text-center text-[11px] text-muted-foreground">
+          <div className="border border-dashed border-border py-8 text-center text-2xs text-muted-foreground">
             {hasActiveFilters ? "// no tasks for current filters" : "// no tasks"}
           </div>
         )}

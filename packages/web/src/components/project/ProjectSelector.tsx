@@ -1,8 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import { useOutsideClick } from "@/hooks/useOutsideClick";
 import { useQuery } from "@tanstack/react-query";
 import { FolderOpen, Plus, ChevronDown, Pencil, Trash2, Plug } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import { ListButton } from "@/components/ui/list-button";
 import {
   Dialog,
   DialogClose,
@@ -170,29 +174,8 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
 
   const isPending = createProject.isPending || updateProject.isPending;
 
-  useEffect(() => {
-    if (!dropdownOpen) return;
-
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target as Node | null;
-      if (!target) return;
-      if (selectorRef.current?.contains(target)) return;
-      setDropdownOpen(false);
-    };
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setDropdownOpen(false);
-      }
-    };
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [dropdownOpen]);
+  const closeDropdown = useCallback(() => setDropdownOpen(false), []);
+  useOutsideClick(selectorRef, closeDropdown, dropdownOpen);
 
   return (
     <>
@@ -209,7 +192,7 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
         </Button>
 
         {dropdownOpen && (
-          <div className="absolute left-0 top-full z-50 mt-2 min-w-[280px] border border-border bg-popover p-1.5">
+          <div className="absolute left-0 top-full z-dropdown mt-2 min-w-[280px] border border-border bg-popover p-1.5">
             {projects?.map((p) => (
               <div
                 key={p.id}
@@ -217,30 +200,35 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
                   p.id === selectedId ? "bg-accent" : ""
                 }`}
               >
-                <button
-                  className="flex-1 px-3 py-2 text-left"
+                <ListButton
+                  active={p.id === selectedId}
+                  className="flex-1 flex-col items-start px-3 py-2"
                   onClick={() => {
                     onSelect(p);
                     setDropdownOpen(false);
                   }}
                 >
                   <div className="font-medium tracking-tight">{p.name}</div>
-                  <div className="truncate text-[11px] text-muted-foreground">{p.rootPath}</div>
-                </button>
-                <button
-                  className="p-1.5 opacity-0 transition-opacity group-hover:opacity-70 hover:!opacity-100"
+                  <div className="truncate text-2xs text-muted-foreground">{p.rootPath}</div>
+                </ListButton>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 border-0 opacity-0 group-hover:opacity-70 hover:!opacity-100"
                   onClick={(e) => openEdit(p, e)}
                   title="Edit"
                 >
                   <Pencil className="h-3 w-3" />
-                </button>
-                <button
-                  className="p-1.5 text-destructive opacity-0 transition-opacity group-hover:opacity-70 hover:!opacity-100"
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 border-0 text-destructive opacity-0 group-hover:opacity-70 hover:!opacity-100"
                   onClick={(e) => handleDelete(p, e)}
                   title="Delete"
                 >
                   <Trash2 className="h-3 w-3" />
-                </button>
+                </Button>
               </div>
             ))}
 
@@ -249,13 +237,10 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
             )}
 
             <div className="mt-1 border-t border-border pt-1">
-              <button
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent"
-                onClick={openCreate}
-              >
+              <ListButton onClick={openCreate} className="gap-2 px-3 py-2">
                 <Plus className="h-3 w-3" />
                 New project
-              </button>
+              </ListButton>
             </div>
           </div>
         )}
@@ -343,21 +328,7 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
                   Experimental. Process multiple tasks per stage concurrently.
                 </p>
               </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={parallelEnabled}
-                onClick={() => setParallelEnabled(!parallelEnabled)}
-                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors ${
-                  parallelEnabled ? "bg-primary" : "bg-muted"
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-background shadow-sm transition-transform ${
-                    parallelEnabled ? "translate-x-4" : "translate-x-0.5"
-                  }`}
-                />
-              </button>
+              <Switch checked={parallelEnabled} onCheckedChange={setParallelEnabled} />
             </div>
             {dialogMode === "edit" && (
               <div>
@@ -375,12 +346,9 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
                   {!isMcpLoading && mcpServers.length > 0 && (
                     <div className="flex flex-wrap gap-1.5">
                       {mcpServers.map((serverName) => (
-                        <span
-                          key={serverName}
-                          className="inline-flex items-center rounded border border-border bg-background px-1.5 py-0.5 text-[11px]"
-                        >
+                        <Badge key={serverName} variant="outline" size="sm">
                           {serverName}
-                        </span>
+                        </Badge>
                       ))}
                     </div>
                   )}

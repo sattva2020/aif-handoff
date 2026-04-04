@@ -146,10 +146,8 @@ describe("ChatPanel", () => {
     render(<ChatPanel isOpen={true} projectId="p-1" taskId={null} onClose={mockOnClose} />);
     const textarea = screen.getByPlaceholderText("Ask a question...");
     fireEvent.change(textarea, { target: { value: "hello" } });
-    // Click the send button (it's the button without a title in the input area)
-    const buttons = screen.getAllByRole("button");
-    const sendButton = buttons.find((btn) => !btn.hasAttribute("title"));
-    if (sendButton) fireEvent.click(sendButton);
+    const sendButton = screen.getByLabelText("Send message");
+    fireEvent.click(sendButton);
     expect(mockSendMessage).toHaveBeenCalledWith("hello", undefined);
   });
 
@@ -180,7 +178,7 @@ describe("ChatPanel", () => {
 
   it("clears messages on clear button click", () => {
     render(<ChatPanel isOpen={true} projectId="p-1" taskId={null} onClose={mockOnClose} />);
-    const clearButton = screen.getByTitle("Clear messages");
+    const clearButton = screen.getByLabelText("Clear messages");
     fireEvent.click(clearButton);
     expect(mockClearMessages).toHaveBeenCalledOnce();
   });
@@ -198,7 +196,7 @@ describe("ChatPanel", () => {
 
   it("calls onClose when close button is clicked", () => {
     render(<ChatPanel isOpen={true} projectId="p-1" taskId={null} onClose={mockOnClose} />);
-    const closeButton = screen.getByTitle("Close chat");
+    const closeButton = screen.getByLabelText("Close chat");
     fireEvent.click(closeButton);
     expect(mockOnClose).toHaveBeenCalledOnce();
   });
@@ -211,13 +209,13 @@ describe("ChatPanel", () => {
 
   it("calls onClose on outside click", () => {
     render(<ChatPanel isOpen={true} projectId="p-1" taskId={null} onClose={mockOnClose} />);
-    fireEvent.mouseDown(document.body);
+    fireEvent.pointerDown(document.body);
     expect(mockOnClose).toHaveBeenCalledOnce();
   });
 
   it("does not call onClose on inside click", () => {
     render(<ChatPanel isOpen={true} projectId="p-1" taskId={null} onClose={mockOnClose} />);
-    fireEvent.mouseDown(screen.getByText("AI Chat"));
+    fireEvent.pointerDown(screen.getByText("AI Chat"));
     expect(mockOnClose).not.toHaveBeenCalled();
   });
 
