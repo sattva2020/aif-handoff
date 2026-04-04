@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Radio } from "@/components/ui/radio";
 import { useProjects } from "@/hooks/useProjects";
 import type { Task, UpdateTaskInput } from "@aif/shared/browser";
 
@@ -56,12 +58,7 @@ export function TaskSettings({ task, onSave }: Props) {
 
   if (!open) {
     return (
-      <Button
-        variant="outline"
-        size="sm"
-        className="h-7 gap-1.5 text-xs"
-        onClick={() => setOpen(true)}
-      >
+      <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setOpen(true)}>
         <Settings2 className="h-3.5 w-3.5" />
         Settings
       </Button>
@@ -76,14 +73,13 @@ export function TaskSettings({ task, onSave }: Props) {
         </h4>
         <div className="flex gap-1.5">
           {hasChanges && (
-            <Button size="sm" className="h-6 px-2 text-[10px]" onClick={handleSave}>
+            <Button size="xs" onClick={handleSave}>
               Save
             </Button>
           )}
           <Button
             variant="ghost"
-            size="sm"
-            className="h-6 px-2 text-[10px]"
+            size="xs"
             onClick={() => {
               setAutoMode(task.autoMode);
               setSkipReview(task.skipReview);
@@ -102,20 +98,20 @@ export function TaskSettings({ task, onSave }: Props) {
       </div>
 
       <div className="space-y-2">
-        <Checkbox label="Auto mode" checked={autoMode} onChange={setAutoMode}>
+        <CheckboxField label="Auto mode" checked={autoMode} onChange={setAutoMode}>
           AI moves tasks between statuses automatically.
-        </Checkbox>
-        <Checkbox label="Skip review" checked={skipReview} onChange={setSkipReview}>
+        </CheckboxField>
+        <CheckboxField label="Skip review" checked={skipReview} onChange={setSkipReview}>
           After implementation, move directly to done without code review.
-        </Checkbox>
-        <Checkbox label="Use subagents" checked={useSubagents} onChange={setUseSubagents}>
+        </CheckboxField>
+        <CheckboxField label="Use subagents" checked={useSubagents} onChange={setUseSubagents}>
           Run via custom subagents (plan-coordinator, implement-coordinator, sidecars).
-        </Checkbox>
+        </CheckboxField>
       </div>
 
       {autoMode && (
         <div className="space-y-1 border-t border-border/60 pt-2">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
             Max review iterations
           </p>
           <Input
@@ -124,9 +120,10 @@ export function TaskSettings({ task, onSave }: Props) {
             max={50}
             value={maxReviewIterations}
             onChange={(e) => setMaxReviewIterations(Math.max(1, parseInt(e.target.value) || 1))}
-            className="h-7 w-20 text-xs"
+            inputSize="sm"
+            className="w-20"
           />
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-3xs text-muted-foreground">
             Max review→implement cycles before auto-completing the task.
           </p>
         </div>
@@ -134,59 +131,57 @@ export function TaskSettings({ task, onSave }: Props) {
 
       {showPlanner && (
         <div className="space-y-2 border-t border-border/60 pt-2">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
             Planner
           </p>
           {isParallel ? (
             <p className="text-xs text-muted-foreground">
               <span className="font-medium text-foreground">Full</span>
-              <span className="ml-1.5 text-[10px]">(required by parallel mode)</span>
+              <span className="ml-1.5 text-3xs">(required by parallel mode)</span>
             </p>
           ) : (
             <div className="flex gap-3">
               <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <input
-                  type="radio"
+                <Radio
                   name="plannerModeDetail"
                   checked={plannerMode === "full"}
                   onChange={() => setPlannerMode("full")}
-                  className="h-3.5 w-3.5 accent-[var(--color-primary)]"
+                  className="h-3.5 w-3.5"
                 />
                 <span className="font-medium text-foreground">Full</span>
               </label>
               <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <input
-                  type="radio"
+                <Radio
                   name="plannerModeDetail"
                   checked={plannerMode === "fast"}
                   onChange={() => setPlannerMode("fast")}
-                  className="h-3.5 w-3.5 accent-[var(--color-primary)]"
+                  className="h-3.5 w-3.5"
                 />
                 <span className="font-medium text-foreground">Fast</span>
               </label>
             </div>
           )}
           <div className="space-y-1">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
               Plan file path
             </p>
             {isParallel ? (
               <p className="text-xs font-mono text-muted-foreground truncate">
                 {planPath}
-                <span className="ml-1.5 font-sans text-[10px]">(locked in parallel mode)</span>
+                <span className="ml-1.5 font-sans text-3xs">(locked in parallel mode)</span>
               </p>
             ) : (
               <Input
                 value={planPath}
                 onChange={(e) => setPlanPath(e.target.value)}
                 placeholder=".ai-factory/PLAN.md"
-                className="h-7 text-xs"
+                inputSize="sm"
               />
             )}
           </div>
           <div className="flex gap-4">
-            <Checkbox label="Docs" checked={planDocs} onChange={setPlanDocs} />
-            <Checkbox label="Tests" checked={planTests} onChange={setPlanTests} />
+            <CheckboxField label="Docs" checked={planDocs} onChange={setPlanDocs} />
+            <CheckboxField label="Tests" checked={planTests} onChange={setPlanTests} />
           </div>
         </div>
       )}
@@ -194,7 +189,7 @@ export function TaskSettings({ task, onSave }: Props) {
   );
 }
 
-function Checkbox({
+function CheckboxField({
   label,
   checked,
   onChange,
@@ -207,12 +202,11 @@ function Checkbox({
 }) {
   return (
     <label className="flex items-start gap-2 text-xs text-muted-foreground">
-      <input
-        type="checkbox"
+      <Checkbox
         aria-label={label}
         checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        className="mt-0.5 h-3.5 w-3.5 accent-[var(--color-primary)]"
+        onChange={(e) => onChange((e.target as HTMLInputElement).checked)}
+        className="mt-0.5 h-3.5 w-3.5"
       />
       <span>
         <span className="font-medium text-foreground">{label}</span>

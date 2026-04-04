@@ -1,0 +1,159 @@
+import { useEffect, useState } from "react";
+import { Loader2, Check, X as XIcon } from "lucide-react";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { ConfigEditor } from "@/components/settings/ConfigEditor";
+import { api } from "@/lib/api";
+import type { AifConfig } from "@/lib/api";
+
+interface GlobalSettingsDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+export function GlobalSettingsDialog({ open, onOpenChange }: GlobalSettingsDialogProps) {
+  const [mcpInstalled, setMcpInstalled] = useState<boolean | null>(null);
+  const [mcpLoading, setMcpLoading] = useState(false);
+  const [mcpError, setMcpError] = useState<string | null>(null);
+  const [configExists, setConfigExists] = useState<boolean | null>(null);
+  const [configData, setConfigData] = useState<AifConfig | null>(null);
+  const [configLoading, setConfigLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setMcpError(null);
+    setMcpInstalled(null);
+    setMcpLoading(false);
+    api.getMcpStatus().then(
+      (res) => setMcpInstalled(res.installed),
+      () => setMcpInstalled(null),
+    );
+    setConfigData(null);
+    api.getConfigStatus().then(
+      (res) => {
+        setConfigExists(res.exists);
+        if (res.exists) {
+          setConfigLoading(true);
+          api.getConfig().then(
+            (r) => {
+              setConfigData(r.config);
+              setConfigLoading(false);
+            },
+            () => setConfigLoading(false),
+          );
+        }
+      },
+      () => setConfigExists(false),
+    );
+  }, [open]);
+
+  const handleMcpInstall = async () => {
+    setMcpLoading(true);
+    setMcpError(null);
+    try {
+      await api.installMcp();
+      setMcpInstalled(true);
+    } catch (err) {
+      setMcpError(err instanceof Error ? err.message : "Failed to install");
+    } finally {
+      setMcpLoading(false);
+    }
+  };
+
+  const handleMcpRemove = async () => {
+    setMcpLoading(true);
+    setMcpError(null);
+    try {
+      await api.removeMcp();
+      setMcpInstalled(false);
+    } catch (err) {
+      setMcpError(err instanceof Error ? err.message : "Failed to remove");
+    } finally {
+      setMcpLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogClose onClose={() => onOpenChange(false)} />
+        <DialogHeader>
+          <DialogTitle>Global Settings</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between border border-border bg-card/50 px-3 py-2">
+            <div className="flex-1 mr-3">
+              <p className="text-sm font-medium">MCP Handoff Server</p>
+              <p className="text-xs text-muted-foreground">
+                Enables Claude Code to read and sync tasks via MCP tools
+              </p>
+              {mcpInstalled === null && !mcpError && (
+                <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Checking...
+                </p>
+              )}
+              {mcpInstalled === true && (
+                <p className="text-xs text-green-400 mt-1 flex items-center gap-1">
+                  <Check className="h-3 w-3" />
+                  Installed in ~/.claude.json
+                </p>
+              )}
+              {mcpInstalled === false && (
+                <p className="text-xs text-amber-400 mt-1 flex items-center gap-1">
+                  <XIcon className="h-3 w-3" />
+                  Not configured
+                </p>
+              )}
+              {mcpError && <p className="text-xs text-destructive mt-1">{mcpError}</p>}
+            </div>
+            <div>
+              {mcpInstalled === false && (
+                <Button
+                  variant="outline"
+                  size="xs"
+                  onClick={() => void handleMcpInstall()}
+                  disabled={mcpLoading}
+                  className="min-w-20 gap-1"
+                >
+                  {mcpLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : "Install"}
+                </Button>
+              )}
+              {mcpInstalled === true && (
+                <Button
+                  variant="outline"
+                  size="xs"
+                  onClick={() => void handleMcpRemove()}
+                  disabled={mcpLoading}
+                  className="min-w-20 gap-1 text-destructive hover:border-destructive/70"
+                >
+                  {mcpLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : "Remove"}
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {configExists && (
+            <div className="border border-border bg-card/50 px-3 py-2">
+              <p className="text-sm font-medium mb-0.5">AI Factory Config</p>
+              <p className="text-xs text-muted-foreground mb-3">.ai-factory/config.yaml</p>
+              {configLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                </div>
+              ) : configData ? (
+                <ConfigEditor config={configData} onConfigChange={setConfigData} />
+              ) : null}
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

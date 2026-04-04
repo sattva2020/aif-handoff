@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
+import { ListButton } from "@/components/ui/list-button";
 
 interface CommandPaletteProps {
   open: boolean;
@@ -174,25 +174,22 @@ export function CommandPalette({
             </div>
           ) : (
             filtered.map((action, index) => (
-              <button
+              <ListButton
                 ref={(el) => {
                   itemsRef.current[index] = el;
                 }}
                 key={action.id}
-                className={cn(
-                  "mb-1 flex w-full items-center justify-between border border-transparent px-3 py-2 text-left text-sm transition-colors hover:border-border hover:bg-accent/40",
-                  index === selectedIndex && "border-border bg-accent/60",
-                )}
+                active={index === selectedIndex}
+                className="mb-1 justify-between border border-transparent px-3 py-2 hover:border-border hover:bg-accent/40"
                 onClick={action.run}
-                type="button"
                 role="option"
                 aria-selected={index === selectedIndex}
               >
                 <span className="truncate">{action.label}</span>
-                <span className="ml-3 shrink-0 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                <span className="ml-3 shrink-0 font-mono text-3xs uppercase tracking-wider text-muted-foreground">
                   {action.hint}
                 </span>
-              </button>
+              </ListButton>
             ))
           )}
         </div>

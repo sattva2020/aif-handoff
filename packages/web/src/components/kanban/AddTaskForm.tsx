@@ -1,12 +1,16 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Plus, X, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Radio } from "@/components/ui/radio";
 import { Textarea } from "@/components/ui/textarea";
 import { useCreateTask } from "@/hooks/useTasks";
+import { useKeyboardShortcut } from "@/hooks/useKeyboardShortcut";
 import { useProjects } from "@/hooks/useProjects";
 import { useSettings, useProjectDefaults } from "@/hooks/useSettings";
 import { generatePlanPath } from "@aif/shared/browser";
+import { PlannerSettings } from "./PlannerSettings";
 
 interface Props {
   projectId: string;
@@ -70,18 +74,8 @@ export function AddTaskForm({ projectId }: Props) {
   }, [syncGen]);
 
   // Close form on Escape key
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setIsOpen(false);
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen]);
+  const closeForm = useCallback(() => setIsOpen(false), []);
+  useKeyboardShortcut({ key: "Escape", enabled: isOpen }, closeForm);
 
   // Auto-update planPath when title or mode changes (unless user manually edited the field).
   // Called from onChange handlers rather than useEffect to avoid cascading renders.
@@ -171,7 +165,7 @@ export function AddTaskForm({ projectId }: Props) {
       >
         <Plus className="h-4 w-4" />
         Add task
-        <span className="ml-auto font-mono text-[10px] text-muted-foreground">Ctrl+N</span>
+        <span className="ml-auto font-mono text-3xs text-muted-foreground">Ctrl+N</span>
       </Button>
     );
   }
@@ -192,17 +186,16 @@ export function AddTaskForm({ projectId }: Props) {
       />
       <div className="space-y-2 border border-border/60 bg-muted/20 p-2">
         <div className="space-y-1">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
             Task type
           </p>
           <label className="flex items-start gap-2 text-xs text-muted-foreground">
-            <input
-              type="radio"
+            <Radio
               name="taskType"
               aria-label="Standard"
               checked={!isFix}
               onChange={() => setIsFix(false)}
-              className="mt-0.5 h-3.5 w-3.5 accent-[var(--color-primary)]"
+              className="mt-0.5 h-3.5 w-3.5"
             />
             <span>
               <span className="font-medium text-foreground">Standard</span>
@@ -210,13 +203,12 @@ export function AddTaskForm({ projectId }: Props) {
             </span>
           </label>
           <label className="flex items-start gap-2 text-xs text-muted-foreground">
-            <input
-              type="radio"
+            <Radio
               name="taskType"
               aria-label="Fix"
               checked={isFix}
               onChange={() => setIsFix(true)}
-              className="mt-0.5 h-3.5 w-3.5 accent-[var(--color-primary)]"
+              className="mt-0.5 h-3.5 w-3.5"
             />
             <span>
               <span className="font-medium text-foreground">Fix</span>
@@ -227,12 +219,11 @@ export function AddTaskForm({ projectId }: Props) {
           </label>
         </div>
         <label className="flex items-start gap-2 text-xs text-muted-foreground">
-          <input
-            type="checkbox"
+          <Checkbox
             aria-label="Auto mode"
             checked={autoMode}
             onChange={(e) => setAutoMode(e.target.checked)}
-            className="mt-0.5 h-3.5 w-3.5 accent-[var(--color-primary)]"
+            className="mt-0.5 h-3.5 w-3.5"
           />
           <span>
             <span className="font-medium text-foreground">Auto mode</span>
@@ -244,111 +235,41 @@ export function AddTaskForm({ projectId }: Props) {
       </div>
       {!isFix && (
         <div className="space-y-2">
-          <button
-            type="button"
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => setShowAdvanced((v) => !v)}
-            className="inline-flex items-center gap-1.5 rounded border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="gap-1.5 text-muted-foreground"
           >
             <Settings2 className="h-3.5 w-3.5" />
             Planner settings
-          </button>
+          </Button>
           {showAdvanced && (
-            <div className="space-y-2 border border-border/60 bg-muted/20 p-2">
-              <div className="space-y-1">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Mode
-                </p>
-                {isParallel ? (
-                  <p className="text-xs text-muted-foreground">
-                    <span className="font-medium text-foreground">Full</span>
-                    <span className="ml-1.5 text-[10px]">(required by parallel mode)</span>
-                  </p>
-                ) : (
-                  <div className="flex gap-3">
-                    <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <input
-                        type="radio"
-                        name="plannerMode"
-                        checked={plannerMode === "full"}
-                        onChange={() => handleModeChange("full")}
-                        className="h-3.5 w-3.5 accent-[var(--color-primary)]"
-                      />
-                      <span className="font-medium text-foreground">Full</span>
-                    </label>
-                    <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <input
-                        type="radio"
-                        name="plannerMode"
-                        checked={plannerMode === "fast"}
-                        onChange={() => handleModeChange("fast")}
-                        className="h-3.5 w-3.5 accent-[var(--color-primary)]"
-                      />
-                      <span className="font-medium text-foreground">Fast</span>
-                    </label>
-                  </div>
-                )}
-              </div>
-              <div className="space-y-1">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Plan file path
-                </p>
-                {isParallel ? (
-                  <>
-                    <p className="text-xs font-mono text-muted-foreground truncate">
-                      {effectivePlanPath}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground/70">
-                      Auto-generated per task (parallel mode)
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <Input
-                      value={planPath}
-                      onChange={(e) => {
-                        userOverride.current = true;
-                        setPlanPath(e.target.value);
-                      }}
-                      placeholder={defaultPlanPath}
-                      className="h-7 text-xs"
-                    />
-                    <p className="text-[10px] text-muted-foreground/70">
-                      Preview — server may adjust based on project config
-                    </p>
-                  </>
-                )}
-              </div>
-              <div className="flex gap-4">
-                <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    checked={planDocs}
-                    onChange={(e) => setPlanDocs(e.target.checked)}
-                    className="h-3.5 w-3.5 accent-[var(--color-primary)]"
-                  />
-                  <span className="font-medium text-foreground">Docs</span>
-                </label>
-                <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    checked={planTests}
-                    onChange={(e) => setPlanTests(e.target.checked)}
-                    className="h-3.5 w-3.5 accent-[var(--color-primary)]"
-                  />
-                  <span className="font-medium text-foreground">Tests</span>
-                </label>
-              </div>
-            </div>
+            <PlannerSettings
+              isParallel={isParallel}
+              plannerMode={plannerMode}
+              onModeChange={handleModeChange}
+              planPath={planPath}
+              onPlanPathChange={(v) => {
+                userOverride.current = true;
+                setPlanPath(v);
+              }}
+              effectivePlanPath={effectivePlanPath}
+              defaultPlanPath={defaultPlanPath}
+              planDocs={planDocs}
+              onPlanDocsChange={setPlanDocs}
+              planTests={planTests}
+              onPlanTestsChange={setPlanTests}
+            />
           )}
         </div>
       )}
       <div className="space-y-1">
         <label className="flex items-start gap-2 text-xs text-muted-foreground">
-          <input
-            type="checkbox"
+          <Checkbox
             checked={skipReview}
             onChange={(e) => setSkipReview(e.target.checked)}
-            className="mt-0.5 h-3.5 w-3.5 accent-[var(--color-primary)]"
+            className="mt-0.5 h-3.5 w-3.5"
           />
           <span>
             <span className="font-medium text-foreground">Skip review</span>
@@ -356,11 +277,10 @@ export function AddTaskForm({ projectId }: Props) {
           </span>
         </label>
         <label className="flex items-start gap-2 text-xs text-muted-foreground">
-          <input
-            type="checkbox"
+          <Checkbox
             checked={useSubagents}
             onChange={(e) => setUseSubagents(e.target.checked)}
-            className="mt-0.5 h-3.5 w-3.5 accent-[var(--color-primary)]"
+            className="mt-0.5 h-3.5 w-3.5"
           />
           <span>
             <span className="font-medium text-foreground">Use subagents</span>

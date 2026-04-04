@@ -4,7 +4,7 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useTask } from "@/hooks/useTasks";
-import { ConfirmDialog } from "./ConfirmDialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { TaskDescription } from "./TaskDescription";
 import { TaskPlan } from "./TaskPlan";
 import { TaskLog } from "./TaskLog";
@@ -16,6 +16,8 @@ import { PlanChangeDialog } from "./PlanChangeDialog";
 import { TaskDetailHeader, type TaskDetailTab } from "./TaskDetailHeader";
 import { Section } from "./Section";
 import { useTaskDetailActions } from "./useTaskDetailActions";
+import { AlertBox } from "@/components/ui/alert-box";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface TaskDetailProps {
   taskId: string | null;
@@ -84,8 +86,7 @@ export function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                         <Button
                           type="button"
                           variant="outline"
-                          size="sm"
-                          className="h-6 px-2 text-[10px]"
+                          size="xs"
                           onClick={() => actions.setShowSyncPlanConfirm(true)}
                           disabled={actions.syncTaskPlanIsPending}
                         >
@@ -133,8 +134,7 @@ export function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                           <Button
                             type="button"
                             variant="outline"
-                            size="sm"
-                            className="h-6 px-2 text-[10px]"
+                            size="xs"
                             onClick={() => actions.setShowClearActivityConfirm(true)}
                             disabled={actions.updateTaskIsPending}
                           >
@@ -155,14 +155,14 @@ export function TaskDetail({ taskId, onClose }: TaskDetailProps) {
 
       {/* Toast notifications */}
       {actions.maintenanceSuccess && (
-        <div className="fixed bottom-4 left-4 z-[70] border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
+        <AlertBox variant="success" className="fixed bottom-4 left-4 z-bubble text-xs">
           {actions.maintenanceSuccess}
-        </div>
+        </AlertBox>
       )}
       {actions.maintenanceError && (
-        <div className="fixed bottom-4 right-4 z-[70] border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+        <AlertBox variant="error" className="fixed bottom-4 right-4 z-bubble text-xs">
           {actions.maintenanceError}
-        </div>
+        </AlertBox>
       )}
 
       {/* Confirm dialogs */}
@@ -217,16 +217,14 @@ export function TaskDetail({ taskId, onClose }: TaskDetailProps) {
             The task will move from <strong>Done</strong> to <strong>Verified</strong>.
           </p>
           <label className="mt-4 flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={actions.deletePlanOnApprove}
               onChange={(event) => actions.setDeletePlanOnApprove(event.target.checked)}
             />
             Delete plan file ({task?.isFix ? "FIX_PLAN.md" : "PLAN.md"})
           </label>
           <label className="mt-2 flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
+            <Checkbox
               checked={actions.commitOnApprove}
               onChange={(event) => actions.setCommitOnApprove(event.target.checked)}
             />

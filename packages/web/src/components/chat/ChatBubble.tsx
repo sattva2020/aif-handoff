@@ -1,4 +1,5 @@
 import { Bot } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 interface ChatBubbleProps {
@@ -10,18 +11,16 @@ export function ChatBubble({ isOpen, onToggle }: ChatBubbleProps) {
   if (isOpen) return null;
 
   return (
-    <button
+    <Button
       onClick={onToggle}
+      size="icon"
       className={cn(
-        "fixed bottom-6 left-6 z-[70] flex h-14 w-14 items-center justify-center rounded-full",
-        "bg-primary text-primary-foreground",
-        "transition-transform duration-300 ease-in-out",
-        "hover:scale-105",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
+        "fixed bottom-6 left-6 z-bubble h-14 w-14 rounded-full",
+        "transition-transform duration-300 ease-in-out hover:scale-105",
       )}
       aria-label="Open chat"
     >
       <Bot className="h-6 w-6" />
-    </button>
+    </Button>
   );
 }

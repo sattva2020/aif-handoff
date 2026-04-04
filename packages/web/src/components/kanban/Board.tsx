@@ -5,10 +5,12 @@ import { Column } from "./Column";
 import { Button } from "@/components/ui/button";
 import { AddTaskForm } from "./AddTaskForm";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { readStorage, writeStorage } from "@/lib/storage";
 import { STORAGE_KEYS } from "@/lib/storageKeys";
+import { FilterBar, type QuickFilter } from "./FilterBar";
+import { TaskListTable } from "./TaskListTable";
 
-type QuickFilter = "mine" | "blocked" | "recent" | "no_plan" | "roadmap";
 type ViewMode = "kanban" | "list";
 type ListSort = "updated_desc" | "updated_asc" | "priority_desc" | "priority_asc" | "status";
 
@@ -19,13 +21,6 @@ interface BoardProps {
   viewMode?: ViewMode;
 }
 
-const FILTER_LABELS: Record<QuickFilter, string> = {
-  mine: "mine",
-  blocked: "blocked",
-  recent: "recent",
-  no_plan: "no plan",
-  roadmap: "roadmap",
-};
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const RECENT_CUTOFF_REFERENCE_TS = Date.now();
 
@@ -62,7 +57,7 @@ export function Board({ projectId, onTaskClick, density, viewMode = "kanban" }: 
   const toggleFilter = (filter: QuickFilter) => {
     setActiveFilters((prev) => {
       const next = prev.includes(filter) ? prev.filter((f) => f !== filter) : [...prev, filter];
-      if (filter === "roadmap" && next.includes("roadmap") === false) {
+      if (filter === "roadmap" && !next.includes("roadmap")) {
         setActiveRoadmapAliases([]);
       }
       return next;
@@ -200,75 +195,18 @@ export function Board({ projectId, onTaskClick, density, viewMode = "kanban" }: 
 
   return (
     <>
-      <div
-        className={`mb-4 flex flex-wrap items-center gap-2 border border-border bg-card/45 ${isCompact ? "px-2 py-1.5" : "px-3 py-2"}`}
-      >
-        <span className="min-w-12 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-          Filters
-        </span>
-        {(Object.keys(FILTER_LABELS) as QuickFilter[]).map((key) => {
-          const active = activeFilters.includes(key);
-          return (
-            <button
-              key={key}
-              type="button"
-              onClick={() => toggleFilter(key)}
-              className={`border font-mono transition-colors ${
-                isCompact ? "px-2 py-0.5 text-[10px]" : "px-2.5 py-1 text-[11px]"
-              } ${
-                active
-                  ? "border-primary/45 bg-primary/15 text-primary"
-                  : "border-border bg-background/45 text-muted-foreground hover:bg-background"
-              }`}
-            >
-              {FILTER_LABELS[key]}
-            </button>
-          );
-        })}
-        {activeFilters.length > 0 && (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="ml-auto"
-            onClick={() => {
-              setActiveFilters([]);
-              setActiveRoadmapAliases([]);
-            }}
-          >
-            clear filters
-          </Button>
-        )}
-      </div>
-
-      {activeFilters.includes("roadmap") && roadmapAliases.length > 0 && (
-        <div
-          data-testid="roadmap-alias-filters"
-          className={`-mt-2 mb-4 flex flex-wrap items-center gap-2 border border-border bg-card/35 ${isCompact ? "px-2 py-1.5" : "px-3 py-2"}`}
-        >
-          <span className="min-w-12 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-            Roadmap
-          </span>
-          {roadmapAliases.map((alias) => {
-            const active = activeRoadmapAliases.includes(alias);
-            return (
-              <button
-                key={alias}
-                type="button"
-                onClick={() => toggleRoadmapAlias(alias)}
-                className={`border font-mono transition-colors ${
-                  isCompact ? "px-2 py-0.5 text-[10px]" : "px-2.5 py-1 text-[11px]"
-                } ${
-                  active
-                    ? "border-violet-500/45 bg-violet-500/15 text-violet-400"
-                    : "border-border bg-background/45 text-muted-foreground hover:bg-background"
-                }`}
-              >
-                {alias}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      <FilterBar
+        activeFilters={activeFilters}
+        onToggleFilter={toggleFilter}
+        onClearFilters={() => {
+          setActiveFilters([]);
+          setActiveRoadmapAliases([]);
+        }}
+        isCompact={isCompact}
+        roadmapAliases={roadmapAliases}
+        activeRoadmapAliases={activeRoadmapAliases}
+        onToggleRoadmapAlias={toggleRoadmapAlias}
+      />
 
       {filteredTasks.length === 0 && (
         <div className="mb-4 border border-dashed border-border bg-card/40 p-6 text-center">
@@ -318,111 +256,24 @@ export function Board({ projectId, onTaskClick, density, viewMode = "kanban" }: 
               value={listQuery}
               onChange={(event) => setListQuery(event.target.value)}
               placeholder="Search by title, description, id, status"
-              className={`${isCompact ? "h-7 text-xs" : "h-8"} md:max-w-lg`}
+              inputSize={isCompact ? "sm" : "default"}
+              className="md:max-w-lg"
             />
-            <select
+            <Select
               value={listSort}
               onChange={(event) => setListSort(event.target.value as ListSort)}
-              className={`${isCompact ? "h-7 px-1.5 text-[11px]" : "h-8 px-2 text-xs"} border border-border bg-background text-foreground`}
-            >
-              <option value="updated_desc">Updated: newest first</option>
-              <option value="updated_asc">Updated: oldest first</option>
-              <option value="priority_desc">Priority: high to low</option>
-              <option value="priority_asc">Priority: low to high</option>
-              <option value="status">Status order</option>
-            </select>
+              options={[
+                { value: "updated_desc", label: "Updated: newest first" },
+                { value: "updated_asc", label: "Updated: oldest first" },
+                { value: "priority_desc", label: "Priority: high → low" },
+                { value: "priority_asc", label: "Priority: low → high" },
+                { value: "status", label: "Status order" },
+              ]}
+              selectSize={isCompact ? "sm" : "default"}
+              className={isCompact ? "w-48" : "w-52"}
+            />
           </div>
-          <div className="overflow-x-auto border border-border bg-card/65">
-            <table className="min-w-full border-collapse text-left">
-              <thead className="border-b border-border bg-secondary/35">
-                <tr>
-                  <th
-                    className={`px-3 uppercase tracking-[0.16em] text-muted-foreground ${isCompact ? "py-1.5 text-[10px]" : "py-2 text-[11px]"}`}
-                  >
-                    Task
-                  </th>
-                  <th
-                    className={`px-3 uppercase tracking-[0.16em] text-muted-foreground ${isCompact ? "py-1.5 text-[10px]" : "py-2 text-[11px]"}`}
-                  >
-                    Status
-                  </th>
-                  <th
-                    className={`px-3 uppercase tracking-[0.16em] text-muted-foreground ${isCompact ? "py-1.5 text-[10px]" : "py-2 text-[11px]"}`}
-                  >
-                    Priority
-                  </th>
-                  <th
-                    className={`px-3 uppercase tracking-[0.16em] text-muted-foreground ${isCompact ? "py-1.5 text-[10px]" : "py-2 text-[11px]"}`}
-                  >
-                    Owner
-                  </th>
-                  <th
-                    className={`px-3 uppercase tracking-[0.16em] text-muted-foreground ${isCompact ? "py-1.5 text-[10px]" : "py-2 text-[11px]"}`}
-                  >
-                    Updated
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {listTasks.map((task) => (
-                  <tr
-                    key={task.id}
-                    className="cursor-pointer border-b border-border/80 transition-colors hover:bg-accent/45"
-                    onClick={() => onTaskClick(task.id)}
-                  >
-                    <td className={`px-3 ${isCompact ? "py-1" : "py-2.5"}`}>
-                      <div
-                        className={`${isCompact ? "text-[13px]" : "text-sm"} font-medium tracking-tight`}
-                      >
-                        {task.title}
-                      </div>
-                      {task.description && (
-                        <div
-                          className={`line-clamp-1 text-muted-foreground ${isCompact ? "text-[11px]" : "text-xs"}`}
-                        >
-                          {task.description}
-                        </div>
-                      )}
-                    </td>
-                    <td className={`px-3 ${isCompact ? "py-1" : "py-2.5"}`}>
-                      <span
-                        className={`inline-flex border ${isCompact ? "px-1.5 py-0 text-[10px]" : "px-2 py-0.5 text-[11px]"}`}
-                        style={{
-                          borderColor: `${STATUS_CONFIG[task.status].color}66`,
-                          color: STATUS_CONFIG[task.status].color,
-                          backgroundColor: `${STATUS_CONFIG[task.status].color}1A`,
-                        }}
-                      >
-                        {STATUS_CONFIG[task.status].label}
-                      </span>
-                    </td>
-                    <td
-                      className={`px-3 text-muted-foreground ${isCompact ? "py-1 text-[11px]" : "py-2.5 text-xs"}`}
-                    >
-                      {task.priority || "-"}
-                    </td>
-                    <td
-                      className={`px-3 text-muted-foreground ${isCompact ? "py-1 text-[11px]" : "py-2.5 text-xs"}`}
-                    >
-                      {task.autoMode ? "AI" : "Manual"}
-                    </td>
-                    <td
-                      className={`px-3 text-muted-foreground ${isCompact ? "py-1 text-[11px]" : "py-2.5 text-xs"}`}
-                    >
-                      {new Date(task.updatedAt).toLocaleString()}
-                    </td>
-                  </tr>
-                ))}
-                {listTasks.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="px-3 py-4 text-center text-xs text-muted-foreground">
-                      No tasks match current list search
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          <TaskListTable tasks={listTasks} isCompact={isCompact} onTaskClick={onTaskClick} />
         </div>
       )}
     </>
