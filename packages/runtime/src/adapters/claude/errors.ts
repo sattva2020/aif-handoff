@@ -42,6 +42,19 @@ export function classifyClaudeRuntimeError(error: unknown): ClaudeRuntimeAdapter
   return new ClaudeRuntimeAdapterError(message, adapterCode, error);
 }
 
-export function classifyClaudeResultSubtype(subtype: string): ClaudeRuntimeAdapterError {
-  return classifyClaudeRuntimeError(`Claude query failed: ${subtype}`);
+function normalizeDetail(detail: string | null | undefined): string | null {
+  if (typeof detail !== "string") return null;
+  const normalized = detail.replace(/\s+/g, " ").trim();
+  if (!normalized) return null;
+  return normalized.length > 240 ? `${normalized.slice(0, 240)}...` : normalized;
+}
+
+export function classifyClaudeResultSubtype(
+  subtype: string,
+  detail?: string | null,
+): ClaudeRuntimeAdapterError {
+  const normalizedDetail = normalizeDetail(detail);
+  const base = `Claude query failed: ${subtype}`;
+  const message = normalizedDetail ? `${base}: ${normalizedDetail}` : base;
+  return classifyClaudeRuntimeError(message);
 }

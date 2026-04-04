@@ -58,6 +58,38 @@ function delayedSuccess(delayMs: number, result: string) {
   };
 }
 
+function missingSessionFailure(sessionId: string) {
+  return async function* () {
+    yield {
+      type: "result",
+      subtype: "error_during_execution",
+      result: `No conversation found with session ID: ${sessionId}`,
+    };
+  };
+}
+
+function genericExecutionFailure() {
+  return async function* () {
+    yield {
+      type: "result",
+      subtype: "error_during_execution",
+      result: "Claude query failed: error_during_execution",
+    };
+  };
+}
+
+function missingSessionFailureWithoutResultDetail(sessionId: string) {
+  return async function* () {
+    yield {
+      type: "result",
+      subtype: "error_during_execution",
+    };
+    throw new Error(
+      `Claude Code returned an error result: No conversation found with session ID: ${sessionId}`,
+    );
+  };
+}
+
 describe("Claude runtime adapter", () => {
   beforeEach(() => {
     queryMock.mockReset();
@@ -335,5 +367,86 @@ describe("Claude runtime adapter", () => {
     expect(call.options.env.ANTHROPIC_API_KEY).toBe("sk-ant-test");
     expect(call.options.env.ANTHROPIC_BASE_URL).toBe("https://api.anthropic.com");
     expect(call.options.env.CUSTOM_ENV).toBe("1");
+  });
+
+  it("retries without resume when the previous session is missing", async () => {
+    queryMock
+      .mockImplementationOnce(missingSessionFailure("session-resume-missing"))
+      .mockImplementationOnce(delayedSuccess(0, "fresh-session-ok"));
+    const adapter = createClaudeRuntimeAdapter();
+
+    const result = await adapter.resume!({
+      ...createRunInput({
+        metadata: {
+          queryStartTimeoutMs: 100,
+          queryStartRetryDelayMs: 0,
+        },
+      }),
+      sessionId: "session-resume-missing",
+    });
+
+    expect(result.outputText).toBe("fresh-session-ok");
+    expect(queryMock).toHaveBeenCalledTimes(2);
+    expect(queryMock.mock.calls[0]?.[0]?.options?.resume).toBe("session-resume-missing");
+    expect(queryMock.mock.calls[1]?.[0]?.options?.resume).toBeUndefined();
+  });
+
+  it("retries without resume when sdk throws missing-session after empty error result", async () => {
+    queryMock
+      .mockImplementationOnce(missingSessionFailureWithoutResultDetail("session-resume-missing-2"))
+      .mockImplementationOnce(delayedSuccess(0, "fresh-session-after-empty-result-error"));
+    const adapter = createClaudeRuntimeAdapter();
+
+    const result = await adapter.resume!({
+      ...createRunInput({
+        metadata: {
+          queryStartTimeoutMs: 100,
+          queryStartRetryDelayMs: 0,
+        },
+      }),
+      sessionId: "session-resume-missing-2",
+    });
+
+    expect(result.outputText).toBe("fresh-session-after-empty-result-error");
+    expect(queryMock).toHaveBeenCalledTimes(2);
+    expect(queryMock.mock.calls[0]?.[0]?.options?.resume).toBe("session-resume-missing-2");
+    expect(queryMock.mock.calls[1]?.[0]?.options?.resume).toBeUndefined();
+  });
+
+  it("retries without resume on generic execution failure during resume", async () => {
+    queryMock
+      .mockImplementationOnce(genericExecutionFailure())
+      .mockImplementationOnce(delayedSuccess(0, "fresh-session-after-generic-failure"));
+    const adapter = createClaudeRuntimeAdapter();
+
+    const result = await adapter.resume!({
+      ...createRunInput({
+        metadata: {
+          queryStartTimeoutMs: 100,
+          queryStartRetryDelayMs: 0,
+        },
+      }),
+      sessionId: "session-resume-generic-failure",
+    });
+
+    expect(result.outputText).toBe("fresh-session-after-generic-failure");
+    expect(queryMock).toHaveBeenCalledTimes(2);
+    expect(queryMock.mock.calls[0]?.[0]?.options?.resume).toBe("session-resume-generic-failure");
+    expect(queryMock.mock.calls[1]?.[0]?.options?.resume).toBeUndefined();
+  });
+
+  it("fails when stream ends with non-success result and sdk does not throw", async () => {
+    queryMock.mockImplementationOnce(async function* () {
+      yield {
+        type: "result",
+        subtype: "error_during_execution",
+      };
+    });
+    const adapter = createClaudeRuntimeAdapter();
+
+    await expect(adapter.run(createRunInput())).rejects.toMatchObject({
+      name: "ClaudeRuntimeAdapterError",
+      adapterCode: "CLAUDE_RUNTIME_ERROR",
+    });
   });
 });

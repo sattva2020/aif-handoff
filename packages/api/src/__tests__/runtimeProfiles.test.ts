@@ -154,6 +154,42 @@ describe("runtimeProfiles API", () => {
     expect(updateRes.status).toBe(400);
   });
 
+  it("rejects invalid apiKeyEnvVar on create and update", async () => {
+    const invalidCreateRes = await app.request("/runtime-profiles", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Invalid EnvVar Create",
+        runtimeId: "claude",
+        providerId: "anthropic",
+        apiKeyEnvVar: "invalid env var",
+      }),
+    });
+    expect(invalidCreateRes.status).toBe(400);
+
+    const validCreateRes = await app.request("/runtime-profiles", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Valid EnvVar",
+        runtimeId: "claude",
+        providerId: "anthropic",
+        apiKeyEnvVar: "ANTHROPIC_API_KEY",
+      }),
+    });
+    expect(validCreateRes.status).toBe(201);
+    const validProfile = await validCreateRes.json();
+
+    const invalidUpdateRes = await app.request(`/runtime-profiles/${validProfile.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        apiKeyEnvVar: "still invalid",
+      }),
+    });
+    expect(invalidUpdateRes.status).toBe(400);
+  });
+
   it("lists project + global profiles", async () => {
     const db = testDb.current;
     db.insert(runtimeProfiles)
@@ -434,5 +470,35 @@ describe("runtimeProfiles API", () => {
     const [resolvedProfile] = mockListModels.mock.calls[0] ?? [];
     expect(resolvedProfile.apiKeyEnvVar).toBe("ANTHROPIC_API_KEY");
     expect(resolvedProfile.apiKey).toBe("tmp-key");
+  });
+
+  it("uses dotted apiKeyEnvVar during validation when profile explicitly sets it", async () => {
+    const db = testDb.current;
+    db.insert(runtimeProfiles)
+      .values({
+        id: "legacy-invalid-env-var",
+        projectId: null,
+        name: "Legacy Invalid EnvVar",
+        runtimeId: "claude",
+        providerId: "anthropic",
+        apiKeyEnvVar: "legacy.invalid",
+        enabled: true,
+      })
+      .run();
+
+    const res = await app.request("/runtime-profiles/validate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        profileId: "legacy-invalid-env-var",
+        apiKey: "temporary-key",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockValidateConnection).toHaveBeenCalledTimes(1);
+    const [resolvedProfile] = mockValidateConnection.mock.calls[0] ?? [];
+    expect(resolvedProfile.apiKeyEnvVar).toBe("legacy.invalid");
+    expect(resolvedProfile.apiKey).toBe("temporary-key");
   });
 });

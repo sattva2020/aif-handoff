@@ -37,4 +37,13 @@ describe("Claude runtime error classification", () => {
     expect(classified.message).toContain("tool_failed");
     expect(classified.adapterCode).toBe("CLAUDE_RUNTIME_ERROR");
   });
+
+  it("includes result detail for non-success subtype classification", () => {
+    const classified = classifyClaudeResultSubtype(
+      "error_during_execution",
+      "No conversation found with session ID: dead-session",
+    );
+    expect(classified.message).toContain("error_during_execution");
+    expect(classified.message).toContain("No conversation found with session ID");
+  });
 });

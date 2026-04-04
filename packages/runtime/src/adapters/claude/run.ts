@@ -135,6 +135,26 @@ function normalizeUsage(message: ClaudeStreamMessage): RuntimeUsage | null {
   };
 }
 
+function isMissingResumeSessionError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  const lowered = message.toLowerCase();
+  return (
+    lowered.includes("no conversation found with session id") ||
+    lowered.includes("no conversation found for session id") ||
+    lowered.includes("session not found")
+  );
+}
+
+function isRetryableResumeFailure(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  const lowered = message.toLowerCase();
+  return (
+    isMissingResumeSessionError(error) ||
+    lowered.includes("error_during_execution") ||
+    lowered.includes("claude code returned an error result")
+  );
+}
+
 function toRuntimeEvent(message: ClaudeStreamMessage): RuntimeEvent | null {
   if (message.type === "result") {
     return {
@@ -358,6 +378,8 @@ async function runClaudeQueryAttempt(
   let outputText = "";
   let usage: RuntimeUsage | null = null;
   const events: RuntimeEvent[] = [];
+  let terminalErrorSubtype: string | null = null;
+  let terminalErrorDetail: string | null = null;
 
   const processMessage = (rawMessage: unknown) => {
     if (!rawMessage || typeof rawMessage !== "object" || !("type" in rawMessage)) return;
@@ -394,11 +416,16 @@ async function runClaudeQueryAttempt(
     if (message.type !== "result") return;
 
     usage = normalizeUsage(message);
+    const directResult = typeof message.result === "string" ? message.result : "";
     if (message.subtype !== "success") {
-      throw classifyClaudeResultSubtype(message.subtype ?? "unknown");
+      terminalErrorSubtype = message.subtype ?? "unknown";
+      terminalErrorDetail = directResult || null;
+      if (directResult) {
+        throw classifyClaudeResultSubtype(terminalErrorSubtype, directResult);
+      }
+      return;
     }
 
-    const directResult = typeof message.result === "string" ? message.result : "";
     if (!outputText && directResult) {
       outputText = directResult;
     }
@@ -426,6 +453,10 @@ async function runClaudeQueryAttempt(
       // best-effort stream cleanup
     }
     throw error;
+  }
+
+  if (terminalErrorSubtype) {
+    throw classifyClaudeResultSubtype(terminalErrorSubtype, terminalErrorDetail);
   }
 
   return {
@@ -475,6 +506,50 @@ export async function runClaudeRuntime(
       usage: attempt.usage,
     };
   } catch (error) {
+    if (input.resume && input.sessionId && isRetryableResumeFailure(error)) {
+      logger.warn(
+        {
+          runtimeId: input.runtimeId,
+          workflowKind: input.workflowKind ?? null,
+          resumeSessionId: input.sessionId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Claude runtime resume attempt failed, retrying without resume",
+      );
+      try {
+        const resumedFromScratch = await runClaudeQueryAttempt(
+          {
+            input: {
+              ...input,
+              resume: false,
+              sessionId: null,
+            },
+            execution,
+            logger,
+          },
+          timeoutMs,
+        );
+        return {
+          outputText: resumedFromScratch.outputText,
+          sessionId: resumedFromScratch.sessionId,
+          events: resumedFromScratch.events,
+          usage: resumedFromScratch.usage,
+        };
+      } catch (resumeRetryError) {
+        const classified = classifyClaudeRuntimeError(resumeRetryError);
+        logger.error(
+          {
+            runtimeId: input.runtimeId,
+            workflowKind: input.workflowKind ?? null,
+            code: classified.adapterCode,
+            error: classified.message,
+          },
+          "Claude runtime run failed after missing-session resume retry",
+        );
+        throw classified;
+      }
+    }
+
     if (isQueryStartTimeoutError(error)) {
       logger.warn(
         {

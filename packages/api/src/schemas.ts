@@ -144,6 +144,17 @@ export const chatRequestSchema = z.object({
 
 const runtimeHeadersSchema = z.record(z.string(), z.string());
 const runtimeOptionsSchema = z.record(z.string(), z.unknown());
+const runtimeEnvVarSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(200)
+  .regex(
+    /^[A-Za-z0-9_.-]+$/,
+    "apiKeyEnvVar must contain only letters, numbers, dot, underscore, or hyphen",
+  )
+  .nullable()
+  .optional();
 
 export const createRuntimeProfileSchema = z.object({
   projectId: z.string().min(1).nullable().optional(),
@@ -152,7 +163,7 @@ export const createRuntimeProfileSchema = z.object({
   providerId: z.string().min(1).max(100),
   transport: z.string().max(100).nullable().optional(),
   baseUrl: z.string().max(1000).nullable().optional(),
-  apiKeyEnvVar: z.string().max(200).nullable().optional(),
+  apiKeyEnvVar: runtimeEnvVarSchema,
   defaultModel: z.string().max(200).nullable().optional(),
   headers: runtimeHeadersSchema.optional(),
   options: runtimeOptionsSchema.optional(),

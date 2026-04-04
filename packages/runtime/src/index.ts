@@ -61,6 +61,7 @@ export {
 } from "./modelDiscovery.js";
 
 export {
+  isValidEnvVarName,
   redactResolvedRuntimeProfile,
   resolveRuntimeProfile,
   validateResolvedRuntimeProfile,

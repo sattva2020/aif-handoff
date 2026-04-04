@@ -68,7 +68,9 @@ The API exposes effective selection endpoints:
 Optional proxy mode:
 
 - set `ANTHROPIC_BASE_URL`
-- omit explicit model where proxy should decide model mapping
+- set one of `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN`
+- if proxy requires explicit model, set `ANTHROPIC_MODEL` (or profile `defaultModel`)
+- if proxy handles model routing, keep `defaultModel` empty
 
 ### Codex (CLI transport)
 

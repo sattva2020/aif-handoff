@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   resolveRuntimeProfile,
   RuntimeValidationError,
@@ -59,6 +59,78 @@ describe("resolveRuntimeProfile", () => {
     expect(resolved.apiKeyEnvVar).toBe("ANTHROPIC_API_KEY");
     expect(resolved.apiKey).toBe("sk-ant-test");
     expect(resolved.transport).toBe("sdk");
+  });
+
+  it("falls back to ANTHROPIC_MODEL when profile/default overrides are missing", () => {
+    const resolved = resolveRuntimeProfile({
+      source: "none",
+      profile: null,
+      fallbackRuntimeId: "claude",
+      fallbackProviderId: "anthropic",
+      env: {
+        ANTHROPIC_API_KEY: "sk-ant-test",
+        ANTHROPIC_MODEL: "glm-4.5",
+      },
+    });
+
+    expect(resolved.model).toBe("glm-4.5");
+  });
+
+  it("falls back to ANTHROPIC_AUTH_TOKEN when API key is not configured", () => {
+    const resolved = resolveRuntimeProfile({
+      source: "none",
+      profile: null,
+      fallbackRuntimeId: "claude",
+      fallbackProviderId: "anthropic",
+      env: {
+        ANTHROPIC_AUTH_TOKEN: "token-test",
+      },
+    });
+
+    expect(resolved.apiKeyEnvVar).toBe("ANTHROPIC_AUTH_TOKEN");
+    expect(resolved.apiKey).toBe("token-test");
+  });
+
+  it("falls back to inferred env var when profile apiKeyEnvVar is invalid", () => {
+    const warn = vi.fn();
+    const resolved = resolveRuntimeProfile({
+      source: "profile_id",
+      profile: {
+        id: "profile-invalid-env-var",
+        runtimeId: "claude",
+        providerId: "anthropic",
+        apiKeyEnvVar: "invalid env var",
+      },
+      env: {
+        ANTHROPIC_API_KEY: "sk-ant-test",
+      },
+      logger: { warn },
+    });
+
+    expect(resolved.apiKeyEnvVar).toBe("ANTHROPIC_API_KEY");
+    expect(resolved.apiKey).toBe("sk-ant-test");
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to inferred env var when configured apiKeyEnvVar is missing", () => {
+    const warn = vi.fn();
+    const resolved = resolveRuntimeProfile({
+      source: "profile_id",
+      profile: {
+        id: "profile-missing-explicit-key",
+        runtimeId: "claude",
+        providerId: "anthropic",
+        apiKeyEnvVar: "legacy.custom.key",
+      },
+      env: {
+        ANTHROPIC_API_KEY: "sk-ant-test",
+      },
+      logger: { warn },
+    });
+
+    expect(resolved.apiKeyEnvVar).toBe("ANTHROPIC_API_KEY");
+    expect(resolved.apiKey).toBe("sk-ant-test");
+    expect(warn).toHaveBeenCalledTimes(1);
   });
 
   it("omits model fallback when suppressModelFallback=true", () => {

@@ -14,6 +14,7 @@ import {
 import type { AifConfig } from "@/lib/api";
 import { ConfigEditor } from "@/components/settings/ConfigEditor";
 import { useTheme } from "@/hooks/useTheme";
+import { useEffectiveChatRuntime } from "@/hooks/useRuntimeProfiles";
 import {
   getDesktopNotificationPermission,
   requestDesktopNotificationPermission,
@@ -48,6 +49,8 @@ interface Props {
   viewMode: "kanban" | "list";
   onViewModeChange: (mode: "kanban" | "list") => void;
   taskMetrics: TaskMetricsSummary;
+  runtimeProfilesOpen: boolean;
+  onToggleRuntimeProfiles: () => void;
   onRoadmapImportComplete?: (result: RoadmapImportResult) => void;
 }
 
@@ -61,10 +64,14 @@ export function Header({
   viewMode,
   onViewModeChange,
   taskMetrics,
+  runtimeProfilesOpen,
+  onToggleRuntimeProfiles,
   onRoadmapImportComplete,
 }: Props) {
   const { theme, toggleTheme } = useTheme();
   const headerRef = useRef<HTMLElement>(null);
+  const { data: effectiveChatRuntime, isFetching: effectiveRuntimeFetching } =
+    useEffectiveChatRuntime(selectedProject?.id ?? null);
 
   useEffect(() => {
     const el = headerRef.current;
@@ -104,6 +111,11 @@ export function Header({
   const formatInteger = (value: number) => integerFormatter.format(Math.round(value));
   const formatUsd = (value: number) => usdFormatter.format(value);
   const formatPercent = (value: number) => `${value.toFixed(1)}%`;
+  const currentRuntimeLabel = !selectedProject
+    ? "No project"
+    : effectiveRuntimeFetching
+      ? "Loading..."
+      : (effectiveChatRuntime?.profile?.name ?? "Default");
 
   const handleDesktopNotificationsToggle = useCallback(async () => {
     const next = !settings.desktop;
@@ -322,6 +334,26 @@ export function Header({
           >
             <ChartColumn className="h-3.5 w-3.5" />
             <span className="hidden md:inline">METRICS</span>
+          </button>
+          <button
+            onClick={onToggleRuntimeProfiles}
+            disabled={!selectedProject}
+            className={`inline-flex h-8 items-center gap-1 border border-border bg-card px-2 text-[10px] font-mono text-foreground transition-colors ${
+              runtimeProfilesOpen
+                ? "border-primary/70 bg-primary/10"
+                : "hover:border-primary/70 hover:bg-accent"
+            } disabled:cursor-not-allowed disabled:opacity-40`}
+            aria-label="Runtime profiles"
+            title={
+              selectedProject
+                ? `Current runtime profile: ${currentRuntimeLabel}`
+                : "Select project first"
+            }
+            type="button"
+          >
+            <span className="md:hidden">RUNTIME</span>
+            <span className="hidden md:inline">RUNTIME:</span>
+            <span className="hidden max-w-40 truncate md:inline">{currentRuntimeLabel}</span>
           </button>
           <button
             onClick={() => {

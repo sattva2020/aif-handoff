@@ -3,6 +3,7 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import {
   createRuntimeWorkflowSpec,
+  isValidEnvVarName,
   redactResolvedRuntimeProfile,
   resolveRuntimeProfile,
 } from "@aif/runtime";
@@ -54,7 +55,17 @@ function inferApiKeyEnvVar(profile: {
   apiKeyEnvVar?: string | null;
 }): string {
   const explicitEnvVar = profile.apiKeyEnvVar?.trim();
-  if (explicitEnvVar) return explicitEnvVar;
+  if (isValidEnvVarName(explicitEnvVar)) return explicitEnvVar;
+  if (explicitEnvVar) {
+    log.warn(
+      {
+        runtimeId: profile.runtimeId,
+        providerId: profile.providerId,
+        invalidApiKeyEnvVar: explicitEnvVar,
+      },
+      "WARN [runtime-profile-route] Invalid apiKeyEnvVar provided for temporary validation key; using inferred fallback",
+    );
+  }
 
   const runtimeId = profile.runtimeId.toLowerCase();
   const providerId = profile.providerId.toLowerCase();
@@ -277,12 +288,29 @@ runtimeProfilesRouter.get("/effective/chat/:projectId", async (c) => {
     systemDefaultRuntimeProfileId: null,
   });
 
+  const workflow = createRuntimeWorkflowSpec({
+    workflowKind: "chat",
+    prompt: "Resolve effective chat runtime profile",
+    requiredCapabilities: [],
+    sessionReusePolicy: "never",
+  });
+  const resolved = resolveRuntimeProfile({
+    source: effective.source,
+    profile: effective.profile,
+    workflow,
+    fallbackRuntimeId: "claude",
+    fallbackProviderId: "anthropic",
+    env: process.env,
+    allowDisabled: true,
+  });
+
   return c.json({
     source: effective.source,
     profile: effective.profile,
     taskRuntimeProfileId: effective.taskRuntimeProfileId,
     projectRuntimeProfileId: effective.projectRuntimeProfileId,
     systemRuntimeProfileId: effective.systemRuntimeProfileId,
+    resolved: redactResolvedRuntimeProfile(resolved),
   });
 });
 

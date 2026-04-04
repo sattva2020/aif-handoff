@@ -36,6 +36,7 @@ function AppContent() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [commandOpen, setCommandOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [runtimeSettingsOpen, setRuntimeSettingsOpen] = useState(false);
   const [density, setDensity] = useState<"comfortable" | "compact">(() => {
     const saved = readStorage(STORAGE_KEYS.DENSITY);
     return saved === "compact" ? "compact" : "comfortable";
@@ -125,6 +126,7 @@ function AppContent() {
 
   const handleSelectProject = useCallback((p: Project) => {
     setProject(p);
+    setRuntimeSettingsOpen(false);
     writeStorage(STORAGE_KEYS.SELECTED_PROJECT, p.id);
     window.history.pushState(null, "", `/project/${p.id}`);
   }, []);
@@ -151,6 +153,7 @@ function AppContent() {
         onDeselectProject={() => {
           setProject(null);
           setSelectedTaskId(null);
+          setRuntimeSettingsOpen(false);
           removeStorage(STORAGE_KEYS.SELECTED_PROJECT);
           window.history.pushState(null, "", "/");
         }}
@@ -160,6 +163,8 @@ function AppContent() {
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         taskMetrics={taskMetrics}
+        runtimeProfilesOpen={runtimeSettingsOpen}
+        onToggleRuntimeProfiles={() => setRuntimeSettingsOpen((value) => !value)}
       />
 
       <main
@@ -172,7 +177,15 @@ function AppContent() {
               "Configure at least one enabled runtime profile or provider credential to run AI stages."}
           </div>
         ) : null}
-        {project && <ProjectRuntimeSettings key={project.id} project={project} />}
+        {project && (
+          <ProjectRuntimeSettings
+            key={project.id}
+            project={project}
+            open={runtimeSettingsOpen}
+            onOpenChange={setRuntimeSettingsOpen}
+            hideTrigger
+          />
+        )}
         {project ? (
           <Board
             projectId={project.id}

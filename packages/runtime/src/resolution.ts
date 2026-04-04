@@ -18,9 +18,12 @@ export interface RuntimeProfileLike {
 
 export interface RuntimeResolutionEnv {
   ANTHROPIC_API_KEY?: string;
+  ANTHROPIC_AUTH_TOKEN?: string;
   ANTHROPIC_BASE_URL?: string;
+  ANTHROPIC_MODEL?: string;
   OPENAI_API_KEY?: string;
   OPENAI_BASE_URL?: string;
+  OPENAI_MODEL?: string;
   CODEX_CLI_PATH?: string;
   AGENTAPI_BASE_URL?: string;
   [key: string]: string | undefined;
@@ -67,11 +70,28 @@ function normalizeString(value: string | null | undefined): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function inferDefaultApiKeyEnvVar(runtimeId: string, providerId: string): string {
+const ENV_VAR_NAME_REGEX = /^[A-Za-z0-9_.-]+$/;
+
+export function isValidEnvVarName(value: string | null | undefined): value is string {
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return false;
+  return ENV_VAR_NAME_REGEX.test(trimmed);
+}
+
+function inferDefaultApiKeyEnvVar(
+  runtimeId: string,
+  providerId: string,
+  env: RuntimeResolutionEnv,
+): string {
   const runtime = runtimeId.toLowerCase();
   const provider = providerId.toLowerCase();
 
-  if (runtime === "claude" || provider === "anthropic") return "ANTHROPIC_API_KEY";
+  if (runtime === "claude" || provider === "anthropic") {
+    if (normalizeString(env.ANTHROPIC_API_KEY)) return "ANTHROPIC_API_KEY";
+    if (normalizeString(env.ANTHROPIC_AUTH_TOKEN)) return "ANTHROPIC_AUTH_TOKEN";
+    return "ANTHROPIC_API_KEY";
+  }
   return "OPENAI_API_KEY";
 }
 
@@ -93,6 +113,25 @@ function inferDefaultBaseUrl(
 function inferDefaultTransport(runtimeId: string): RuntimeTransport {
   if (runtimeId.toLowerCase() === "codex") return "cli";
   return "sdk";
+}
+
+function inferDefaultModel(
+  runtimeId: string,
+  providerId: string,
+  env: RuntimeResolutionEnv,
+): string | null {
+  const runtime = runtimeId.toLowerCase();
+  const provider = providerId.toLowerCase();
+
+  if (runtime === "claude" || provider === "anthropic") {
+    return normalizeString(env.ANTHROPIC_MODEL);
+  }
+
+  if (runtime === "codex" || provider === "openai") {
+    return normalizeString(env.OPENAI_MODEL);
+  }
+
+  return null;
 }
 
 function resolveApiKey(envVarName: string, env: RuntimeResolutionEnv): string | null {
@@ -152,15 +191,53 @@ export function resolveRuntimeProfile(input: ResolveRuntimeProfileInput): Resolv
   const transport =
     (normalizeString(profile?.transport) as RuntimeTransport | null) ??
     inferDefaultTransport(runtimeId);
-  const apiKeyEnvVar =
-    normalizeString(profile?.apiKeyEnvVar) ?? inferDefaultApiKeyEnvVar(runtimeId, providerId);
-  const apiKey = resolveApiKey(apiKeyEnvVar, env);
+  const explicitApiKeyEnvVar = normalizeString(profile?.apiKeyEnvVar);
+  const defaultApiKeyEnvVar = inferDefaultApiKeyEnvVar(runtimeId, providerId, env);
+  let apiKeyEnvVar = defaultApiKeyEnvVar;
+  if (explicitApiKeyEnvVar) {
+    if (isValidEnvVarName(explicitApiKeyEnvVar)) {
+      apiKeyEnvVar = explicitApiKeyEnvVar;
+    } else {
+      input.logger?.warn?.(
+        {
+          source: input.source,
+          profileId: normalizeString(profile?.id),
+          runtimeId,
+          providerId,
+          invalidApiKeyEnvVar: explicitApiKeyEnvVar,
+          fallbackApiKeyEnvVar: defaultApiKeyEnvVar,
+        },
+        "Invalid apiKeyEnvVar detected; falling back to inferred default env var",
+      );
+    }
+  }
+  let apiKey = resolveApiKey(apiKeyEnvVar, env);
+  if (!apiKey && explicitApiKeyEnvVar && apiKeyEnvVar !== defaultApiKeyEnvVar) {
+    const fallbackApiKey = resolveApiKey(defaultApiKeyEnvVar, env);
+    if (fallbackApiKey) {
+      input.logger?.warn?.(
+        {
+          source: input.source,
+          profileId: normalizeString(profile?.id),
+          runtimeId,
+          providerId,
+          missingApiKeyEnvVar: apiKeyEnvVar,
+          fallbackApiKeyEnvVar: defaultApiKeyEnvVar,
+        },
+        "Configured apiKeyEnvVar is not set; falling back to inferred default env var",
+      );
+      apiKeyEnvVar = defaultApiKeyEnvVar;
+      apiKey = fallbackApiKey;
+    }
+  }
   const baseUrl =
     normalizeString(profile?.baseUrl) ?? inferDefaultBaseUrl(runtimeId, providerId, env);
   const model =
     input.suppressModelFallback === true
       ? null
-      : (normalizeString(input.modelOverride) ?? normalizeString(profile?.defaultModel));
+      : (normalizeString(input.modelOverride) ??
+        normalizeString(profile?.defaultModel) ??
+        inferDefaultModel(runtimeId, providerId, env));
   const headers = profile?.headers ?? {};
   const mergedOptions = mergeRuntimeOptions(profile?.options, input.runtimeOptionsOverride);
   const options = applyTransportDefaults(transport, mergedOptions, env);

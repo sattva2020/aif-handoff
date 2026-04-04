@@ -14,10 +14,25 @@ import { RuntimeProfileForm } from "@/components/settings/RuntimeProfileForm";
 
 interface Props {
   project: Project;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  hideTrigger?: boolean;
 }
 
-export function ProjectRuntimeSettings({ project }: Props) {
-  const [open, setOpen] = useState(false);
+export function ProjectRuntimeSettings({
+  project,
+  open,
+  onOpenChange,
+  hideTrigger = false,
+}: Props) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isOpen = open ?? internalOpen;
+  const setOpenState = (next: boolean) => {
+    onOpenChange?.(next);
+    if (open === undefined) {
+      setInternalOpen(next);
+    }
+  };
   const [taskDefaultId, setTaskDefaultId] = useState(
     () => project.defaultTaskRuntimeProfileId ?? "",
   );
@@ -70,9 +85,16 @@ export function ProjectRuntimeSettings({ project }: Props) {
     setStatusMessage(null);
     try {
       const result = await validateProfile.mutateAsync({ profileId, forceRefresh: true });
-      setStatusMessage(
-        result.ok ? `Validation OK: ${result.message}` : `Validation failed: ${result.message}`,
-      );
+      const expectedEnvVar =
+        result.details && typeof result.details.expectedEnvVar === "string"
+          ? result.details.expectedEnvVar
+          : null;
+      if (result.ok) {
+        setStatusMessage(`Validation OK: ${result.message}`);
+        return;
+      }
+      const envHint = expectedEnvVar ? ` (expected env var: ${expectedEnvVar})` : "";
+      setStatusMessage(`Validation failed: ${result.message}${envHint}`);
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Validation failed");
     }
@@ -113,9 +135,10 @@ export function ProjectRuntimeSettings({ project }: Props) {
     setEditingProfile(null);
   };
 
-  if (!open) {
+  if (!isOpen) {
+    if (hideTrigger) return null;
     return (
-      <Button type="button" size="sm" variant="outline" onClick={() => setOpen(true)}>
+      <Button type="button" size="sm" variant="outline" onClick={() => setOpenState(true)}>
         Runtime Profiles
       </Button>
     );
@@ -125,7 +148,7 @@ export function ProjectRuntimeSettings({ project }: Props) {
     <div className="mb-4 space-y-3 border border-border bg-card/50 p-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold">Runtime Profiles</h3>
-        <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
+        <Button size="sm" variant="ghost" onClick={() => setOpenState(false)}>
           Close
         </Button>
       </div>

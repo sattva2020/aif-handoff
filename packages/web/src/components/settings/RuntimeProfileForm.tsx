@@ -151,7 +151,14 @@ export function RuntimeProfileForm({
             value={apiKeyEnvVar}
             onChange={(e) => setApiKeyEnvVar(e.target.value)}
             placeholder="ANTHROPIC_API_KEY"
+            autoComplete="off"
+            spellCheck={false}
+            pattern="^[A-Za-z0-9_.-]+$"
+            title="Environment variable name may contain letters, numbers, dot, underscore, and hyphen"
           />
+          <p className="text-[11px] text-muted-foreground">
+            Use env var name only (A-Z, 0-9, ., _, -)
+          </p>
         </div>
         <div className="space-y-1">
           <p className="text-xs font-medium text-muted-foreground">Default model</p>

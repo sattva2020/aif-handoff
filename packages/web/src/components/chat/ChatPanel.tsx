@@ -26,6 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import { useChat } from "@/hooks/useChat";
 import { useChatSessions } from "@/hooks/useChatSessions";
 import { useTask, useCreateTask } from "@/hooks/useTasks";
+import { useEffectiveChatRuntime } from "@/hooks/useRuntimeProfiles";
 import { parseChatActions } from "@/lib/chatActions";
 import { toAttachmentPayload } from "@/components/task/useTaskDetailActions";
 import { SessionList } from "./SessionList";
@@ -231,6 +232,7 @@ export function ChatPanel({ isOpen, projectId, taskId, onClose, onOpenTask }: Ch
   } = useChat(projectId, activeSessionId, taskId);
 
   const { data: currentTask } = useTask(taskId);
+  const { data: effectiveChatRuntime } = useEffectiveChatRuntime(projectId);
   const [input, setInput] = useState("");
   const [pendingFiles, setPendingFiles] = useState<ChatAttachment[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -338,6 +340,16 @@ export function ChatPanel({ isOpen, projectId, taskId, onClose, onOpenTask }: Ch
 
   // Find active session title
   const activeSession = sessions.find((s) => s.id === activeSessionId);
+  const activeRuntimeProfileName =
+    effectiveChatRuntime?.profile?.name ??
+    (effectiveChatRuntime?.source === "none" ? "Default runtime" : "Unnamed profile");
+  const activeRuntimeEngine = effectiveChatRuntime?.resolved
+    ? `${effectiveChatRuntime.resolved.runtimeId}/${effectiveChatRuntime.resolved.providerId}`
+    : effectiveChatRuntime?.profile
+      ? `${effectiveChatRuntime.profile.runtimeId}/${effectiveChatRuntime.profile.providerId}`
+      : "n/a";
+  const activeRuntimeModel =
+    effectiveChatRuntime?.resolved?.model ?? effectiveChatRuntime?.profile?.defaultModel ?? "auto";
 
   return (
     <div
@@ -405,6 +417,20 @@ export function ChatPanel({ isOpen, projectId, taskId, onClose, onOpenTask }: Ch
             </span>
           </div>
         )}
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+          <span>Profile:</span>
+          <Badge variant="outline" className="px-1.5 py-0 h-5 text-[10px] font-medium">
+            {activeRuntimeProfileName}
+          </Badge>
+          <span>Runtime:</span>
+          <Badge variant="outline" className="px-1.5 py-0 h-5 text-[10px] font-medium">
+            {activeRuntimeEngine}
+          </Badge>
+          <span>Model:</span>
+          <Badge variant="outline" className="px-1.5 py-0 h-5 text-[10px] font-medium">
+            {activeRuntimeModel}
+          </Badge>
+        </div>
       </div>
 
       {/* Content area: sessions sidebar + messages */}

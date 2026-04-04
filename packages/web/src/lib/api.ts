@@ -128,7 +128,32 @@ async function request<T>(
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(body.error || `HTTP ${res.status}`);
+    let message: string | null = null;
+    if (typeof body?.error === "string") {
+      message = body.error;
+    } else if (typeof body?.message === "string") {
+      message = body.message;
+    } else if (body?.error && typeof body.error === "object") {
+      const issues: unknown[] =
+        "issues" in body.error && Array.isArray(body.error.issues)
+          ? (body.error.issues as unknown[])
+          : [];
+      const firstIssue = issues.find(
+        (issue): issue is { message?: unknown } => typeof issue === "object" && issue !== null,
+      );
+      if (typeof firstIssue?.message === "string") {
+        message = firstIssue.message;
+      }
+    }
+    if (!message && body?.fieldErrors && typeof body.fieldErrors === "object") {
+      const firstFieldError = Object.values(body.fieldErrors).find(
+        (value): value is string[] => Array.isArray(value) && value.length > 0,
+      );
+      if (firstFieldError) {
+        message = firstFieldError[0] ?? null;
+      }
+    }
+    throw new Error(message ?? `HTTP ${res.status}`);
   }
 
   return res.json();
@@ -508,6 +533,20 @@ export const api = {
     taskRuntimeProfileId: string | null;
     projectRuntimeProfileId: string | null;
     systemRuntimeProfileId: string | null;
+    resolved: {
+      source: string;
+      profileId: string | null;
+      runtimeId: string;
+      providerId: string;
+      transport: string;
+      baseUrl: string | null;
+      apiKeyEnvVar: string | null;
+      hasApiKey: boolean;
+      model: string | null;
+      headers: string[];
+      optionKeys: string[];
+      workflowKind: string | null;
+    };
   }> {
     return request(`/runtime-profiles/effective/chat/${projectId}`);
   },
