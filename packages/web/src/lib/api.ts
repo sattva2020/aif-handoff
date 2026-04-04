@@ -139,7 +139,8 @@ async function request<T>(
           ? (body.error.issues as unknown[])
           : [];
       const firstIssue = issues.find(
-        (issue): issue is { message?: unknown } => typeof issue === "object" && issue !== null,
+        (issue: unknown): issue is { message?: unknown } =>
+          typeof issue === "object" && issue !== null,
       );
       if (typeof firstIssue?.message === "string") {
         message = firstIssue.message;
@@ -147,7 +148,7 @@ async function request<T>(
     }
     if (!message && body?.fieldErrors && typeof body.fieldErrors === "object") {
       const firstFieldError = Object.values(body.fieldErrors).find(
-        (value): value is string[] => Array.isArray(value) && value.length > 0,
+        (value: unknown): value is string[] => Array.isArray(value) && value.length > 0,
       );
       if (firstFieldError) {
         message = firstFieldError[0] ?? null;
