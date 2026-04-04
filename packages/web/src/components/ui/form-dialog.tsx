@@ -28,7 +28,11 @@ function FormDialog({
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
         {children}
-        {error && <p className="text-sm text-destructive">{error}</p>}
+        {error && (
+          <p className="text-sm text-destructive" role="alert">
+            {error}
+          </p>
+        )}
         <div className="flex justify-end gap-2">{actions}</div>
       </DialogContent>
     </Dialog>

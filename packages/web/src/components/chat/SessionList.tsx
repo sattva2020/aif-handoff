@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Plus, Trash2, Pencil, Check, X } from "lucide-react";
 import { SourceIcon } from "@/components/ui/source-icon";
-import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { cn, timeAgo } from "@/lib/utils";
 import type { ChatSession } from "@aif/shared/browser";
 
 interface SessionListProps {
@@ -11,19 +13,6 @@ interface SessionListProps {
   onCreate: () => void;
   onDelete: (id: string) => void;
   onRename: (id: string, title: string) => void;
-}
-
-function formatRelativeTime(dateStr: string): string {
-  const now = Date.now();
-  const date = new Date(dateStr).getTime();
-  const diffMs = now - date;
-  const diffMin = Math.floor(diffMs / 60000);
-  if (diffMin < 1) return "just now";
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h ago`;
-  const diffDay = Math.floor(diffHr / 24);
-  return `${diffDay}d ago`;
 }
 
 export function SessionList({
@@ -66,16 +55,15 @@ export function SessionList({
   return (
     <div className="flex flex-col h-full">
       <div className="px-3 py-2 border-b border-border">
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={onCreate}
-          className={cn(
-            "flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-xs font-medium",
-            "bg-primary/10 text-primary hover:bg-primary/20 transition-colors",
-          )}
+          className="w-full gap-1.5 bg-primary/10 text-primary hover:bg-primary/20"
         >
           <Plus className="h-3.5 w-3.5" />
           New Chat
-        </button>
+        </Button>
       </div>
       <div className="flex-1 overflow-y-auto overscroll-contain py-1">
         {sessions.length === 0 && (
@@ -109,38 +97,43 @@ export function SessionList({
             <div className="flex-1 min-w-0">
               {editingId === session.id ? (
                 <div className="flex items-center gap-1">
-                  <input
+                  <Input
                     ref={inputRef}
                     value={editTitle}
                     onChange={(e) => setEditTitle(e.target.value)}
                     onKeyDown={handleRenameKeyDown}
                     onBlur={commitRename}
-                    className="w-full bg-transparent text-xs border-b border-primary/50 outline-none text-foreground"
+                    inputSize="sm"
+                    className="w-full bg-transparent border-0 border-b border-primary/50 rounded-none px-0 text-xs"
                     onClick={(e) => e.stopPropagation()}
                   />
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-5 w-5 border-0 text-primary"
                     onClick={(e) => {
                       e.stopPropagation();
                       commitRename();
                     }}
-                    className="text-primary"
                   >
                     <Check className="h-3 w-3" />
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-5 w-5 border-0 text-muted-foreground"
                     onClick={(e) => {
                       e.stopPropagation();
                       cancelRename();
                     }}
-                    className="text-muted-foreground"
                   >
                     <X className="h-3 w-3" />
-                  </button>
+                  </Button>
                 </div>
               ) : (
                 <>
                   <p className="text-xs font-medium text-foreground truncate">{session.title}</p>
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-3xs text-muted-foreground">
                     {session.source !== "web" && (
                       <span
                         className={cn(
@@ -151,33 +144,37 @@ export function SessionList({
                         {session.source}
                       </span>
                     )}
-                    {formatRelativeTime(session.updatedAt)}
+                    {timeAgo(session.updatedAt)}
                   </p>
                 </>
               )}
             </div>
             {editingId !== session.id && session.source === "web" && (
               <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-5 w-5 border-0 text-muted-foreground"
                   onClick={(e) => {
                     e.stopPropagation();
                     startRename(session);
                   }}
-                  className="p-0.5 text-muted-foreground hover:text-foreground"
                   title="Rename"
                 >
                   <Pencil className="h-3 w-3" />
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-5 w-5 border-0 text-muted-foreground hover:text-destructive"
                   onClick={(e) => {
                     e.stopPropagation();
                     onDelete(session.id);
                   }}
-                  className="p-0.5 text-muted-foreground hover:text-destructive"
                   title="Delete"
                 >
                   <Trash2 className="h-3 w-3" />
-                </button>
+                </Button>
               </div>
             )}
           </div>

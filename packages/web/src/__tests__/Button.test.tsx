@@ -15,7 +15,7 @@ describe("Button", () => {
     const btn = screen.getByRole("button", { name: "Tiny" });
     expect(btn.className).toContain("h-6");
     expect(btn.className).toContain("px-2");
-    expect(btn.className).toContain("text-[10px]");
+    expect(btn.className).toContain("text-3xs");
   });
 
   it("xs size does not include default size classes", () => {

@@ -34,13 +34,13 @@ describe("TaskTagsList", () => {
   it("applies compact styles", () => {
     render(<TaskTagsList tags={["bug"]} isCompact />);
     const badge = screen.getByText("bug");
-    expect(badge).toHaveClass("text-[9px]");
+    expect(badge).toHaveClass("text-4xs");
   });
 
   it("applies comfortable styles by default", () => {
     render(<TaskTagsList tags={["bug"]} />);
     const badge = screen.getByText("bug");
-    expect(badge).toHaveClass("text-[10px]");
+    expect(badge).toHaveClass("text-3xs");
   });
 
   it("renders both roadmapAlias and tags", () => {

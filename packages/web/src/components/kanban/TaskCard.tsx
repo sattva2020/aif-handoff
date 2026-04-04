@@ -58,14 +58,12 @@ export function TaskCard({ task, onClick, overlay, density = "comfortable" }: Ta
 
       <div className={`flex items-start justify-between ${isCompact ? "gap-1.5" : "gap-2"}`}>
         <div
-          className={`${isCompact ? "pl-1.5 text-[12px]" : "pl-2 text-sm"} font-medium leading-tight tracking-tight`}
+          className={`${isCompact ? "pl-1.5 text-xs" : "pl-2 text-sm"} font-medium leading-tight tracking-tight`}
         >
           {task.title}
         </div>
         {priority.label !== "None" && (
-          <Badge
-            className={`shrink-0 ${isCompact ? "px-1 py-0 text-[9px]" : "px-1.5 py-0 text-[10px]"} ${priority.className}`}
-          >
+          <Badge size={isCompact ? "xs" : "sm"} className={`shrink-0 ${priority.className}`}>
             {priority.label}
           </Badge>
         )}
@@ -73,7 +71,7 @@ export function TaskCard({ task, onClick, overlay, density = "comfortable" }: Ta
 
       {task.description && (
         <div
-          className={`line-clamp-2 text-muted-foreground ${isCompact ? "mt-0.5 pl-1.5 text-[11px]" : "mt-1.5 pl-2 text-xs"}`}
+          className={`line-clamp-2 text-muted-foreground ${isCompact ? "mt-0.5 pl-1.5 text-2xs" : "mt-1.5 pl-2 text-xs"}`}
         >
           {task.description}
         </div>
@@ -81,26 +79,27 @@ export function TaskCard({ task, onClick, overlay, density = "comfortable" }: Ta
 
       <TaskTagsList
         tags={task.tags}
-        roadmapAlias={task.roadmapAlias}
+        roadmapAlias={task.roadmapAlias ?? undefined}
         isCompact={isCompact}
         className={isCompact ? "mt-0.5 pl-1.5" : "mt-1.5 pl-2"}
       />
 
       {task.status === "blocked_external" && task.blockedReason && (
-        <div className="mt-2 ml-2 border border-red-500/30 bg-red-500/10 px-2 py-1 text-[10px] text-red-300 line-clamp-2">
+        <div className="mt-2 ml-2 border border-red-500/30 bg-red-500/10 px-2 py-1 text-3xs text-red-300 line-clamp-2">
           {task.blockedReason}
         </div>
       )}
 
       <div
         className={`border-t border-border font-mono text-muted-foreground/70 ${
-          isCompact ? "mt-1.5 pl-1.5 pt-1 text-[9px]" : "mt-2 pl-2 pt-2 text-[10px]"
+          isCompact ? "mt-1.5 pl-1.5 pt-1 text-4xs" : "mt-2 pl-2 pt-2 text-3xs"
         }`}
       >
         #{shortTaskId(task.id)} · {timeAgo(task.updatedAt)} · {task.autoMode ? "AI" : "MANUAL"}
         {task.paused && (
           <Badge
-            className={`ml-1.5 ${isCompact ? "px-1 py-0 text-[9px]" : "px-1.5 py-0 text-[10px]"} border-yellow-500/35 bg-yellow-500/15 text-yellow-600 dark:text-yellow-300`}
+            size={isCompact ? "xs" : "sm"}
+            className="ml-1.5 border-yellow-500/35 bg-yellow-500/15 text-yellow-600 dark:text-yellow-300"
           >
             PAUSED
           </Badge>

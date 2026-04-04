@@ -18,7 +18,11 @@ function FormField({ label, error, required, htmlFor, children, className }: For
         {required && <span className="text-destructive"> *</span>}
       </label>
       {children}
-      {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
+      {error && (
+        <p className="mt-1 text-xs text-destructive" role="alert">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

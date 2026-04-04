@@ -14,7 +14,7 @@ export function ToggleButton({ expanded, onClick, children, className }: ToggleB
       type="button"
       aria-expanded={expanded}
       className={cn(
-        "inline-flex items-center gap-1 border border-border bg-background/60 px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground rounded-none",
+        "inline-flex items-center gap-1 border border-border bg-background/60 px-2 py-1 text-2xs text-muted-foreground transition-colors hover:text-foreground rounded-none",
         className,
       )}
       onClick={onClick}

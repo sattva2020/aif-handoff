@@ -3,33 +3,34 @@ import {
   useEffect,
   useState,
   useCallback,
-  memo,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
+import { useOutsideClick } from "@/hooks/useOutsideClick";
 import {
   Send,
   Trash2,
   Bot,
-  User,
-  Loader2,
   X,
   Plus,
-  CheckCircle2,
   ClipboardList,
   PanelLeftClose,
   PanelLeftOpen,
   Paperclip,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Markdown } from "@/components/ui/markdown";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
+import { AttachmentChip } from "@/components/ui/attachment-chip";
 import { useChat } from "@/hooks/useChat";
 import { useChatSessions } from "@/hooks/useChatSessions";
-import { useTask, useCreateTask } from "@/hooks/useTasks";
-import { parseChatActions } from "@/lib/chatActions";
+import { useTask } from "@/hooks/useTasks";
 import { toAttachmentPayload } from "@/components/task/useTaskDetailActions";
 import { SessionList } from "./SessionList";
-import type { ChatMessage, ChatAttachment, ChatActionCreateTask } from "@aif/shared/browser";
+import { MessageBubble } from "./MessageBubble";
+import { TypingIndicator } from "./TypingIndicator";
+import type { ChatAttachment } from "@aif/shared/browser";
 
 interface ChatPanelProps {
   isOpen: boolean;
@@ -37,173 +38,6 @@ interface ChatPanelProps {
   taskId: string | null;
   onClose: () => void;
   onOpenTask?: (taskId: string) => void;
-}
-
-function CreateTaskCard({
-  action,
-  projectId,
-  onCreated,
-  onOpenTask,
-}: {
-  action: ChatActionCreateTask;
-  projectId: string;
-  onCreated: () => void;
-  onOpenTask?: (taskId: string) => void;
-}) {
-  const createTask = useCreateTask();
-  const [createdTaskId, setCreatedTaskId] = useState<string | null>(null);
-
-  const handleCreate = () => {
-    createTask.mutate(
-      {
-        projectId,
-        title: action.title,
-        description: action.description,
-        ...(action.isFix ? { isFix: true } : {}),
-      },
-      {
-        onSuccess: (task) => {
-          setCreatedTaskId(task.id);
-          onCreated();
-        },
-      },
-    );
-  };
-
-  return (
-    <div className="mx-3 my-1.5 rounded border border-emerald-500/40 bg-emerald-500/10 p-3">
-      <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-400 mb-2">
-        <ClipboardList className="h-3.5 w-3.5" />
-        {action.isFix ? "Bug Fix" : "New Task"}
-      </div>
-      <p className="text-sm font-medium text-foreground">{action.title}</p>
-      {action.description && (
-        <p className="mt-1 text-xs text-muted-foreground line-clamp-3">{action.description}</p>
-      )}
-      <div className="mt-2 flex items-center gap-2">
-        {createdTaskId ? (
-          <>
-            <span className="inline-flex items-center gap-1 text-xs text-emerald-400">
-              <CheckCircle2 className="h-3.5 w-3.5" /> Created
-            </span>
-            {onOpenTask && (
-              <button
-                onClick={() => onOpenTask(createdTaskId)}
-                className={cn(
-                  "inline-flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium",
-                  "bg-violet-600 text-white hover:bg-violet-700 transition-colors",
-                )}
-              >
-                Open Task
-              </button>
-            )}
-          </>
-        ) : (
-          <button
-            onClick={handleCreate}
-            disabled={createTask.isPending}
-            className={cn(
-              "inline-flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium",
-              "bg-emerald-600 text-white hover:bg-emerald-700 transition-colors",
-              "disabled:opacity-50 disabled:cursor-not-allowed",
-            )}
-          >
-            <Plus className="h-3 w-3" />
-            {createTask.isPending ? "Creating..." : "Create Task"}
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-const MessageBubble = memo(function MessageBubble({
-  message,
-  projectId,
-  sessionId,
-  onTaskCreated,
-  onOpenTask,
-}: {
-  message: ChatMessage;
-  projectId: string;
-  sessionId: string | null;
-  onTaskCreated: () => void;
-  onOpenTask?: (taskId: string) => void;
-}) {
-  const isUser = message.role === "user";
-  const parsed = !isUser ? parseChatActions(message.content) : null;
-  const displayContent = parsed?.text ?? message.content;
-  const actions = parsed?.actions ?? [];
-
-  return (
-    <>
-      {displayContent.trim() && (
-        <div className={cn("flex gap-2.5 px-3 py-2", isUser ? "flex-row-reverse" : "flex-row")}>
-          <div
-            className={cn(
-              "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs",
-              isUser ? "bg-blue-600 text-white" : "bg-violet-600 text-white",
-            )}
-          >
-            {isUser ? <User className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
-          </div>
-          <div
-            className={cn(
-              "max-w-[85%] rounded-lg px-3 py-2 text-sm break-words",
-              isUser ? "bg-blue-600/15 text-foreground" : "bg-violet-600/15 text-foreground",
-            )}
-          >
-            <Markdown content={displayContent} className="text-sm" />
-            {message.attachments && message.attachments.length > 0 && (
-              <div className="mt-1.5 flex flex-wrap gap-1">
-                {message.attachments.map((att, idx) =>
-                  att.path && sessionId ? (
-                    <a
-                      key={idx}
-                      href={`/chat/sessions/${sessionId}/attachments/${encodeURIComponent(att.name)}`}
-                      download={att.name}
-                      className="inline-flex items-center gap-1 rounded bg-black/10 dark:bg-white/10 px-1.5 py-0.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      <Paperclip className="h-3 w-3" />
-                      {att.name}
-                    </a>
-                  ) : (
-                    <span
-                      key={idx}
-                      className="inline-flex items-center gap-1 rounded bg-black/10 dark:bg-white/10 px-1.5 py-0.5 text-[11px] text-muted-foreground"
-                    >
-                      <Paperclip className="h-3 w-3" />
-                      {att.name}
-                    </span>
-                  ),
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-      {actions.map((action, i) =>
-        action.type === "create_task" ? (
-          <CreateTaskCard
-            key={i}
-            action={action}
-            projectId={projectId}
-            onCreated={onTaskCreated}
-            onOpenTask={onOpenTask}
-          />
-        ) : null,
-      )}
-    </>
-  );
-});
-
-function TypingIndicator({ hasAssistantMessage }: { hasAssistantMessage: boolean }) {
-  return (
-    <div className={cn("flex items-center gap-1.5 px-3 py-1.5", hasAssistantMessage && "pl-12")}>
-      <Loader2 className="h-3 w-3 animate-spin text-violet-400" />
-      <span className="text-xs text-muted-foreground">Working...</span>
-    </div>
-  );
 }
 
 export function ChatPanel({ isOpen, projectId, taskId, onClose, onOpenTask }: ChatPanelProps) {
@@ -254,26 +88,7 @@ export function ChatPanel({ isOpen, projectId, taskId, onClose, onOpenTask }: Ch
   }, [isOpen]);
 
   // Close chat on Escape key or outside click while open
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-
-    const handleMouseDown = (event: MouseEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      if (!panelRef.current?.contains(target)) onClose();
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    document.addEventListener("mousedown", handleMouseDown);
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-      document.removeEventListener("mousedown", handleMouseDown);
-    };
-  }, [isOpen, onClose]);
+  useOutsideClick(panelRef, onClose, isOpen);
 
   const handleSend = () => {
     if (!input.trim() || isStreaming) return;
@@ -343,7 +158,7 @@ export function ChatPanel({ isOpen, projectId, taskId, onClose, onOpenTask }: Ch
     <div
       ref={panelRef}
       className={cn(
-        "fixed bottom-0 left-0 z-[55] flex w-[800px] flex-col",
+        "fixed bottom-0 left-0 z-chat flex w-[800px] flex-col",
         "border-r border-border bg-background",
         "transition-transform duration-300 ease-in-out",
         isOpen ? "translate-x-0" : "-translate-x-full",
@@ -354,44 +169,52 @@ export function ChatPanel({ isOpen, projectId, taskId, onClose, onOpenTask }: Ch
       <div className="border-b border-border px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <button
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => setShowSessions((v) => !v)}
-              className="text-muted-foreground hover:text-foreground transition-colors"
-              title={showSessions ? "Hide sessions" : "Show sessions"}
+              className="h-7 w-7 border-0 text-muted-foreground"
+              aria-label={showSessions ? "Hide sessions" : "Show sessions"}
             >
               {showSessions ? (
                 <PanelLeftClose className="h-4 w-4" />
               ) : (
                 <PanelLeftOpen className="h-4 w-4" />
               )}
-            </button>
+            </Button>
             <Bot className="h-4 w-4 text-primary" />
             <span className="text-sm font-semibold truncate max-w-[300px]">
               {activeSession?.title ?? "AI Chat"}
             </span>
           </div>
           <div className="flex items-center gap-3">
-            <button
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={handleNewChat}
-              className="text-muted-foreground hover:text-foreground transition-colors"
-              title="New chat"
+              className="h-7 w-7 border-0 text-muted-foreground"
+              aria-label="New chat"
             >
               <Plus className="h-3.5 w-3.5" />
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={clearMessages}
-              className="text-muted-foreground hover:text-foreground transition-colors"
-              title="Clear messages"
+              className="h-7 w-7 border-0 text-muted-foreground"
+              aria-label="Clear messages"
             >
               <Trash2 className="h-3.5 w-3.5" />
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={onClose}
-              className="text-muted-foreground hover:text-foreground transition-colors"
-              title="Close chat"
+              className="h-7 w-7 border-0 text-muted-foreground"
+              aria-label="Close chat"
             >
               <X className="h-4 w-4" />
-            </button>
+            </Button>
           </div>
         </div>
         {currentTask && (
@@ -399,7 +222,7 @@ export function ChatPanel({ isOpen, projectId, taskId, onClose, onOpenTask }: Ch
             <ClipboardList className="h-3 w-3" />
             <span className="truncate max-w-[90%]">
               Task: <span className="text-foreground font-medium">{currentTask.title}</span>
-              <Badge variant="outline" className="ml-1.5 text-[10px] px-1 py-0">
+              <Badge variant="outline" size="sm" className="ml-1.5">
                 {currentTask.status}
               </Badge>
             </span>
@@ -468,30 +291,21 @@ export function ChatPanel({ isOpen, projectId, taskId, onClose, onOpenTask }: Ch
       {/* Input area */}
       <div className="border-t border-border p-3">
         <label className="mb-1.5 flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
-          <input
-            type="checkbox"
+          <Checkbox
             checked={explore}
             onChange={(e) => setExplore(e.target.checked)}
-            className="accent-primary h-3.5 w-3.5"
+            className="h-3.5 w-3.5"
           />
           <span title="Brainstorm, research or explore a topic">Explore</span>
         </label>
         {pendingFiles.length > 0 && (
           <div className="mb-1.5 flex flex-wrap gap-1">
             {pendingFiles.map((f, i) => (
-              <span
+              <AttachmentChip
                 key={i}
-                className="inline-flex items-center gap-1 rounded bg-secondary/80 px-2 py-0.5 text-xs text-muted-foreground"
-              >
-                <Paperclip className="h-3 w-3" />
-                {f.name}
-                <button
-                  onClick={() => setPendingFiles((prev) => prev.filter((_, j) => j !== i))}
-                  className="ml-0.5 hover:text-foreground"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
+                name={f.name}
+                onRemove={() => setPendingFiles((prev) => prev.filter((_, j) => j !== i))}
+              />
             ))}
           </div>
         )}
@@ -508,44 +322,33 @@ export function ChatPanel({ isOpen, projectId, taskId, onClose, onOpenTask }: Ch
               }
             }}
           />
-          <button
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={() => fileInputRef.current?.click()}
             disabled={isStreaming || pendingFiles.length >= 5}
-            className={cn(
-              "flex h-9 w-9 shrink-0 items-center justify-center rounded",
-              "text-muted-foreground hover:text-foreground transition-colors",
-              "disabled:opacity-40 disabled:cursor-not-allowed",
-            )}
-            title="Attach file"
+            className="h-9 w-9 shrink-0 border-0 text-muted-foreground"
+            aria-label="Attach file"
           >
             <Paperclip className="h-4 w-4" />
-          </button>
-          <textarea
+          </Button>
+          <Textarea
             ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Ask a question..."
             rows={1}
-            className={cn(
-              "flex-1 resize-none rounded border border-border bg-secondary/50 px-3 py-2",
-              "text-sm text-foreground placeholder:text-muted-foreground",
-              "focus:border-primary/50 focus:outline-none",
-              "max-h-32 min-h-[2.25rem]",
-            )}
+            className="max-h-32 min-h-[2.25rem] flex-1 resize-none bg-secondary/50"
           />
-          <button
+          <Button
             onClick={handleSend}
             disabled={!input.trim() || isStreaming}
-            className={cn(
-              "flex w-9 items-center justify-center self-stretch rounded",
-              "bg-primary text-primary-foreground",
-              "transition-colors hover:bg-primary/90",
-              "disabled:opacity-40 disabled:cursor-not-allowed",
-            )}
+            aria-label="Send message"
+            className="w-9 self-stretch rounded"
           >
             <Send className="h-4 w-4" />
-          </button>
+          </Button>
         </div>
       </div>
     </div>

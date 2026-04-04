@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Loader2, Save, Check, AlertTriangle, RotateCcw } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { StickyActionBar } from "@/components/ui/sticky-action-bar";
 import { api, type AifConfig } from "@/lib/api";
 
@@ -69,21 +71,7 @@ function Field({
 }
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button
-      type="button"
-      onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border transition-colors ${
-        checked ? "bg-primary border-primary" : "bg-muted border-border"
-      }`}
-    >
-      <span
-        className={`inline-block h-3.5 w-3.5 rounded-full bg-background transition-transform ${
-          checked ? "translate-x-[18px]" : "translate-x-0.5"
-        }`}
-      />
-    </button>
-  );
+  return <Switch checked={checked} onCheckedChange={onChange} />;
 }
 
 function ToggleField({
@@ -157,6 +145,7 @@ export function ConfigEditor({ config, onConfigChange }: Props) {
           value={config.language?.ui ?? "en"}
           options={LANGUAGE_OPTIONS}
           onChange={(e) => update("language", "ui", e.target.value)}
+          selectSize="sm"
         />
       </Field>
       <Field label="Artifacts language" hint="Language for generated plans, docs">
@@ -164,6 +153,7 @@ export function ConfigEditor({ config, onConfigChange }: Props) {
           value={config.language?.artifacts ?? "en"}
           options={LANGUAGE_OPTIONS}
           onChange={(e) => update("language", "artifacts", e.target.value)}
+          selectSize="sm"
         />
       </Field>
       <Field label="Technical terms" hint="How to handle technical terms in translations">
@@ -171,6 +161,7 @@ export function ConfigEditor({ config, onConfigChange }: Props) {
           value={config.language?.technical_terms ?? "keep"}
           options={TECHNICAL_TERMS_OPTIONS}
           onChange={(e) => update("language", "technical_terms", e.target.value)}
+          selectSize="sm"
         />
       </Field>
 
@@ -200,7 +191,8 @@ export function ConfigEditor({ config, onConfigChange }: Props) {
           <Input
             value={config.paths?.[key] ?? defaultVal}
             onChange={(e) => update("paths", key, e.target.value)}
-            className="h-7 text-xs font-mono"
+            inputSize="sm"
+            className="font-mono"
           />
         </Field>
       ))}
@@ -218,6 +210,7 @@ export function ConfigEditor({ config, onConfigChange }: Props) {
           value={config.workflow?.plan_id_format ?? "slug"}
           options={PLAN_ID_FORMAT_OPTIONS}
           onChange={(e) => update("workflow", "plan_id_format", e.target.value)}
+          selectSize="sm"
         />
       </Field>
       <ToggleField
@@ -237,6 +230,7 @@ export function ConfigEditor({ config, onConfigChange }: Props) {
           value={config.workflow?.verify_mode ?? "normal"}
           options={VERIFY_MODE_OPTIONS}
           onChange={(e) => update("workflow", "verify_mode", e.target.value)}
+          selectSize="sm"
         />
       </Field>
 
@@ -252,7 +246,8 @@ export function ConfigEditor({ config, onConfigChange }: Props) {
         <Input
           value={config.git?.base_branch ?? "main"}
           onChange={(e) => update("git", "base_branch", e.target.value)}
-          className="h-7 text-xs font-mono"
+          inputSize="sm"
+          className="font-mono"
         />
       </Field>
       <ToggleField
@@ -265,7 +260,8 @@ export function ConfigEditor({ config, onConfigChange }: Props) {
         <Input
           value={config.git?.branch_prefix ?? "feature/"}
           onChange={(e) => update("git", "branch_prefix", e.target.value)}
-          className="h-7 text-xs font-mono"
+          inputSize="sm"
+          className="font-mono"
         />
       </Field>
       <ToggleField
@@ -281,7 +277,8 @@ export function ConfigEditor({ config, onConfigChange }: Props) {
         <Input
           value={config.rules?.base ?? ".ai-factory/rules/base.md"}
           onChange={(e) => update("rules", "base", e.target.value)}
-          className="h-7 text-xs font-mono"
+          inputSize="sm"
+          className="font-mono"
         />
       </Field>
 
@@ -306,24 +303,21 @@ export function ConfigEditor({ config, onConfigChange }: Props) {
         </div>
         <div className="flex items-center gap-2">
           {isDirty && (
-            <button
-              type="button"
-              onClick={handleReset}
-              className="inline-flex items-center gap-1 border border-border bg-background px-2.5 py-1 text-xs transition-colors hover:border-primary/70"
-            >
+            <Button variant="outline" size="xs" onClick={handleReset}>
               <RotateCcw className="h-3 w-3" />
               Reset
-            </button>
+            </Button>
           )}
-          <button
-            type="button"
+          <Button
+            variant="outline"
+            size="xs"
             onClick={() => void handleSave()}
             disabled={saving || !isDirty}
-            className="inline-flex items-center gap-1 border border-border bg-primary/10 px-2.5 py-1 text-xs text-primary transition-colors hover:bg-primary/20 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="bg-primary/10 text-primary hover:bg-primary/20"
           >
             {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
             Save
-          </button>
+          </Button>
         </div>
       </StickyActionBar>
     </div>

@@ -30,6 +30,7 @@ export function TaskDescription({ description, onSave }: TaskDescriptionProps) {
             variant="ghost"
             className="absolute right-0 top-0 h-6 w-6 border border-border bg-background opacity-0 transition-opacity group-hover:opacity-100"
             onClick={onEdit}
+            aria-label="Edit description"
           >
             <Pencil className="h-3 w-3" />
           </Button>
@@ -39,7 +40,7 @@ export function TaskDescription({ description, onSave }: TaskDescriptionProps) {
         <div className="space-y-2">
           <div className="grid gap-3 md:grid-cols-2">
             <div className="space-y-1">
-              <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Editor</p>
+              <p className="text-2xs uppercase tracking-wider text-muted-foreground">Editor</p>
               <Textarea
                 value={draft}
                 onChange={(e) => onChange(e.target.value)}
@@ -54,7 +55,7 @@ export function TaskDescription({ description, onSave }: TaskDescriptionProps) {
               />
             </div>
             <div className="space-y-1">
-              <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Preview</p>
+              <p className="text-2xs uppercase tracking-wider text-muted-foreground">Preview</p>
               <div className="min-h-[13rem] border border-border bg-secondary/25 p-2">
                 {draft.trim().length > 0 ? (
                   <Markdown content={draft} className={markdownClassName} />

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render } from "@testing-library/react";
 import { KeyHint } from "@/components/ui/key-hint";
 
 describe("KeyHint", () => {
@@ -13,7 +13,7 @@ describe("KeyHint", () => {
 
   it("renders + separator between keys", () => {
     const { container } = render(<KeyHint keys={["Ctrl", "Shift", "P"]} />);
-    const separators = container.querySelectorAll("span.text-\\[10px\\]");
+    const separators = container.querySelectorAll("span.text-3xs");
     expect(separators).toHaveLength(2);
     separators.forEach((sep) => expect(sep.textContent).toBe("+"));
   });
@@ -23,7 +23,7 @@ describe("KeyHint", () => {
     const kbds = container.querySelectorAll("kbd");
     expect(kbds).toHaveLength(1);
     expect(kbds[0].textContent).toBe("Esc");
-    const separators = container.querySelectorAll("span.text-\\[10px\\]");
+    const separators = container.querySelectorAll("span.text-3xs");
     expect(separators).toHaveLength(0);
   });
 

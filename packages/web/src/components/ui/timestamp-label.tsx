@@ -8,7 +8,7 @@ export function TimestampLabel({
   className?: string;
 }) {
   return (
-    <span className={cn("text-[10px] font-mono text-muted-foreground tracking-tight", className)}>
+    <span className={cn("text-3xs font-mono text-muted-foreground tracking-tight", className)}>
       {children}
     </span>
   );

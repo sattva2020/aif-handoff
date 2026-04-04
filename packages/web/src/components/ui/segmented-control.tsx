@@ -22,7 +22,7 @@ function SegmentedControl({ items, value, onValueChange, className }: SegmentedC
           key={item.value}
           type="button"
           className={cn(
-            "h-full px-2 text-[10px] font-mono transition-colors",
+            "h-full px-2 text-3xs font-mono transition-colors",
             index > 0 && "border-l border-border",
             value === item.value
               ? "bg-primary/15 text-primary"

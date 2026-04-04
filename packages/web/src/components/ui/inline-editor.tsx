@@ -1,5 +1,5 @@
-import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { useEditMode } from "@/hooks/useEditMode";
 
 interface InlineEditorProps {
   value: string;
@@ -15,34 +15,22 @@ interface InlineEditorProps {
 }
 
 function InlineEditor({ value, onSave, renderView, renderEdit, className }: InlineEditorProps) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [draft, setDraft] = useState(value);
+  const edit = useEditMode(value);
 
   const handleSave = () => {
-    onSave(draft);
-    setIsEditing(false);
-  };
-
-  const handleCancel = () => {
-    setDraft(value);
-    setIsEditing(false);
-  };
-
-  const handleEdit = () => {
-    setDraft(value);
-    setIsEditing(true);
+    onSave(edit.save());
   };
 
   return (
     <div className={cn(className)}>
-      {isEditing
+      {edit.isEditing
         ? renderEdit({
-            draft,
-            onChange: setDraft,
+            draft: edit.draft,
+            onChange: edit.setDraft,
             onSave: handleSave,
-            onCancel: handleCancel,
+            onCancel: edit.cancel,
           })
-        : renderView({ value, onEdit: handleEdit })}
+        : renderView({ value, onEdit: () => edit.startEditing(value) })}
     </div>
   );
 }

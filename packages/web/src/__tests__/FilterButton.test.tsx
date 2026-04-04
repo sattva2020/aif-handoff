@@ -55,7 +55,7 @@ describe("FilterButton", () => {
     );
     const button = screen.getByText("Small");
     expect(button.className).toContain("py-0.5");
-    expect(button.className).toContain("text-[10px]");
+    expect(button.className).toContain("text-3xs");
   });
 
   it("renders default size variant", () => {
@@ -66,7 +66,7 @@ describe("FilterButton", () => {
     );
     const button = screen.getByText("Default");
     expect(button.className).toContain("py-1");
-    expect(button.className).toContain("text-[11px]");
+    expect(button.className).toContain("text-2xs");
   });
 
   it("merges custom className", () => {

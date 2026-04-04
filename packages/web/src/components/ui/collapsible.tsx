@@ -20,7 +20,7 @@ export function Collapsible({
     <div className={cn(className)}>
       <button
         type="button"
-        className="inline-flex items-center gap-1 border border-border bg-background/60 px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground rounded-none"
+        className="inline-flex items-center gap-1 border border-border bg-background/60 px-2 py-1 text-2xs text-muted-foreground transition-colors hover:text-foreground rounded-none"
         aria-expanded={open}
         onClick={() => onOpenChange(!open)}
       >

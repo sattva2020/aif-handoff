@@ -58,12 +58,7 @@ export function TaskSettings({ task, onSave }: Props) {
 
   if (!open) {
     return (
-      <Button
-        variant="outline"
-        size="sm"
-        className="h-7 gap-1.5 text-xs"
-        onClick={() => setOpen(true)}
-      >
+      <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setOpen(true)}>
         <Settings2 className="h-3.5 w-3.5" />
         Settings
       </Button>
@@ -78,14 +73,13 @@ export function TaskSettings({ task, onSave }: Props) {
         </h4>
         <div className="flex gap-1.5">
           {hasChanges && (
-            <Button size="sm" className="h-6 px-2 text-[10px]" onClick={handleSave}>
+            <Button size="xs" onClick={handleSave}>
               Save
             </Button>
           )}
           <Button
             variant="ghost"
-            size="sm"
-            className="h-6 px-2 text-[10px]"
+            size="xs"
             onClick={() => {
               setAutoMode(task.autoMode);
               setSkipReview(task.skipReview);
@@ -117,7 +111,7 @@ export function TaskSettings({ task, onSave }: Props) {
 
       {autoMode && (
         <div className="space-y-1 border-t border-border/60 pt-2">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
             Max review iterations
           </p>
           <Input
@@ -126,9 +120,10 @@ export function TaskSettings({ task, onSave }: Props) {
             max={50}
             value={maxReviewIterations}
             onChange={(e) => setMaxReviewIterations(Math.max(1, parseInt(e.target.value) || 1))}
-            className="h-7 w-20 text-xs"
+            inputSize="sm"
+            className="w-20"
           />
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-3xs text-muted-foreground">
             Max review→implement cycles before auto-completing the task.
           </p>
         </div>
@@ -136,13 +131,13 @@ export function TaskSettings({ task, onSave }: Props) {
 
       {showPlanner && (
         <div className="space-y-2 border-t border-border/60 pt-2">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
             Planner
           </p>
           {isParallel ? (
             <p className="text-xs text-muted-foreground">
               <span className="font-medium text-foreground">Full</span>
-              <span className="ml-1.5 text-[10px]">(required by parallel mode)</span>
+              <span className="ml-1.5 text-3xs">(required by parallel mode)</span>
             </p>
           ) : (
             <div className="flex gap-3">
@@ -167,20 +162,20 @@ export function TaskSettings({ task, onSave }: Props) {
             </div>
           )}
           <div className="space-y-1">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
               Plan file path
             </p>
             {isParallel ? (
               <p className="text-xs font-mono text-muted-foreground truncate">
                 {planPath}
-                <span className="ml-1.5 font-sans text-[10px]">(locked in parallel mode)</span>
+                <span className="ml-1.5 font-sans text-3xs">(locked in parallel mode)</span>
               </p>
             ) : (
               <Input
                 value={planPath}
                 onChange={(e) => setPlanPath(e.target.value)}
                 placeholder=".ai-factory/PLAN.md"
-                className="h-7 text-xs"
+                inputSize="sm"
               />
             )}
           </div>

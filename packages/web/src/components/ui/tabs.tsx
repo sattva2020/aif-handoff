@@ -24,7 +24,7 @@ export function Tabs({ items, value, onValueChange, className }: TabsProps) {
             role="tab"
             aria-selected={isActive}
             className={cn(
-              "border px-2 py-1 text-[10px] transition-colors rounded-none",
+              "border px-2 py-1 text-3xs transition-colors rounded-none",
               isActive
                 ? "border-primary/45 bg-primary/15 text-primary"
                 : "border-border/40 text-muted-foreground hover:text-foreground",

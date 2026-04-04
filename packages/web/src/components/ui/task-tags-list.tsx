@@ -19,7 +19,7 @@ function TaskTagsList({ tags, roadmapAlias, isCompact, className }: TaskTagsList
         <Badge
           className={cn(
             "border-violet-500/35 bg-violet-500/15 text-violet-600 dark:text-violet-300",
-            isCompact ? "px-1 py-0 text-[9px]" : "px-1.5 py-0 text-[10px]",
+            isCompact ? "px-1 py-0 text-4xs" : "px-1.5 py-0 text-3xs",
           )}
         >
           {roadmapAlias}
@@ -30,7 +30,7 @@ function TaskTagsList({ tags, roadmapAlias, isCompact, className }: TaskTagsList
           key={tag}
           className={cn(
             "border-slate-500/35 bg-slate-500/15 text-slate-600 dark:text-slate-300",
-            isCompact ? "px-1 py-0 text-[9px]" : "px-1.5 py-0 text-[10px]",
+            isCompact ? "px-1 py-0 text-4xs" : "px-1.5 py-0 text-3xs",
           )}
         >
           {tag}

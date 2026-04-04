@@ -35,7 +35,7 @@ function FileListItem({
         {size != null && `, ${formatFileSize(size)}`}
         {")"}
         {metadataOnly && (
-          <span className="ml-1 text-[10px] text-muted-foreground">(metadata only)</span>
+          <span className="ml-1 text-3xs text-muted-foreground">(metadata only)</span>
         )}
       </span>
       <span className="flex shrink-0 items-center gap-1">
@@ -43,7 +43,7 @@ function FileListItem({
           <a
             href={downloadUrl}
             download={name}
-            className="inline-flex h-6 items-center gap-1 px-2 text-[10px] text-muted-foreground transition-colors hover:text-foreground"
+            className="inline-flex h-6 items-center gap-1 px-2 text-3xs text-muted-foreground transition-colors hover:text-foreground"
             title="Download"
             aria-label={`Download ${name}`}
           >
@@ -54,7 +54,7 @@ function FileListItem({
           <button
             type="button"
             onClick={onRemove}
-            className="inline-flex h-6 items-center gap-1 px-2 text-[10px] text-muted-foreground transition-colors hover:text-foreground"
+            className="inline-flex h-6 items-center gap-1 px-2 text-3xs text-muted-foreground transition-colors hover:text-foreground"
             aria-label={`Remove ${name}`}
           >
             <X className="h-3 w-3" />

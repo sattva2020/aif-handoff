@@ -22,6 +22,13 @@
   --color-input: #2a2a2a;
   --color-ring: #10b981;
   --radius: 0rem;
+  /* Typography tokens */
+  --text-2xs: 0.6875rem; /* 11px */
+  --text-2xs--line-height: 1rem;
+  --text-3xs: 0.625rem; /* 10px */
+  --text-3xs--line-height: 0.875rem;
+  --text-4xs: 0.5625rem; /* 9px */
+  --text-4xs--line-height: 0.75rem;
   /* Status colors */
   --color-status-backlog: #6b7280;
   --color-status-planning: #8b5cf6;
@@ -48,6 +55,16 @@
   --color-tool: #06b6d4;
   --color-tool-foreground: #a5f3fc;
   --color-tool-error: #ef4444;
+  /* Z-index layers */
+  --z-dropdown: 50;
+  --z-chat: 55;
+  --z-header: 60;
+  --z-bubble: 70;
+  --z-modal: 80;
+  --z-toast: 90;
+  /* Letter-spacing tokens */
+  --tracking-ui: 0.16em;
+  --tracking-label: 0.18em;
 }
 
 :root.light {

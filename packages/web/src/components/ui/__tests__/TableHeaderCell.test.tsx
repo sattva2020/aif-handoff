@@ -22,21 +22,21 @@ describe("TableHeaderCell", () => {
     renderInTable(<TableHeaderCell>Status</TableHeaderCell>);
     const th = screen.getByText("Status");
     expect(th).toHaveClass("uppercase");
-    expect(th).toHaveClass("tracking-[0.16em]");
+    expect(th).toHaveClass("tracking-ui");
   });
 
   it("uses compact styles when isCompact", () => {
     renderInTable(<TableHeaderCell isCompact>Name</TableHeaderCell>);
     const th = screen.getByText("Name");
     expect(th).toHaveClass("py-1.5");
-    expect(th).toHaveClass("text-[10px]");
+    expect(th).toHaveClass("text-3xs");
   });
 
   it("uses comfortable styles by default", () => {
     renderInTable(<TableHeaderCell>Name</TableHeaderCell>);
     const th = screen.getByText("Name");
     expect(th).toHaveClass("py-2");
-    expect(th).toHaveClass("text-[11px]");
+    expect(th).toHaveClass("text-2xs");
   });
 
   it("merges className", () => {

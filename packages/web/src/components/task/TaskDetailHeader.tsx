@@ -1,5 +1,6 @@
 import type { Task, TaskEvent, TaskStatus } from "@aif/shared/browser";
 import { STATUS_CONFIG } from "@aif/shared/browser";
+import { statusColorStyle } from "@/hooks/useStatusColor";
 import { Pause, Play } from "lucide-react";
 import { SheetHeader, SheetTitle, SheetClose } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
@@ -84,39 +85,35 @@ export function TaskDetailHeader({
       <SheetClose onClose={onClose} />
       <SheetHeader className="mb-3">
         <div className="mb-1 flex items-center gap-2">
-          <Badge
-            className="text-[10px]"
-            style={{
-              backgroundColor: `${STATUS_CONFIG[task.status].color}20`,
-              color: STATUS_CONFIG[task.status].color,
-              borderColor: `${STATUS_CONFIG[task.status].color}40`,
-            }}
-          >
+          <Badge size="sm" style={statusColorStyle(task.status)}>
             {STATUS_CONFIG[task.status].label}
           </Badge>
           {task.paused && (
-            <Badge className="text-[10px] border-yellow-500/35 bg-yellow-500/15 text-yellow-600 dark:text-yellow-300">
+            <Badge
+              size="sm"
+              className="border-yellow-500/35 bg-yellow-500/15 text-yellow-600 dark:text-yellow-300"
+            >
               PAUSED
             </Badge>
           )}
           {task.priority > 0 && (
-            <Badge variant="outline" className="text-[10px]">
+            <Badge variant="outline" size="sm">
               P{task.priority}
             </Badge>
           )}
-          <TaskTagsList tags={task.tags} roadmapAlias={task.roadmapAlias} />
+          <TaskTagsList tags={task.tags} roadmapAlias={task.roadmapAlias ?? undefined} />
         </div>
         <div className="mb-2 flex flex-wrap gap-1.5">
-          <Badge variant="outline" className="text-[10px]">
+          <Badge variant="outline" size="sm">
             in: {formatTokenCount(task.tokenInput)}
           </Badge>
-          <Badge variant="outline" className="text-[10px]">
+          <Badge variant="outline" size="sm">
             out: {formatTokenCount(task.tokenOutput)}
           </Badge>
-          <Badge variant="outline" className="text-[10px]">
+          <Badge variant="outline" size="sm">
             total: {formatTokenCount(task.tokenTotal)}
           </Badge>
-          <Badge variant="outline" className="text-[10px]">
+          <Badge variant="outline" size="sm">
             cost: {formatUsd(task.costUsd)}
           </Badge>
         </div>

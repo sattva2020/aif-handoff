@@ -10,8 +10,8 @@ function TableHeaderCell({ isCompact, children, className, ...props }: TableHead
   return (
     <th
       className={cn(
-        "px-3 uppercase tracking-[0.16em] text-muted-foreground",
-        isCompact ? "py-1.5 text-[10px]" : "py-2 text-[11px]",
+        "px-3 uppercase tracking-ui text-muted-foreground",
+        isCompact ? "py-1.5 text-3xs" : "py-2 text-2xs",
         className,
       )}
       {...props}

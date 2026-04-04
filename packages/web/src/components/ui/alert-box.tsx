@@ -23,7 +23,12 @@ export interface AlertBoxProps
 
 function AlertBox({ variant, icon, className, children, ...props }: AlertBoxProps) {
   return (
-    <div className={cn(alertBoxVariants({ variant }), className)} {...props}>
+    <div
+      role="status"
+      aria-live="polite"
+      className={cn(alertBoxVariants({ variant }), className)}
+      {...props}
+    >
       {icon && <span className="mr-2 inline-flex shrink-0 items-center">{icon}</span>}
       {children}
     </div>
