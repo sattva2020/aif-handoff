@@ -14,6 +14,8 @@ export const projects = sqliteTable("projects", {
   reviewSidecarMaxBudgetUsd: real("review_sidecar_max_budget_usd"),
   parallelEnabled: integer("parallel_enabled", { mode: "boolean" }).notNull().default(false),
   defaultTaskRuntimeProfileId: text("default_task_runtime_profile_id"),
+  defaultPlanRuntimeProfileId: text("default_plan_runtime_profile_id"),
+  defaultReviewRuntimeProfileId: text("default_review_runtime_profile_id"),
   defaultChatRuntimeProfileId: text("default_chat_runtime_profile_id"),
   createdAt: text("created_at")
     .notNull()

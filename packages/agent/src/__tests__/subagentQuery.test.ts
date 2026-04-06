@@ -77,6 +77,8 @@ vi.mock("@aif/shared", async (importOriginal) => {
       CODEX_CLI_PATH: undefined,
       AGENTAPI_BASE_URL: undefined,
       AIF_RUNTIME_MODULES: [],
+      AIF_DEFAULT_RUNTIME_ID: "claude",
+      AIF_DEFAULT_PROVIDER_ID: "anthropic",
       PORT: 3009,
       POLL_INTERVAL_MS: 30000,
       AGENT_STAGE_STALE_TIMEOUT_MS: 90 * 60 * 1000,
@@ -121,13 +123,11 @@ vi.mock("../queryAudit.js", () => ({
   writeQueryAudit: () => undefined,
 }));
 
-vi.mock("../claudeDiagnostics.js", () => ({
-  createClaudeStderrCollector: () => ({
+vi.mock("../stderrCollector.js", () => ({
+  createStderrCollector: () => ({
     onStderr: () => undefined,
     getTail: () => "mock stderr",
   }),
-  explainClaudeFailure: (err: unknown) => (err instanceof Error ? err.message : String(err)),
-  probeClaudeCliFailure: async () => "",
 }));
 
 const { executeSubagentQuery } = await import("../subagentQuery.js");

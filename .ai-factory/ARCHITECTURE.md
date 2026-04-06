@@ -9,7 +9,7 @@ This architecture was chosen because the project has clear domain boundaries (da
 ## Decision Rationale
 
 - **Project type:** Autonomous task management system with Kanban UI and AI agent pipeline
-- **Tech stack:** TypeScript monorepo (Turborepo), Hono API, React frontend, Claude Agent SDK
+- **Tech stack:** TypeScript monorepo (Turborepo), Hono API, React frontend, pluggable runtime adapters
 - **Key factor:** Natural module boundaries already exist via Turborepo workspaces — formalizing the pattern prevents coupling drift
 
 ## Folder Structure
@@ -120,7 +120,7 @@ agent ──→ runtime
 - **api/agent → runtime:** Runtime/provider selection and adapter execution via shared registry APIs
 - **data → shared:** Uses shared schema, DB helpers, and data contracts
 - **agent → api:** HTTP REST calls for WebSocket broadcasts (best-effort via notifier.ts)
-- **runtime:claude adapter → Claude Agent SDK:** Adapter executes queries/sessions while agent/api stay SDK-agnostic
+- **runtime adapters → provider SDKs:** Each adapter (Claude, Codex, custom) wraps its provider SDK while agent/api stay provider-agnostic
 - **Shared types:** All modules import types and schemas from `@aif/shared`
 
 ## Key Principles

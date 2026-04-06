@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const queryMock = vi.fn();
 const listSessionsMock = vi.fn();
@@ -25,7 +25,6 @@ function createRunInput(overrides: Record<string, unknown> = {}) {
     projectRoot: "/tmp/project",
     cwd: "/tmp/project",
     options: {
-      apiKey: "sk-ant-test",
       apiKeyEnvVar: "ANTHROPIC_API_KEY",
     },
     metadata: {
@@ -117,6 +116,11 @@ describe("Claude runtime adapter", () => {
     listSessionsMock.mockReset();
     getSessionInfoMock.mockReset();
     getSessionMessagesMock.mockReset();
+    vi.stubEnv("NODE_ENV", "test");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("supports custom descriptor fields", () => {
@@ -300,14 +304,14 @@ describe("Claude runtime adapter", () => {
   it("validates connection with runtime-specific rules", async () => {
     const adapter = createClaudeRuntimeAdapter();
 
-    const missingSdkKey = await adapter.validateConnection!({
+    // SDK transport passes without API key (session auth)
+    const sdkNoKey = await adapter.validateConnection!({
       runtimeId: "claude",
       providerId: "anthropic",
       transport: "sdk",
       options: {},
     });
-    expect(missingSdkKey.ok).toBe(false);
-    expect(missingSdkKey.details).toEqual({ expectedEnvVar: "ANTHROPIC_API_KEY" });
+    expect(sdkNoKey.ok).toBe(true);
 
     const sdkWithKey = await adapter.validateConnection!({
       runtimeId: "claude",
@@ -342,6 +346,7 @@ describe("Claude runtime adapter", () => {
   });
 
   it("forwards resume mode and session id to Claude query options", async () => {
+    vi.stubEnv("ANTHROPIC_API_KEY", "sk-ant-test");
     queryMock.mockImplementation(immediateSuccess("resumed"));
     const adapter = createClaudeRuntimeAdapter();
 
@@ -358,12 +363,12 @@ describe("Claude runtime adapter", () => {
           maxBudgetUsd: 2,
           permissionMode: "bypassPermissions",
           allowDangerouslySkipPermissions: true,
+          _trustToken: Symbol.for("aif.runtime.trust"),
           agentDefinitionName: "implement-coordinator",
           settingSources: ["project", "user"],
           environment: { CUSTOM_ENV: "1" },
         },
         options: {
-          apiKey: "sk-ant-test",
           apiKeyEnvVar: "ANTHROPIC_API_KEY",
           baseUrl: "https://api.anthropic.com",
         },

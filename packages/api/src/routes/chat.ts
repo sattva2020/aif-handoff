@@ -1,8 +1,11 @@
 import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
+import { jsonValidator } from "../middleware/zodValidator.js";
 import { z } from "zod";
 import {
   createRuntimeWorkflowSpec,
+  getResultSessionId,
+  isRuntimeErrorCategory,
+  RuntimeTransport,
   type RuntimeAdapter,
   type RuntimeEvent,
   type RuntimeRunInput,
@@ -109,17 +112,26 @@ function normalizeRuntimeId(value: string): string {
   return value.trim().toLowerCase();
 }
 
-function formatVirtualRuntimeSessionId(runtimeId: string, runtimeSessionId: string): string {
-  if (normalizeRuntimeId(runtimeId) === "claude") {
+function formatVirtualRuntimeSessionId(
+  runtimeId: string,
+  runtimeSessionId: string,
+  transport?: string,
+): string {
+  if (transport === RuntimeTransport.SDK || transport === undefined) {
     return `sdk:${runtimeSessionId}`;
   }
   return `runtime:${encodeURIComponent(runtimeId)}:${encodeURIComponent(runtimeSessionId)}`;
 }
 
-function parseVirtualRuntimeSessionId(id: string): VirtualRuntimeSessionRef | null {
+function parseVirtualRuntimeSessionId(
+  id: string,
+  fallbackRuntimeId?: string,
+): VirtualRuntimeSessionRef | null {
   if (id.startsWith("sdk:")) {
     const sessionId = id.slice(4).trim();
-    return sessionId ? { runtimeId: "claude", sessionId } : null;
+    return sessionId
+      ? { runtimeId: fallbackRuntimeId ?? getEnv().AIF_DEFAULT_RUNTIME_ID, sessionId }
+      : null;
   }
 
   if (!id.startsWith("runtime:")) {
@@ -137,12 +149,7 @@ function parseVirtualRuntimeSessionId(id: string): VirtualRuntimeSessionRef | nu
 }
 
 function runtimeSourceFromTransport(transport: string): "cli" | "agent" {
-  return transport === "cli" ? "cli" : "agent";
-}
-
-function extractErrorMessage(err: unknown): string {
-  const raw = err instanceof Error ? err.message : String(err);
-  return raw.replace(/^Claude Code returned an error result:\s*/i, "").trim();
+  return transport === RuntimeTransport.CLI ? "cli" : "agent";
 }
 
 function classifyChatError(err: unknown): {
@@ -150,41 +157,22 @@ function classifyChatError(err: unknown): {
   code: string;
   message: string;
 } {
-  const message = extractErrorMessage(err);
-  const lowered = message.toLowerCase();
+  const message = err instanceof Error ? err.message : String(err);
 
-  if (
-    lowered.includes("out of extra usage") ||
-    lowered.includes("usage limit") ||
-    lowered.includes("rate limit") ||
-    lowered.includes("quota")
-  ) {
-    return {
-      status: 429,
-      code: "CHAT_USAGE_LIMIT",
-      message,
-    };
+  if (isRuntimeErrorCategory(err, "rate_limit")) {
+    return { status: 429, code: "CHAT_USAGE_LIMIT", message };
   }
 
-  return {
-    status: 500,
-    code: "CHAT_REQUEST_FAILED",
-    message: "Chat request failed",
-  };
+  if (isRuntimeErrorCategory(err, "auth")) {
+    return { status: 500, code: "CHAT_AUTH_ERROR", message };
+  }
+
+  return { status: 500, code: "CHAT_REQUEST_FAILED", message: "Chat request failed" };
 }
 
-/**
- * Strip Claude Code internal XML tags from user messages (command-name, command-message, etc.)
- */
-function stripCommandTags(text: string): string {
-  return text
-    .replace(/<command-name>[^<]*<\/command-name>/g, "")
-    .replace(/<command-message>[^<]*<\/command-message>/g, "")
-    .replace(/<command-args>([^<]*)<\/command-args>/g, "$1")
-    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "")
-    .replace(/<task-notification>[\s\S]*?<\/task-notification>/g, "")
-    .replace(/<user-prompt-submit-hook>[\s\S]*?<\/user-prompt-submit-hook>/g, "")
-    .trim();
+/** Runtime-aware input sanitization. Uses adapter.sanitizeInput if available, otherwise passthrough. */
+function sanitizeRuntimeInput(text: string, adapter?: RuntimeAdapter): string {
+  return adapter?.sanitizeInput ? adapter.sanitizeInput(text) : text.trim();
 }
 
 /**
@@ -200,13 +188,14 @@ function stripAttachedFilesBlock(text: string): string {
  * Extract human-readable text from message payloads.
  * Returns only user-visible text — skips thinking/tool blocks.
  */
-function extractMessageContent(message: unknown): string {
-  if (typeof message === "string") return stripAttachedFilesBlock(stripCommandTags(message));
+function extractMessageContent(message: unknown, adapter?: RuntimeAdapter): string {
+  const sanitize = (t: string) => sanitizeRuntimeInput(t, adapter);
+
+  if (typeof message === "string") return stripAttachedFilesBlock(sanitize(message));
   if (!message || typeof message !== "object") return "";
 
   const msg = message as Record<string, unknown>;
-  if (typeof msg.content === "string")
-    return stripAttachedFilesBlock(stripCommandTags(msg.content));
+  if (typeof msg.content === "string") return stripAttachedFilesBlock(sanitize(msg.content));
 
   if (Array.isArray(msg.content)) {
     const parts: string[] = [];
@@ -215,7 +204,7 @@ function extractMessageContent(message: unknown): string {
       if (!b || typeof b !== "object") continue;
 
       if (b.type === "text" && typeof b.text === "string") {
-        parts.push(stripCommandTags(b.text));
+        parts.push(sanitize(b.text));
       }
     }
     return stripAttachedFilesBlock(parts.join("\n\n").trim());
@@ -340,10 +329,14 @@ chatRouter.get("/sessions", async (c) => {
       runtimeSessions = listed
         .filter((session) => !linkedRuntimeSessionIds.has(session.id))
         .map((session) => ({
-          id: formatVirtualRuntimeSessionId(runtimeId, session.id),
+          id: formatVirtualRuntimeSessionId(
+            runtimeId,
+            session.id,
+            context.resolvedProfile.transport,
+          ),
           projectId,
           title: session.title || "Untitled",
-          agentSessionId: normalizeRuntimeId(runtimeId) === "claude" ? session.id : null,
+          agentSessionId: null,
           runtimeProfileId: context.resolvedProfile.profileId,
           runtimeSessionId: session.id,
           source: runtimeSourceFromTransport(context.resolvedProfile.transport),
@@ -379,7 +372,7 @@ chatRouter.get("/sessions", async (c) => {
 });
 
 // POST /chat/sessions
-chatRouter.post("/sessions", zValidator("json", createChatSessionSchema as never), async (c) => {
+chatRouter.post("/sessions", jsonValidator(createChatSessionSchema), async (c) => {
   const body = c.req.valid("json") as CreateChatSessionPayload;
   log.debug("POST /chat/sessions projectId=%s title=%s", body.projectId, body.title);
   const row = createChatSession({ projectId: body.projectId, title: body.title });
@@ -416,7 +409,7 @@ chatRouter.get("/sessions/:id", async (c) => {
         id,
         projectId: "",
         title: info.title || "Untitled",
-        agentSessionId: normalizeRuntimeId(virtual.runtimeId) === "claude" ? info.id : null,
+        agentSessionId: null,
         runtimeProfileId: null,
         runtimeSessionId: info.id,
         source: "agent",
@@ -466,7 +459,7 @@ chatRouter.get("/sessions/:id/messages", async (c) => {
             id: eventId(event),
             sessionId: id,
             role,
-            content: extractMessageContent(content),
+            content: extractMessageContent(content, adapter),
             createdAt: event.timestamp,
           } as ChatSessionMessage;
         })
@@ -491,8 +484,8 @@ chatRouter.get("/sessions/:id/messages", async (c) => {
   const linkedRuntimeSessionId = session.runtimeSessionId ?? session.agentSessionId;
 
   if (linkedRuntimeSessionId && project) {
-    let runtimeId = "claude";
-    let providerId = "anthropic";
+    let runtimeId = getEnv().AIF_DEFAULT_RUNTIME_ID;
+    let providerId = getEnv().AIF_DEFAULT_PROVIDER_ID;
     let profileId = session.runtimeProfileId ?? null;
 
     if (session.runtimeProfileId) {
@@ -529,7 +522,7 @@ chatRouter.get("/sessions/:id/messages", async (c) => {
           .map((event) => {
             const role = eventRole(event);
             const rawContent = event.message ?? "";
-            const content = extractMessageContent(rawContent);
+            const content = extractMessageContent(rawContent, adapter);
             if (!role || !content.trim()) return null;
             return {
               id: eventId(event),
@@ -559,7 +552,7 @@ chatRouter.get("/sessions/:id/messages", async (c) => {
 });
 
 // PUT /chat/sessions/:id
-chatRouter.put("/sessions/:id", zValidator("json", updateChatSessionSchema as never), async (c) => {
+chatRouter.put("/sessions/:id", jsonValidator(updateChatSessionSchema), async (c) => {
   const id = c.req.param("id");
   const body = c.req.valid("json") as UpdateChatSessionPayload;
   log.debug("PUT /chat/sessions/%s title=%s", id, body.title);
@@ -616,7 +609,7 @@ chatRouter.get("/sessions/:sessionId/attachments/:filename", async (c) => {
 });
 
 // POST /chat
-chatRouter.post("/", zValidator("json", chatRequestSchema as never), async (c) => {
+chatRouter.post("/", jsonValidator(chatRequestSchema), async (c) => {
   const body = c.req.valid("json") as ChatRequestPayload;
   const { projectId, message, clientId, conversationId, explore, taskId, attachments } = body;
   let { sessionId: inputSessionId } = body;
@@ -659,9 +652,6 @@ chatRouter.post("/", zValidator("json", chatRequestSchema as never), async (c) =
       updateChatSession(session.id, {
         runtimeProfileId,
         runtimeSessionId: incomingVirtual.sessionId,
-        ...(normalizeRuntimeId(incomingVirtual.runtimeId) === "claude"
-          ? { agentSessionId: incomingVirtual.sessionId }
-          : {}),
       });
       broadcast({ type: "chat:session_created", payload: toChatSessionResponse(session) });
     } else {
@@ -817,12 +807,11 @@ chatRouter.post("/", zValidator("json", chatRequestSchema as never), async (c) =
         : await adapter.run(runInput);
 
     const runtimeSessionId =
-      result.sessionId ?? result.session?.id ?? resumeRuntimeSessionId ?? null;
+      getResultSessionId(result, adapter.descriptor.capabilities) ?? resumeRuntimeSessionId ?? null;
     if (chatSessionId && runtimeSessionId) {
       updateChatSession(chatSessionId, {
         runtimeProfileId,
         runtimeSessionId,
-        ...(normalizeRuntimeId(runtimeId) === "claude" ? { agentSessionId: runtimeSessionId } : {}),
       });
       invalidateCache(sessionCacheKey(runtimeId, runtimeProfileId, project.rootPath));
       log.debug(

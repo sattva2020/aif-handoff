@@ -8,7 +8,7 @@ vi.mock("../adapters/codex/cli.js", () => ({
   runCodexCli: (...args: unknown[]) => runCodexCliMock(...args),
 }));
 
-vi.mock("../adapters/codex/agentapi.js", () => ({
+vi.mock("../adapters/codex/api.js", () => ({
   runCodexAgentApi: (...args: unknown[]) => runCodexAgentApiMock(...args),
   validateCodexAgentApiConnection: (...args: unknown[]) =>
     validateCodexAgentApiConnectionMock(...args),
@@ -62,7 +62,7 @@ describe("Codex runtime adapter", () => {
     expect(runCodexAgentApiMock).not.toHaveBeenCalled();
   });
 
-  it("runs via AgentAPI when transport is agentapi", async () => {
+  it("runs via API when transport is 'api' or legacy 'agentapi'", async () => {
     const adapter = createCodexRuntimeAdapter();
     const result = await adapter.run(
       createRunInput({
@@ -87,13 +87,13 @@ describe("Codex runtime adapter", () => {
     expect(callInput.resume).toBe(true);
   });
 
-  it("validates connection via AgentAPI validation when transport is agentapi", async () => {
+  it("validates connection via API validation when transport is legacy 'agentapi'", async () => {
     const adapter = createCodexRuntimeAdapter();
     const result = await adapter.validateConnection!({
       runtimeId: "codex",
       providerId: "openai",
-      transport: "agentapi",
-      options: { agentApiBaseUrl: "http://localhost:8080" },
+      transport: "agentapi" as never, // legacy value — backwards compat
+      options: { agentApiBaseUrl: "http://localhost:8080", apiKey: "sk-test" },
     });
     expect(result.ok).toBe(true);
     expect(validateCodexAgentApiConnectionMock).toHaveBeenCalledTimes(1);

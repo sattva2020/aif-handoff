@@ -12,7 +12,7 @@ const { runCodexCli } = await import("../adapters/codex/cli.js");
 interface MockChildProcess extends EventEmitter {
   stdout: EventEmitter;
   stderr: EventEmitter;
-  stdin: {
+  stdin: EventEmitter & {
     write: ReturnType<typeof vi.fn>;
     end: ReturnType<typeof vi.fn>;
   };
@@ -23,10 +23,11 @@ function createMockChildProcess(): MockChildProcess {
   const child = new EventEmitter() as MockChildProcess;
   child.stdout = new EventEmitter();
   child.stderr = new EventEmitter();
-  child.stdin = {
+  const stdinEmitter = new EventEmitter();
+  child.stdin = Object.assign(stdinEmitter, {
     write: vi.fn(),
     end: vi.fn(),
-  };
+  }) as MockChildProcess["stdin"];
   child.kill = vi.fn();
   return child;
 }
@@ -83,6 +84,8 @@ describe("codex cli transport", () => {
     const child = createMockChildProcess();
     spawnMock.mockReturnValueOnce(child);
 
+    vi.stubEnv("OPENAI_API_KEY", "sk-test");
+
     const runPromise = runCodexCli(
       createRunInput({
         options: {
@@ -94,7 +97,7 @@ describe("codex cli transport", () => {
             "--model={model}",
             "--session={session_id}",
           ],
-          apiKey: "sk-test",
+          apiKeyEnvVar: "OPENAI_API_KEY",
         },
       }),
     );

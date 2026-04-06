@@ -1,11 +1,19 @@
 export {
   DEFAULT_RUNTIME_CAPABILITIES,
+  getResultSessionId,
   type RuntimeAdapter,
   type RuntimeCapabilities,
   type RuntimeConnectionValidationInput,
   type RuntimeConnectionValidationResult,
   type RuntimeDescriptor,
+  type RuntimeDiagnoseErrorInput,
+  type RuntimeMcpInput,
+  type RuntimeMcpInstallInput,
+  type RuntimeMcpStatus,
   type RuntimeEvent,
+  type RuntimeExecutionIntent,
+  type RuntimeSubagentStartCallback,
+  type RuntimeToolUseCallback,
   type RuntimeModel,
   type RuntimeModelListInput,
   type RuntimeRunInput,
@@ -14,7 +22,9 @@ export {
   type RuntimeSessionEventsInput,
   type RuntimeSessionGetInput,
   type RuntimeSessionListInput,
-  type RuntimeTransport,
+  isRuntimeTransport,
+  RUNTIME_TRANSPORTS,
+  RuntimeTransport,
   type RuntimeUsage,
 } from "./types.js";
 
@@ -33,6 +43,8 @@ export {
   RuntimeRegistrationError,
   RuntimeResolutionError,
   RuntimeValidationError,
+  isRuntimeErrorCategory,
+  type RuntimeErrorCategory,
 } from "./errors.js";
 
 export {
@@ -89,6 +101,20 @@ export {
   type RuntimeWorkflowSpec,
   type RuntimeWorkflowSpecInput,
 } from "./workflowSpec.js";
+
+export { bootstrapRuntimeRegistry, type BootstrapRuntimeRegistryOptions } from "./bootstrap.js";
+
+export { initProject, type InitProjectOptions } from "./projectInit.js";
+
+export {
+  checkRuntimeReadiness,
+  type CheckRuntimeReadinessInput,
+  type RuntimeReadinessEntry,
+  type RuntimeReadinessLogger,
+  type RuntimeReadinessResult,
+} from "./readiness.js";
+
+export { isValidTrustToken, RUNTIME_TRUST_TOKEN, type RuntimeTrustToken } from "./trust.js";
 
 export {
   createClaudeRuntimeAdapter,

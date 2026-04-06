@@ -1,11 +1,9 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serve } from "@hono/node-server";
+import { checkRuntimeReadiness } from "@aif/runtime";
 import { logger, getEnv } from "@aif/shared";
 import { listProjects, listRuntimeProfiles, listStaleInProgressTasks } from "@aif/data";
-import { existsSync, readdirSync } from "node:fs";
-import { join } from "node:path";
-import { homedir } from "node:os";
 import { projectsRouter } from "./routes/projects.js";
 import { tasksRouter } from "./routes/tasks.js";
 import { chatRouter } from "./routes/chat.js";
@@ -32,41 +30,6 @@ app.use(
 );
 app.use("*", requestLogger);
 
-function detectClaudeAuthProfile(): { hasClaudeAuth: boolean; detectedPath: string | null } {
-  const home = homedir();
-  const candidateFiles = [
-    join(home, ".claude.json"),
-    join(home, ".claude", "auth.json"),
-    join(home, ".claude", "credentials.json"),
-    join(home, ".config", "claude", "auth.json"),
-    join(home, ".config", "claude", "credentials.json"),
-  ];
-
-  for (const filePath of candidateFiles) {
-    if (existsSync(filePath)) {
-      return { hasClaudeAuth: true, detectedPath: filePath };
-    }
-  }
-
-  const candidateDirs = [join(home, ".claude"), join(home, ".config", "claude")];
-
-  for (const dirPath of candidateDirs) {
-    if (!existsSync(dirPath)) continue;
-    try {
-      const hasAnyJson = readdirSync(dirPath, { withFileTypes: true }).some(
-        (entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".json"),
-      );
-      if (hasAnyJson) {
-        return { hasClaudeAuth: true, detectedPath: dirPath };
-      }
-    } catch {
-      // Ignore unreadable directories; readiness stays false unless another source is found.
-    }
-  }
-
-  return { hasClaudeAuth: false, detectedPath: null };
-}
-
 // Health check
 app.get("/health", (c) => {
   return c.json({
@@ -75,72 +38,41 @@ app.get("/health", (c) => {
   });
 });
 
-app.get("/agent/readiness", (c) => {
-  const hasAnthropicApiKey = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
-  const hasOpenAiApiKey = Boolean(process.env.OPENAI_API_KEY?.trim());
-  const hasApiKey = hasAnthropicApiKey || hasOpenAiApiKey;
-  const { hasClaudeAuth, detectedPath } = detectClaudeAuthProfile();
+app.get("/agent/readiness", async (c) => {
   const enabledProfiles = listRuntimeProfiles({ enabledOnly: true });
 
-  return getApiRuntimeRegistry()
-    .then((registry) => {
-      const runtimes = registry.listRuntimes();
-      const ready =
-        runtimes.length > 0 &&
-        (enabledProfiles.length > 0 ||
-          hasApiKey ||
-          hasClaudeAuth ||
-          Boolean(process.env.CODEX_CLI_PATH));
-      const authSource = hasApiKey
-        ? hasClaudeAuth
-          ? "both"
-          : "api_key"
-        : hasClaudeAuth
-          ? "profile"
-          : "none";
-
-      return c.json({
-        ready,
-        hasApiKey,
-        hasAnthropicApiKey,
-        hasOpenAiApiKey,
-        hasClaudeAuth,
-        authSource,
-        detectedPath,
-        runtimeCount: runtimes.length,
-        enabledRuntimeProfileCount: enabledProfiles.length,
-        runtimes: runtimes.map((runtime) => ({
-          id: runtime.id,
-          providerId: runtime.providerId,
-          displayName: runtime.displayName,
-          capabilities: runtime.capabilities,
-        })),
-        message: ready
-          ? "Runtime execution prerequisites are configured."
-          : "No usable runtime profile/auth is configured. Add a runtime profile or set provider credentials in environment variables.",
-        checkedAt: new Date().toISOString(),
-      });
-    })
-    .catch((error) => {
-      log.error({ error }, "Failed to build runtime readiness payload");
-      return c.json(
-        {
-          ready: false,
-          hasApiKey,
-          hasAnthropicApiKey,
-          hasOpenAiApiKey,
-          hasClaudeAuth,
-          authSource: "none",
-          detectedPath,
-          runtimeCount: 0,
-          enabledRuntimeProfileCount: enabledProfiles.length,
-          runtimes: [],
-          message: "Failed to resolve runtime registry for readiness checks.",
-          checkedAt: new Date().toISOString(),
+  try {
+    const registry = await getApiRuntimeRegistry();
+    const readiness = await checkRuntimeReadiness({
+      registry,
+      logger: {
+        debug(context, message) {
+          log.debug({ ...context }, message);
         },
-        500,
-      );
+        warn(context, message) {
+          log.warn({ ...context }, message);
+        },
+      },
     });
+
+    return c.json({
+      ...readiness,
+      enabledRuntimeProfileCount: enabledProfiles.length,
+    });
+  } catch (error) {
+    log.error({ error }, "Failed to build runtime readiness payload");
+    return c.json(
+      {
+        ready: false,
+        runtimeCount: 0,
+        runtimes: [],
+        enabledRuntimeProfileCount: enabledProfiles.length,
+        message: "Failed to resolve runtime registry for readiness checks.",
+        checkedAt: new Date().toISOString(),
+      },
+      500,
+    );
+  }
 });
 
 // Agent status: running tasks, heartbeat lag, uptime

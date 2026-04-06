@@ -40,6 +40,7 @@ vi.mock("../services/attachmentStorage.js", async (importOriginal) => {
 const mockRunApiRuntimeOneShot = vi.fn();
 vi.mock("../services/runtime.js", () => ({
   runApiRuntimeOneShot: (...args: unknown[]) => mockRunApiRuntimeOneShot(...args),
+  resolveApiLightModel: async () => "claude-haiku-3-5",
 }));
 
 // Import after mocks

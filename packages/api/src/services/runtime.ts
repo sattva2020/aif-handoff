@@ -1,13 +1,12 @@
 import {
+  bootstrapRuntimeRegistry,
   checkRuntimeCapabilities,
-  createClaudeRuntimeAdapter,
-  createCodexRuntimeAdapter,
   createRuntimeMemoryCache,
   createRuntimeModelDiscoveryService,
-  createRuntimeRegistry,
   createRuntimeWorkflowSpec,
   redactResolvedRuntimeProfile,
   resolveRuntimeProfile,
+  RUNTIME_TRUST_TOKEN,
   type RuntimeRunResult,
   type RuntimeCapabilityName,
   type ResolvedRuntimeProfile,
@@ -28,47 +27,25 @@ import {
 
 const log = logger("api-runtime");
 
-const DEFAULT_RUNTIME_ID = "claude";
-const DEFAULT_PROVIDER_ID = "anthropic";
-
 let runtimeRegistryPromise: Promise<RuntimeRegistry> | null = null;
 let modelDiscoveryService: RuntimeModelDiscoveryService | null = null;
 
-function buildRuntimeRegistry(): RuntimeRegistry {
-  return createRuntimeRegistry({
-    builtInAdapters: [createClaudeRuntimeAdapter(), createCodexRuntimeAdapter()],
-    logger: {
-      debug(context, message) {
-        log.debug({ ...context }, `DEBUG [runtime-registry] ${message}`);
-      },
-      warn(context, message) {
-        log.warn({ ...context }, `WARN [runtime-module] ${message}`);
-      },
-    },
-  });
-}
-
-async function buildRuntimeRegistryWithModules(): Promise<RuntimeRegistry> {
-  const env = getEnv();
-  const registry = buildRuntimeRegistry();
-
-  for (const moduleSpecifier of env.AIF_RUNTIME_MODULES ?? []) {
-    try {
-      await registry.registerRuntimeModule(moduleSpecifier);
-    } catch (error) {
-      log.warn(
-        { moduleSpecifier, error },
-        "Runtime module failed to load for API runtime registry; continuing with built-ins",
-      );
-    }
-  }
-
-  return registry;
-}
-
 export async function getApiRuntimeRegistry(): Promise<RuntimeRegistry> {
   if (!runtimeRegistryPromise) {
-    runtimeRegistryPromise = buildRuntimeRegistryWithModules();
+    runtimeRegistryPromise = bootstrapRuntimeRegistry({
+      logger: {
+        debug(context, message) {
+          log.debug({ ...context }, `DEBUG [runtime-registry] ${message}`);
+        },
+        warn(context, message) {
+          log.warn({ ...context }, `WARN [runtime-module] ${message}`);
+        },
+      },
+      runtimeModules: getEnv().AIF_RUNTIME_MODULES ?? [],
+    }).catch((error) => {
+      runtimeRegistryPromise = null;
+      throw error;
+    });
   }
   return runtimeRegistryPromise;
 }
@@ -153,8 +130,8 @@ export async function resolveApiRuntimeContext(input: {
   const resolvedProfile = resolveRuntimeProfile({
     source: selection.source,
     profile,
-    fallbackRuntimeId: DEFAULT_RUNTIME_ID,
-    fallbackProviderId: DEFAULT_PROVIDER_ID,
+    fallbackRuntimeId: getEnv().AIF_DEFAULT_RUNTIME_ID,
+    fallbackProviderId: getEnv().AIF_DEFAULT_PROVIDER_ID,
     workflow: input.workflow,
     modelOverride: input.modelOverride ?? task?.modelOverride ?? profile?.defaultModel ?? null,
     runtimeOptionsOverride: input.runtimeOptionsOverride ?? runtimeOptionsFromTask,
@@ -222,6 +199,31 @@ export function assertApiRuntimeCapabilities(input: {
   }
 }
 
+/**
+ * Resolve the lightModel for the active runtime of a project/task.
+ * Returns null if the adapter has no light model (use default).
+ */
+export async function resolveApiLightModel(
+  projectId: string,
+  taskId?: string | null,
+): Promise<string | null> {
+  const selection = resolveEffectiveRuntimeProfile({
+    taskId: taskId ?? undefined,
+    projectId,
+    mode: "task",
+    systemDefaultRuntimeProfileId: null,
+  });
+  const resolved = resolveRuntimeProfile({
+    source: selection.source,
+    profile: selection.profile,
+    fallbackRuntimeId: getEnv().AIF_DEFAULT_RUNTIME_ID,
+    fallbackProviderId: getEnv().AIF_DEFAULT_PROVIDER_ID,
+  });
+  const registry = await getApiRuntimeRegistry();
+  const adapter = registry.resolveRuntime(resolved.runtimeId);
+  return adapter.descriptor.lightModel ?? null;
+}
+
 export async function runApiRuntimeOneShot(input: {
   projectId: string;
   projectRoot: string;
@@ -272,27 +274,24 @@ export async function runApiRuntimeOneShot(input: {
     options: {
       ...context.resolvedProfile.options,
       ...(context.resolvedProfile.baseUrl ? { baseUrl: context.resolvedProfile.baseUrl } : {}),
-      ...(context.resolvedProfile.apiKey ? { apiKey: context.resolvedProfile.apiKey } : {}),
       ...(context.resolvedProfile.apiKeyEnvVar
         ? { apiKeyEnvVar: context.resolvedProfile.apiKeyEnvVar }
         : {}),
     },
-    metadata: {
-      permissionMode: bypassPermissions ? "bypassPermissions" : "acceptEdits",
-      allowDangerouslySkipPermissions: bypassPermissions,
-      settings: { attribution: { commit: "", pr: "" } },
-      settingSources: ["project"],
+    execution: {
       includePartialMessages: input.includePartialMessages ?? false,
       maxTurns: input.maxTurns,
-      environment: input.taskId
-        ? {
-            HANDOFF_MODE: "1",
-            HANDOFF_TASK_ID: input.taskId,
-          }
-        : {
-            HANDOFF_MODE: "1",
-          },
       systemPromptAppend: input.systemPromptAppend,
+      environment: input.taskId
+        ? { HANDOFF_MODE: "1", HANDOFF_TASK_ID: input.taskId }
+        : { HANDOFF_MODE: "1" },
+      hooks: {
+        permissionMode: bypassPermissions ? "bypassPermissions" : "acceptEdits",
+        allowDangerouslySkipPermissions: bypassPermissions,
+        _trustToken: RUNTIME_TRUST_TOKEN,
+        settings: { attribution: { commit: "", pr: "" } },
+        settingSources: ["project"],
+      },
     },
   });
 

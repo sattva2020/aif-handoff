@@ -23,7 +23,7 @@ Runtime profiles are persisted in `runtime_profiles` and reference only non-secr
 | `name`         | Display name shown in UI                                   |
 | `runtimeId`    | Adapter id (for example `claude`, `codex`)                 |
 | `providerId`   | Provider namespace (for example `anthropic`, `openai`)     |
-| `transport`    | Adapter transport hint (`sdk`, `cli`, `agentapi`, `http`)  |
+| `transport`    | Adapter transport (`sdk`, `cli`, `api`)                    |
 | `baseUrl`      | Optional custom endpoint                                   |
 | `apiKeyEnvVar` | Env var name containing API key                            |
 | `defaultModel` | Optional default model alias/id                            |
@@ -47,6 +47,22 @@ The API exposes effective selection endpoints:
 
 - `GET /runtime-profiles/effective/task/:taskId`
 - `GET /runtime-profiles/effective/chat/:projectId`
+
+## Supported Runtimes
+
+| Runtime  | Provider    | Transports | Resume       | Sessions     | Agent Defs   | Light Model        | Status                    |
+| -------- | ----------- | ---------- | ------------ | ------------ | ------------ | ------------------ | ------------------------- |
+| `claude` | `anthropic` | SDK        | Yes          | Yes          | Yes          | `claude-haiku-3-5` | Built-in                  |
+| `codex`  | `openai`    | CLI, API   | No           | No           | No           | default            | Built-in                  |
+| Custom   | Any         | Any        | Configurable | Configurable | Configurable | Configurable       | Via `AIF_RUNTIME_MODULES` |
+
+### Transport Types
+
+| Transport | Description                           | Example                    |
+| --------- | ------------------------------------- | -------------------------- |
+| `sdk`     | In-process library call via JS/TS SDK | Claude Agent SDK `query()` |
+| `cli`     | Spawn a subprocess, parse stdout      | `codex run --json`         |
+| `api`     | HTTP POST to a remote endpoint        | OpenAI-compatible REST API |
 
 ## Built-In Adapter Examples
 
@@ -90,15 +106,15 @@ Optional proxy mode:
 }
 ```
 
-### Codex (AgentAPI transport)
+### Codex (API transport)
 
 ```json
 {
   "projectId": "PROJECT_UUID",
-  "name": "Codex AgentAPI",
+  "name": "Codex API",
   "runtimeId": "codex",
   "providerId": "openai",
-  "transport": "agentapi",
+  "transport": "api",
   "baseUrl": "http://localhost:8080",
   "apiKeyEnvVar": "OPENAI_API_KEY",
   "enabled": true

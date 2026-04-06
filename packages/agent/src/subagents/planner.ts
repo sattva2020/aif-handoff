@@ -208,6 +208,7 @@ ${taskContext}`;
     projectRoot,
     agentName: executionName,
     prompt,
+    profileMode: "plan",
     maxBudgetUsd: plannerBudget,
     agent: task.isFix || !useSubagents ? undefined : AGENT_NAME,
     workflowSpec,

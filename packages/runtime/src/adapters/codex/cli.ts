@@ -38,6 +38,41 @@ function normalizeCliArgs(input: RuntimeRunInput): string[] {
   });
 }
 
+const ALLOWED_ENV_PREFIXES = [
+  "OPENAI_",
+  "CODEX_",
+  "AIF_",
+  "HANDOFF_",
+  "NODE_",
+  "npm_",
+  "HOME",
+  "USER",
+  "LANG",
+  "LC_",
+  "PATH",
+  "SHELL",
+  "TERM",
+  "TMPDIR",
+  "TZ",
+  "XDG_",
+  "FORCE_COLOR",
+  "NO_COLOR",
+];
+
+function buildCuratedEnv(apiKeyEnvVar: string): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value == null) continue;
+    if (
+      key === apiKeyEnvVar ||
+      ALLOWED_ENV_PREFIXES.some((prefix) => key === prefix || key.startsWith(prefix))
+    ) {
+      env[key] = value;
+    }
+  }
+  return env;
+}
+
 function resolveCliPath(input: RuntimeRunInput): string {
   const options = asRecord(input.options);
   return readString(options.codexCliPath) ?? readString(process.env.CODEX_CLI_PATH) ?? "codex";
@@ -123,14 +158,10 @@ export async function runCodexCli(
   const cliPath = resolveCliPath(input);
   const args = normalizeCliArgs(input);
   const timeoutMs = resolveTimeoutMs(input);
-  const env = {
-    ...process.env,
-    ...(asRecord(input.options).apiKey
-      ? {
-          OPENAI_API_KEY: String(asRecord(input.options).apiKey),
-        }
-      : {}),
-  };
+  const options = asRecord(input.options);
+  const apiKeyEnvVar =
+    typeof options.apiKeyEnvVar === "string" ? options.apiKeyEnvVar : "OPENAI_API_KEY";
+  const env = buildCuratedEnv(apiKeyEnvVar);
 
   logger?.info?.(
     {
@@ -191,6 +222,9 @@ export async function runCodexCli(
       }
     });
 
+    child.stdin.on("error", () => {
+      // Ignore broken-pipe errors — the child may exit before stdin is fully written
+    });
     if (shouldWritePromptToStdin(args)) {
       child.stdin.write(input.prompt);
     }

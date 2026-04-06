@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
+import { jsonValidator } from "../middleware/zodValidator.js";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { logger, parseAttachments, getProjectConfig } from "@aif/shared";
 import {
@@ -60,7 +60,7 @@ function toTaskRouteResponse(task: TaskRow) {
 }
 
 // POST /tasks/:id/broadcast — emit WS update for a task (used by agent process)
-tasksRouter.post("/:id/broadcast", zValidator("json", broadcastTaskSchema as any), async (c) => {
+tasksRouter.post("/:id/broadcast", jsonValidator(broadcastTaskSchema), async (c) => {
   const { id } = c.req.param();
   const { type } = c.req.valid("json");
   const task = findTaskById(id);
@@ -84,7 +84,7 @@ tasksRouter.get("/", (c) => {
 });
 
 // POST /tasks — create
-tasksRouter.post("/", zValidator("json", createTaskSchema as any), async (c) => {
+tasksRouter.post("/", jsonValidator(createTaskSchema), async (c) => {
   const body = c.req.valid("json");
 
   // Resolve planPath default from project config.yaml (if present)
@@ -241,7 +241,7 @@ tasksRouter.get("/:id/comments/:commentId/attachments/:filename", async (c) => {
 });
 
 // POST /tasks/:id/comments — create a human comment
-tasksRouter.post("/:id/comments", zValidator("json", createTaskCommentSchema as any), async (c) => {
+tasksRouter.post("/:id/comments", jsonValidator(createTaskCommentSchema), async (c) => {
   const { id } = c.req.param();
   const body = c.req.valid("json");
   const task = findTaskById(id);
@@ -275,7 +275,7 @@ tasksRouter.post("/:id/comments", zValidator("json", createTaskCommentSchema as 
 });
 
 // PUT /tasks/:id — update fields
-tasksRouter.put("/:id", zValidator("json", updateTaskSchema as any), async (c) => {
+tasksRouter.put("/:id", jsonValidator(updateTaskSchema), async (c) => {
   const { id } = c.req.param();
   const body = c.req.valid("json");
   const existing = findTaskById(id);
@@ -358,7 +358,7 @@ tasksRouter.delete("/:id", (c) => {
 });
 
 // POST /tasks/:id/events — apply a human action through state machine
-tasksRouter.post("/:id/events", zValidator("json", taskEventSchema as any), async (c) => {
+tasksRouter.post("/:id/events", jsonValidator(taskEventSchema), async (c) => {
   const { id } = c.req.param();
   const { event, deletePlanFile, commitOnApprove } = c.req.valid("json");
   const existing = findTaskById(id);
@@ -402,7 +402,7 @@ tasksRouter.post("/:id/events", zValidator("json", taskEventSchema as any), asyn
 });
 
 // PATCH /tasks/:id/position — reorder within column
-tasksRouter.patch("/:id/position", zValidator("json", reorderTaskSchema as any), async (c) => {
+tasksRouter.patch("/:id/position", jsonValidator(reorderTaskSchema), async (c) => {
   const { id } = c.req.param();
   const { position } = c.req.valid("json");
   const existing = findTaskById(id);

@@ -985,30 +985,18 @@ export function updateProjectRuntimeDefaults(
   projectId: string,
   input: {
     defaultTaskRuntimeProfileId?: string | null;
+    defaultPlanRuntimeProfileId?: string | null;
+    defaultReviewRuntimeProfileId?: string | null;
     defaultChatRuntimeProfileId?: string | null;
   },
 ): ProjectRow | undefined {
-  log.debug(
-    {
-      projectId,
-      defaultTaskRuntimeProfileId: input.defaultTaskRuntimeProfileId ?? null,
-      defaultChatRuntimeProfileId: input.defaultChatRuntimeProfileId ?? null,
-    },
-    "Updating project runtime default profiles",
-  );
-  getDb()
-    .update(projects)
-    .set({
-      ...(input.defaultTaskRuntimeProfileId !== undefined
-        ? { defaultTaskRuntimeProfileId: input.defaultTaskRuntimeProfileId }
-        : {}),
-      ...(input.defaultChatRuntimeProfileId !== undefined
-        ? { defaultChatRuntimeProfileId: input.defaultChatRuntimeProfileId }
-        : {}),
-      updatedAt: new Date().toISOString(),
-    })
-    .where(eq(projects.id, projectId))
-    .run();
+  log.debug({ projectId, ...input }, "Updating project runtime default profiles");
+  const patch: Record<string, unknown> = { updatedAt: new Date().toISOString() };
+  if (input.defaultTaskRuntimeProfileId !== undefined) patch.defaultTaskRuntimeProfileId = input.defaultTaskRuntimeProfileId;
+  if (input.defaultPlanRuntimeProfileId !== undefined) patch.defaultPlanRuntimeProfileId = input.defaultPlanRuntimeProfileId;
+  if (input.defaultReviewRuntimeProfileId !== undefined) patch.defaultReviewRuntimeProfileId = input.defaultReviewRuntimeProfileId;
+  if (input.defaultChatRuntimeProfileId !== undefined) patch.defaultChatRuntimeProfileId = input.defaultChatRuntimeProfileId;
+  getDb().update(projects).set(patch).where(eq(projects.id, projectId)).run();
   return findProjectById(projectId);
 }
 
@@ -1074,7 +1062,7 @@ export function updateChatSessionRuntime(
 export function resolveEffectiveRuntimeProfile(input: {
   taskId?: string;
   projectId?: string;
-  mode?: "task" | "chat";
+  mode?: "task" | "plan" | "review" | "chat";
   systemDefaultRuntimeProfileId?: string | null;
 }): EffectiveRuntimeProfileSelection {
   const mode = input.mode ?? "task";
@@ -1082,11 +1070,18 @@ export function resolveEffectiveRuntimeProfile(input: {
   const projectId = input.projectId ?? task?.projectId;
   const project = projectId ? findProjectById(projectId) : undefined;
 
-  const taskRuntimeProfileId = mode === "task" ? (task?.runtimeProfileId ?? null) : null;
-  const projectRuntimeProfileId =
-    mode === "chat"
-      ? (project?.defaultChatRuntimeProfileId ?? null)
-      : (project?.defaultTaskRuntimeProfileId ?? null);
+  const taskRuntimeProfileId = mode !== "chat" ? (task?.runtimeProfileId ?? null) : null;
+
+  let projectRuntimeProfileId: string | null = null;
+  if (mode === "chat") {
+    projectRuntimeProfileId = project?.defaultChatRuntimeProfileId ?? null;
+  } else if (mode === "plan") {
+    projectRuntimeProfileId = project?.defaultPlanRuntimeProfileId ?? project?.defaultTaskRuntimeProfileId ?? null;
+  } else if (mode === "review") {
+    projectRuntimeProfileId = project?.defaultReviewRuntimeProfileId ?? project?.defaultTaskRuntimeProfileId ?? null;
+  } else {
+    projectRuntimeProfileId = project?.defaultTaskRuntimeProfileId ?? null;
+  }
   const systemRuntimeProfileId = input.systemDefaultRuntimeProfileId ?? null;
 
   const candidates: Array<{

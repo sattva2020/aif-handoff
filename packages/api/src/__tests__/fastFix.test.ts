@@ -6,6 +6,7 @@ const findTaskById = vi.fn();
 
 vi.mock("../services/runtime.js", () => ({
   runApiRuntimeOneShot: (...args: unknown[]) => mockRunApiRuntimeOneShot(...args),
+  resolveApiLightModel: async () => "claude-haiku-3-5",
 }));
 
 vi.mock("@aif/data", async (importOriginal) => {

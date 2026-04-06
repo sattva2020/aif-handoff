@@ -7,6 +7,7 @@ FROM base AS deps
 COPY package.json package-lock.json turbo.json ./
 COPY packages/shared/package.json packages/shared/
 COPY packages/data/package.json packages/data/
+COPY packages/runtime/package.json packages/runtime/
 COPY packages/api/package.json packages/api/
 COPY packages/web/package.json packages/web/
 COPY packages/agent/package.json packages/agent/
@@ -26,6 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends gosu && rm -rf 
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/packages/shared ./packages/shared
 COPY --from=build /app/packages/data ./packages/data
+COPY --from=build /app/packages/runtime ./packages/runtime
 COPY --from=build /app/packages/api ./packages/api
 COPY package.json .
 COPY .claude .claude
@@ -51,6 +53,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends gosu && rm -rf 
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/packages/shared ./packages/shared
 COPY --from=build /app/packages/data ./packages/data
+COPY --from=build /app/packages/runtime ./packages/runtime
 COPY --from=build /app/packages/agent ./packages/agent
 COPY package.json .
 COPY .claude .claude
@@ -66,6 +69,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends gosu && rm -rf 
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/packages/shared ./packages/shared
 COPY --from=build /app/packages/data ./packages/data
+COPY --from=build /app/packages/runtime ./packages/runtime
 COPY --from=build /app/packages/mcp ./packages/mcp
 COPY package.json .
 COPY .docker/docker-entrypoint.sh /usr/local/bin/

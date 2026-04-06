@@ -36,6 +36,8 @@ const envSchema = z.object({
   CODEX_CLI_PATH: z.string().optional(),
   AGENTAPI_BASE_URL: z.string().optional(),
   AIF_RUNTIME_MODULES: z.preprocess(parseRuntimeModules, z.array(z.string())).default([]),
+  AIF_DEFAULT_RUNTIME_ID: z.string().default("claude"),
+  AIF_DEFAULT_PROVIDER_ID: z.string().default("anthropic"),
   PORT: z.coerce.number().default(3009),
   POLL_INTERVAL_MS: z.coerce.number().default(30000),
   AGENT_STAGE_STALE_TIMEOUT_MS: z.coerce.number().default(90 * 60 * 1000),
@@ -190,14 +192,6 @@ export function getEnv(): Env {
     "Resolved activity-log config",
   );
   return _env;
-}
-
-/**
- * Returns `{ model }` only when no custom base URL is configured.
- * When ANTHROPIC_BASE_URL is set, the proxy decides the model.
- */
-export function modelOption(model: string): { model: string } | Record<string, never> {
-  return process.env.ANTHROPIC_BASE_URL ? {} : { model };
 }
 
 /** Validate env without caching — useful for testing */

@@ -35,6 +35,7 @@ export default tseslint.config({
     "packages/api/src/**/*.{ts,tsx}",
     "packages/agent/src/**/*.{ts,tsx}",
     "packages/mcp/src/**/*.{ts,tsx}",
+    "packages/runtime/src/**/*.{ts,tsx}",
   ],
   rules: {
     "no-restricted-imports": [
@@ -67,12 +68,60 @@ export default tseslint.config({
     ],
   },
 }, {
+  files: ["packages/runtime/src/**/*.ts"],
+  rules: {
+    "no-restricted-imports": [
+      "error",
+      {
+        paths: [
+          {
+            name: "@aif/shared",
+            importNames: ["getDb", "createTestDb", "closeDb"],
+            message: "Runtime must not access DB directly. Use @aif/data if needed.",
+          },
+          {
+            name: "@aif/data",
+            message: "Runtime layer must not depend on data-access layer.",
+          },
+          {
+            name: "@aif/api",
+            message: "Runtime layer must not depend on application packages.",
+          },
+          {
+            name: "@aif/agent",
+            message: "Runtime layer must not depend on agent package.",
+          },
+          {
+            name: "@aif/web",
+            message: "Runtime layer must not depend on web package.",
+          },
+          {
+            name: "@aif/mcp",
+            message: "Runtime layer must not depend on MCP package.",
+          },
+          {
+            name: "drizzle-orm",
+            message: "Runtime must not use SQL/ORM directly.",
+          },
+          {
+            name: "better-sqlite3",
+            message: "Runtime must not access SQLite directly.",
+          },
+        ],
+      },
+    ],
+  },
+}, {
   files: ["packages/shared/src/**/*.ts"],
   rules: {
     "no-restricted-imports": [
       "error",
       {
         paths: [
+          {
+            name: "@aif/runtime",
+            message: "Shared layer must not depend on runtime layer.",
+          },
           {
             name: "@aif/data",
             message: "Shared layer must not depend on data-access layer.",
@@ -120,6 +169,10 @@ export default tseslint.config({
           {
             name: "@aif/data",
             message: "Web must not import data-access layer modules.",
+          },
+          {
+            name: "@aif/runtime",
+            message: "Web must not import runtime directly. Use @aif/shared/browser for shared types.",
           },
         ],
       },

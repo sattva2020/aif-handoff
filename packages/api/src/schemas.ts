@@ -19,6 +19,8 @@ export const createProjectSchema = z.object({
   reviewSidecarMaxBudgetUsd: z.number().positive().optional(),
   parallelEnabled: z.boolean().optional(),
   defaultTaskRuntimeProfileId: z.string().min(1).nullable().optional(),
+  defaultPlanRuntimeProfileId: z.string().min(1).nullable().optional(),
+  defaultReviewRuntimeProfileId: z.string().min(1).nullable().optional(),
   defaultChatRuntimeProfileId: z.string().min(1).nullable().optional(),
 });
 

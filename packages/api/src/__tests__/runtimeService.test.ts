@@ -10,19 +10,21 @@ const mockLog = {
 const mockGetEnv = vi.fn(() => ({
   AGENT_BYPASS_PERMISSIONS: false,
   AIF_RUNTIME_MODULES: [] as string[],
+  AIF_DEFAULT_RUNTIME_ID: "claude",
+  AIF_DEFAULT_PROVIDER_ID: "anthropic",
 }));
 
 const mockCheckRuntimeCapabilities = vi.fn(() => ({ ok: true, missing: [] as string[] }));
-const mockCreateClaudeRuntimeAdapter = vi.fn();
-const mockCreateCodexRuntimeAdapter = vi.fn();
 const mockCreateRuntimeMemoryCache = vi.fn((options: unknown) => ({ options }));
 const mockCreateRuntimeModelDiscoveryService = vi.fn(() => ({ kind: "discovery" }));
 const mockRegistryResolveRuntime = vi.fn();
 const mockRegistryRegisterRuntimeModule = vi.fn();
-const mockCreateRuntimeRegistry = vi.fn(() => ({
-  resolveRuntime: mockRegistryResolveRuntime,
-  registerRuntimeModule: mockRegistryRegisterRuntimeModule,
-}));
+const mockBootstrapRuntimeRegistry = vi.fn(() =>
+  Promise.resolve({
+    resolveRuntime: mockRegistryResolveRuntime,
+    registerRuntimeModule: mockRegistryRegisterRuntimeModule,
+  }),
+);
 const mockCreateRuntimeWorkflowSpec = vi.fn(
   (input: {
     workflowKind: string;
@@ -53,15 +55,14 @@ vi.mock("@aif/shared", () => ({
 }));
 
 vi.mock("@aif/runtime", () => ({
+  bootstrapRuntimeRegistry: mockBootstrapRuntimeRegistry,
   checkRuntimeCapabilities: mockCheckRuntimeCapabilities,
-  createClaudeRuntimeAdapter: mockCreateClaudeRuntimeAdapter,
-  createCodexRuntimeAdapter: mockCreateCodexRuntimeAdapter,
   createRuntimeMemoryCache: mockCreateRuntimeMemoryCache,
   createRuntimeModelDiscoveryService: mockCreateRuntimeModelDiscoveryService,
-  createRuntimeRegistry: mockCreateRuntimeRegistry,
   createRuntimeWorkflowSpec: mockCreateRuntimeWorkflowSpec,
   redactResolvedRuntimeProfile: mockRedactResolvedRuntimeProfile,
   resolveRuntimeProfile: mockResolveRuntimeProfile,
+  RUNTIME_TRUST_TOKEN: Symbol.for("aif.runtime.trust"),
 }));
 
 vi.mock("@aif/data", () => ({
@@ -120,8 +121,6 @@ describe("runtime service", () => {
     vi.resetModules();
 
     const adapter = createAdapter();
-    mockCreateClaudeRuntimeAdapter.mockReturnValue(adapter);
-    mockCreateCodexRuntimeAdapter.mockReturnValue(createAdapter());
     mockRegistryResolveRuntime.mockReturnValue(adapter);
 
     mockFindProjectById.mockReturnValue({ id: "proj-1", rootPath: "/tmp/project" });
@@ -144,6 +143,8 @@ describe("runtime service", () => {
     mockGetEnv.mockReturnValue({
       AGENT_BYPASS_PERMISSIONS: false,
       AIF_RUNTIME_MODULES: [],
+      AIF_DEFAULT_RUNTIME_ID: "claude",
+      AIF_DEFAULT_PROVIDER_ID: "anthropic",
     });
     mockCheckRuntimeCapabilities.mockReturnValue({ ok: true, missing: [] });
     mockRegistryRegisterRuntimeModule.mockReset();
@@ -156,23 +157,25 @@ describe("runtime service", () => {
     const registryB = await runtimeService.getApiRuntimeRegistry();
 
     expect(registryA).toBe(registryB);
-    expect(mockCreateRuntimeRegistry).toHaveBeenCalledTimes(1);
-    expect(mockCreateClaudeRuntimeAdapter).toHaveBeenCalledTimes(1);
-    expect(mockCreateCodexRuntimeAdapter).toHaveBeenCalledTimes(1);
+    expect(mockBootstrapRuntimeRegistry).toHaveBeenCalledTimes(1);
   });
 
   it("loads runtime modules configured via AIF_RUNTIME_MODULES", async () => {
     mockGetEnv.mockReturnValue({
       AGENT_BYPASS_PERMISSIONS: false,
       AIF_RUNTIME_MODULES: ["@org/runtime-a", "file:///runtime-b.mjs"],
+      AIF_DEFAULT_RUNTIME_ID: "claude",
+      AIF_DEFAULT_PROVIDER_ID: "anthropic",
     });
     const runtimeService = await loadRuntimeService();
 
     await runtimeService.getApiRuntimeRegistry();
 
-    expect(mockRegistryRegisterRuntimeModule).toHaveBeenCalledTimes(2);
-    expect(mockRegistryRegisterRuntimeModule).toHaveBeenNthCalledWith(1, "@org/runtime-a");
-    expect(mockRegistryRegisterRuntimeModule).toHaveBeenNthCalledWith(2, "file:///runtime-b.mjs");
+    expect(mockBootstrapRuntimeRegistry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runtimeModules: ["@org/runtime-a", "file:///runtime-b.mjs"],
+      }),
+    );
   });
 
   it("caches model discovery service with configured TTL caches", async () => {
@@ -375,18 +378,20 @@ describe("runtime service", () => {
         options: expect.objectContaining({
           mode: "safe",
           baseUrl: "https://example.test",
-          apiKey: "token",
           apiKeyEnvVar: "OPENAI_API_KEY",
         }),
-        metadata: expect.objectContaining({
-          permissionMode: "acceptEdits",
-          allowDangerouslySkipPermissions: false,
+        execution: expect.objectContaining({
           includePartialMessages: true,
           maxTurns: 4,
           environment: {
             HANDOFF_MODE: "1",
             HANDOFF_TASK_ID: "task-77",
           },
+          hooks: expect.objectContaining({
+            permissionMode: "acceptEdits",
+            allowDangerouslySkipPermissions: false,
+            _trustToken: Symbol.for("aif.runtime.trust"),
+          }),
         }),
       }),
     );
@@ -396,7 +401,12 @@ describe("runtime service", () => {
     const runtimeService = await loadRuntimeService();
     const adapter = createAdapter();
     mockRegistryResolveRuntime.mockReturnValue(adapter);
-    mockGetEnv.mockReturnValue({ AGENT_BYPASS_PERMISSIONS: true, AIF_RUNTIME_MODULES: [] });
+    mockGetEnv.mockReturnValue({
+      AGENT_BYPASS_PERMISSIONS: true,
+      AIF_RUNTIME_MODULES: [],
+      AIF_DEFAULT_RUNTIME_ID: "claude",
+      AIF_DEFAULT_PROVIDER_ID: "anthropic",
+    });
 
     await runtimeService.runApiRuntimeOneShot({
       projectId: "proj-1",
@@ -408,12 +418,15 @@ describe("runtime service", () => {
 
     expect(adapter.run).toHaveBeenCalledWith(
       expect.objectContaining({
-        metadata: expect.objectContaining({
-          permissionMode: "bypassPermissions",
-          allowDangerouslySkipPermissions: true,
+        execution: expect.objectContaining({
           includePartialMessages: false,
-          environment: { HANDOFF_MODE: "1" },
           systemPromptAppend: "extra",
+          environment: { HANDOFF_MODE: "1" },
+          hooks: expect.objectContaining({
+            permissionMode: "bypassPermissions",
+            allowDangerouslySkipPermissions: true,
+            _trustToken: Symbol.for("aif.runtime.trust"),
+          }),
         }),
       }),
     );

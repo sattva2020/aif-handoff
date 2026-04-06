@@ -50,6 +50,8 @@ function ensureTables(sqlite: Database.Database): void {
       review_sidecar_max_budget_usd REAL,
       parallel_enabled INTEGER NOT NULL DEFAULT 0,
       default_task_runtime_profile_id TEXT,
+      default_plan_runtime_profile_id TEXT,
+      default_review_runtime_profile_id TEXT,
       default_chat_runtime_profile_id TEXT,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
       updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
@@ -155,6 +157,7 @@ function ensureTables(sqlite: Database.Database): void {
   `);
 
   runMigrations(sqlite);
+  ensureTriggers(sqlite);
   runRuntimeBackfills(sqlite);
   ensureIndexes(sqlite);
 }
@@ -168,6 +171,8 @@ interface Migration {
   version: number;
   description: string;
   sql: string;
+  /** Trigger DDL statements that contain internal semicolons and must be executed whole. */
+  triggers?: string[];
 }
 
 const MIGRATIONS: Migration[] = [
@@ -246,6 +251,36 @@ const MIGRATIONS: Migration[] = [
       ALTER TABLE chat_sessions ADD COLUMN runtime_session_id TEXT;
     `,
   },
+  {
+    version: 7,
+    description: "Add cascade cleanup triggers for runtime_profiles deletion",
+    sql: "",
+    triggers: [
+      `CREATE TRIGGER IF NOT EXISTS trg_runtime_profiles_delete
+       AFTER DELETE ON runtime_profiles
+       FOR EACH ROW
+       BEGIN
+         UPDATE tasks SET runtime_profile_id = NULL WHERE runtime_profile_id = OLD.id;
+         UPDATE projects SET default_task_runtime_profile_id = NULL WHERE default_task_runtime_profile_id = OLD.id;
+         UPDATE projects SET default_chat_runtime_profile_id = NULL WHERE default_chat_runtime_profile_id = OLD.id;
+         UPDATE chat_sessions SET runtime_profile_id = NULL WHERE runtime_profile_id = OLD.id;
+       END`,
+      `CREATE TRIGGER IF NOT EXISTS trg_projects_delete_profiles
+       AFTER DELETE ON projects
+       FOR EACH ROW
+       BEGIN
+         DELETE FROM runtime_profiles WHERE project_id = OLD.id;
+       END`,
+    ],
+  },
+  {
+    version: 8,
+    description: "Add per-stage runtime profile columns to projects",
+    sql: `
+      ALTER TABLE projects ADD COLUMN default_plan_runtime_profile_id TEXT;
+      ALTER TABLE projects ADD COLUMN default_review_runtime_profile_id TEXT;
+    `,
+  },
 ];
 
 function splitSqlStatements(sqlText: string): string[] {
@@ -288,6 +323,17 @@ function runMigrations(sqlite: Database.Database): void {
               { version: migration.version, statement },
               "Migration statement already applied, skipping",
             );
+            continue;
+          }
+          throw err;
+        }
+      }
+      for (const trigger of migration.triggers ?? []) {
+        try {
+          sqlite.exec(trigger);
+        } catch (err) {
+          if (isIgnorableMigrationError(err)) {
+            log.debug({ version: migration.version }, "Trigger already exists, skipping");
             continue;
           }
           throw err;
@@ -375,6 +421,22 @@ function runRuntimeBackfills(sqlite: Database.Database): void {
       { backfilledRows: enabledBackfill.changes },
       "Backfilled runtime profile enabled defaults",
     );
+  }
+}
+
+/** Idempotent trigger bootstrap — ensures cascade cleanup triggers exist on every startup. */
+function ensureTriggers(sqlite: Database.Database): void {
+  const allTriggers = MIGRATIONS.flatMap((m) => m.triggers ?? []);
+  for (const trigger of allTriggers) {
+    try {
+      sqlite.exec(trigger);
+    } catch (err) {
+      if (isIgnorableMigrationError(err)) continue;
+      log.error({ err }, "Trigger bootstrap failed");
+    }
+  }
+  if (allTriggers.length > 0) {
+    log.debug({ triggerCount: allTriggers.length }, "Trigger bootstrap complete");
   }
 }
 

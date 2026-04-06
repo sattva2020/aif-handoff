@@ -32,7 +32,7 @@ describe("resolveRuntimeProfile", () => {
 
     expect(resolved.profileId).toBe("profile-1");
     expect(resolved.runtimeId).toBe("codex");
-    expect(resolved.transport).toBe("agentapi");
+    expect(resolved.transport).toBe("api");
     expect(resolved.baseUrl).toBe("https://api.openai.com/v1");
     expect(resolved.apiKey).toBe("sk-test");
     expect(resolved.model).toBe("gpt-5.4-mini");
@@ -168,7 +168,7 @@ describe("resolveRuntimeProfile", () => {
 });
 
 describe("validateResolvedRuntimeProfile", () => {
-  it("returns warning when API key is missing for SDK transport", () => {
+  it("SDK transport passes without API key (session auth)", () => {
     const resolved = resolveRuntimeProfile({
       source: "none",
       profile: null,
@@ -178,7 +178,8 @@ describe("validateResolvedRuntimeProfile", () => {
     });
 
     const validation = validateResolvedRuntimeProfile(resolved);
-    expect(validation.ok).toBe(false);
-    expect(validation.warnings[0]).toContain("Missing API key env var");
+    expect(resolved.transport).toBe("sdk");
+    expect(validation.ok).toBe(true);
+    expect(validation.warnings).toHaveLength(0);
   });
 });

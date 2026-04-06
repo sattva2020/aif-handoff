@@ -371,9 +371,9 @@ export function ChatPanel({ isOpen, projectId, taskId, onClose, onOpenTask }: Ch
             onClick={handleSend}
             disabled={!input.trim() || isStreaming}
             aria-label="Send message"
-            className="w-9 self-stretch rounded"
+            className="self-stretch w-9 shrink-0 rounded px-0"
           >
-            <Send className="h-4 w-4" />
+            <Send className="h-4 w-4 shrink-0" />
           </Button>
         </div>
       </div>

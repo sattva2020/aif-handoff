@@ -3,12 +3,19 @@ import { useMemo, useState } from "react";
 export type ActivityKind = "tool" | "error" | "agent" | "info";
 export type ActivityFilter = "all" | "tool" | "error" | "agent";
 
+export interface RuntimeMeta {
+  runtimeId?: string;
+  profileId?: string;
+  model?: string;
+}
+
 export interface ParsedEntry {
   raw: string;
   timestamp: string | null;
   message: string;
   kind: ActivityKind;
   toolName?: string;
+  runtimeMeta?: RuntimeMeta;
 }
 
 export function parseEntry(line: string): ParsedEntry {
@@ -33,7 +40,22 @@ export function parseEntry(line: string): ParsedEntry {
   const isError = lower.includes("failed") || lower.includes("error");
   const kind: ActivityKind = isError ? "error" : isAgent ? "agent" : "info";
 
-  return { raw: line, timestamp, message: content, kind };
+  const runtimeMeta = parseRuntimeMeta(content);
+  const cleanMessage = runtimeMeta ? content.replace(/\s*\(runtime=[^)]*\)/, "").trim() : content;
+
+  return { raw: line, timestamp, message: cleanMessage, kind, runtimeMeta };
+}
+
+function parseRuntimeMeta(content: string): RuntimeMeta | undefined {
+  const match = content.match(
+    /\(runtime=([^,)]+)(?:,\s*profile=([^,)]+))?(?:,\s*model=([^,)]+))?\)/,
+  );
+  if (!match) return undefined;
+  return {
+    runtimeId: match[1] !== "default" ? match[1] : undefined,
+    profileId: match[2] !== "default" ? match[2] : undefined,
+    model: match[3] !== "default" ? match[3] : undefined,
+  };
 }
 
 export function useActivityLogParsing(activityLog: string | null) {

@@ -14,6 +14,7 @@ import type {
   UpdateChatSessionInput,
   ChatSessionMessage,
   ChatMessageAttachment,
+  RuntimeDescriptor,
   RuntimeProfile,
   CreateRuntimeProfileInput,
   UpdateRuntimeProfileInput,
@@ -82,21 +83,22 @@ export interface SettingsResponse {
   };
 }
 
+export interface RuntimeReadinessValidation {
+  ok: boolean;
+  message?: string;
+  details?: Record<string, unknown>;
+}
+
 export interface AgentReadinessResponse {
   ready: boolean;
-  hasApiKey: boolean;
-  hasAnthropicApiKey: boolean;
-  hasOpenAiApiKey: boolean;
-  hasClaudeAuth: boolean;
-  authSource: "api_key" | "profile" | "both" | "none";
-  detectedPath: string | null;
   runtimeCount: number;
   enabledRuntimeProfileCount: number;
   runtimes: Array<{
-    id: string;
+    runtimeId: string;
     providerId: string;
     displayName: string;
     capabilities: Record<string, boolean>;
+    validation: RuntimeReadinessValidation;
   }>;
   message: string;
   checkedAt: string;
@@ -338,11 +340,19 @@ export const api = {
     });
   },
 
-  getMcpStatus(): Promise<{ installed: boolean; serverName: string; config: unknown }> {
+  getMcpStatus(): Promise<{
+    installed: boolean;
+    serverName: string;
+    runtimes: Array<{ runtimeId: string; installed: boolean; config?: unknown }>;
+  }> {
     return request("/settings/mcp");
   },
 
-  installMcp(): Promise<{ success: boolean; serverName: string }> {
+  installMcp(): Promise<{
+    success: boolean;
+    serverName: string;
+    runtimes: Array<{ runtimeId: string; success: boolean; error?: string }>;
+  }> {
     return request("/settings/mcp/install", {
       method: "POST",
       body: JSON.stringify({}),
@@ -443,15 +453,7 @@ export const api = {
     return request<RuntimeProfile[]>(`/runtime-profiles${suffix}`);
   },
 
-  listRuntimes(): Promise<
-    Array<{
-      id: string;
-      providerId: string;
-      displayName: string;
-      description: string | null;
-      capabilities: Record<string, boolean>;
-    }>
-  > {
+  listRuntimes(): Promise<RuntimeDescriptor[]> {
     return request("/runtime-profiles/runtimes");
   },
 

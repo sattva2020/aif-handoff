@@ -12,13 +12,22 @@ interface CacheEntry<T> {
 
 export interface RuntimeCacheOptions {
   defaultTtlMs?: number;
+  maxSize?: number;
   now?: () => number;
 }
 
 export function createRuntimeMemoryCache<T>(options: RuntimeCacheOptions = {}): RuntimeCache<T> {
   const defaultTtlMs = Math.max(options.defaultTtlMs ?? 60_000, 1);
+  const maxSize = Math.max(options.maxSize ?? 1000, 1);
   const now = options.now ?? (() => Date.now());
   const entries = new Map<string, CacheEntry<T>>();
+
+  function evictExpired(): void {
+    const timestamp = now();
+    for (const [key, entry] of entries) {
+      if (entry.expiresAt <= timestamp) entries.delete(key);
+    }
+  }
 
   return {
     get(key: string): T | null {
@@ -31,6 +40,13 @@ export function createRuntimeMemoryCache<T>(options: RuntimeCacheOptions = {}): 
       return entry.value;
     },
     set(key: string, value: T, ttlMs?: number): void {
+      if (entries.size >= maxSize) {
+        evictExpired();
+      }
+      if (entries.size >= maxSize) {
+        const oldest = entries.keys().next().value;
+        if (oldest !== undefined) entries.delete(oldest);
+      }
       const effectiveTtlMs = Math.max(ttlMs ?? defaultTtlMs, 1);
       entries.set(key, {
         expiresAt: now() + effectiveTtlMs,

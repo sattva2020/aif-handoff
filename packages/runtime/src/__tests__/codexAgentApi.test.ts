@@ -3,7 +3,7 @@ import {
   listCodexAgentApiModels,
   runCodexAgentApi,
   validateCodexAgentApiConnection,
-} from "../adapters/codex/agentapi.js";
+} from "../adapters/codex/api.js";
 
 function createRunInput(overrides: Record<string, unknown> = {}) {
   return {

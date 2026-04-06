@@ -21,6 +21,7 @@ async function runSidecar(
     projectRoot,
     agentName,
     prompt,
+    profileMode: "review",
     maxBudgetUsd,
     agent: useSubagentAgent ? agentName : undefined,
     workflowSpec,

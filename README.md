@@ -105,18 +105,18 @@ AIF Handoff supports two execution modes, configurable globally via `AGENT_USE_S
 
 ## Tech Stack
 
-| Layer        | Technology                            |
-| ------------ | ------------------------------------- |
-| Runtime      | Node.js + TypeScript                  |
-| Monorepo     | Turborepo                             |
-| Database     | SQLite (better-sqlite3 + drizzle-orm) |
-| API          | Hono + @hono/node-server + WebSocket  |
-| Validation   | zod + @hono/zod-validator             |
-| Frontend     | React + Vite + TailwindCSS            |
-| Drag & Drop  | @dnd-kit                              |
-| Server State | @tanstack/react-query                 |
-| Runtime SDKs | Claude Agent SDK + Codex CLI/AgentAPI |
-| Scheduler    | node-cron                             |
+| Layer        | Technology                                                    |
+| ------------ | ------------------------------------------------------------- |
+| Runtime      | Node.js + TypeScript                                          |
+| Monorepo     | Turborepo                                                     |
+| Database     | SQLite (better-sqlite3 + drizzle-orm)                         |
+| API          | Hono + @hono/node-server + WebSocket                          |
+| Validation   | zod + @hono/zod-validator                                     |
+| Frontend     | React + Vite + TailwindCSS                                    |
+| Drag & Drop  | @dnd-kit                                                      |
+| Server State | @tanstack/react-query                                         |
+| Runtime SDKs | Pluggable adapters — Claude (Agent SDK) + Codex (CLI/SDK/API) |
+| Scheduler    | node-cron                                                     |
 
 ## Docker
 

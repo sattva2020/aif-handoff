@@ -1,6 +1,6 @@
 import { findTaskById, incrementTaskTokenUsage } from "@aif/data";
-import { modelOption, parseAttachments } from "@aif/shared";
-import { runApiRuntimeOneShot } from "./runtime.js";
+import { parseAttachments } from "@aif/shared";
+import { resolveApiLightModel, runApiRuntimeOneShot } from "./runtime.js";
 
 interface FastFixComment {
   author: string;
@@ -121,8 +121,7 @@ ${
     : "4) Do not use tools/subagents. Return the FULL updated plan markdown directly.\n5) Output markdown only in your final response."
 }`;
 
-  const modelSelection = modelOption("haiku");
-  const modelOverride = "model" in modelSelection ? modelSelection.model : null;
+  const modelOverride = await resolveApiLightModel(task.projectId, input.taskId);
   const { result } = await runApiRuntimeOneShot({
     projectId: task.projectId,
     projectRoot: input.projectRoot,

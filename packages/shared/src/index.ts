@@ -48,6 +48,9 @@ export {
   type ChatErrorPayload,
   type ChatAction,
   type ChatActionCreateTask,
+  isRuntimeTransport,
+  RUNTIME_TRANSPORTS,
+  RuntimeTransport,
   type RuntimeProfile,
   type CreateRuntimeProfileInput,
   type UpdateRuntimeProfileInput,
@@ -64,7 +67,7 @@ export {
 export { getDb, createTestDb, closeDb } from "./db.js";
 
 // Environment
-export { getEnv, validateEnv, modelOption } from "./env.js";
+export { getEnv, validateEnv } from "./env.js";
 export type { Env } from "./env.js";
 
 // Constants
@@ -78,7 +81,11 @@ export { logger, rootLogger } from "./logger.js";
 export { findMonorepoRoot, findMonorepoRootFromUrl } from "./monorepoRoot.js";
 
 // Project initialization
-export { initProjectDirectory } from "./projectInit.js";
+export {
+  initBaseProjectDirectory,
+  initProjectDirectory,
+  type RuntimeInitHook,
+} from "./projectInit.js";
 export {
   slugify,
   generatePlanPath,
@@ -132,4 +139,3 @@ export {
 
 // Utilities
 export { withTimeout } from "./withTimeout.js";
-export { findClaudePath } from "./findClaudePath.js";

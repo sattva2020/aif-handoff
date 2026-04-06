@@ -50,9 +50,26 @@ export class RuntimeCapabilityError extends RuntimeError {
   }
 }
 
+/** Semantic error categories — adapters set this so consumers don't parse error messages. */
+export type RuntimeErrorCategory =
+  | "rate_limit"
+  | "auth"
+  | "timeout"
+  | "permission"
+  | "stream"
+  | "unknown";
+
 export class RuntimeExecutionError extends RuntimeError {
-  constructor(message: string, cause?: unknown) {
+  public readonly category: RuntimeErrorCategory;
+
+  constructor(message: string, cause?: unknown, category: RuntimeErrorCategory = "unknown") {
     super(message, "RUNTIME_EXECUTION_ERROR", cause);
     this.name = "RuntimeExecutionError";
+    this.category = category;
   }
+}
+
+/** Check if an error is a RuntimeExecutionError with a specific category. */
+export function isRuntimeErrorCategory(err: unknown, category: RuntimeErrorCategory): boolean {
+  return err instanceof RuntimeExecutionError && err.category === category;
 }

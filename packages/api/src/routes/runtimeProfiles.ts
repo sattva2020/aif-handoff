@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import {
   createRuntimeWorkflowSpec,
@@ -7,7 +6,7 @@ import {
   redactResolvedRuntimeProfile,
   resolveRuntimeProfile,
 } from "@aif/runtime";
-import { logger } from "@aif/shared";
+import { getEnv, logger } from "@aif/shared";
 import {
   createRuntimeProfile,
   deleteRuntimeProfile,
@@ -25,8 +24,13 @@ import {
   updateRuntimeProfileSchema,
 } from "../schemas.js";
 import { getApiRuntimeModelDiscoveryService, getApiRuntimeRegistry } from "../services/runtime.js";
+import { createRateLimiter } from "../middleware/rateLimit.js";
+import { jsonValidator } from "../middleware/zodValidator.js";
 
 const log = logger("runtime-profile-route");
+
+const validationRateLimit = createRateLimiter({ windowMs: 60_000, maxRequests: 10 });
+const mutationRateLimit = createRateLimiter({ windowMs: 60_000, maxRequests: 30 });
 
 export const runtimeProfilesRouter = new Hono();
 type CreateRuntimeProfilePayload = z.infer<typeof createRuntimeProfileSchema>;
@@ -34,17 +38,23 @@ type UpdateRuntimeProfilePayload = z.infer<typeof updateRuntimeProfileSchema>;
 type RuntimeProfileValidationPayload = z.infer<typeof runtimeProfileValidationSchema>;
 type RuntimeProfileModelsPayload = z.infer<typeof runtimeProfileModelsSchema>;
 
+const ALLOWED_HEADER_PREFIXES = [
+  "content-",
+  "accept",
+  "x-request-id",
+  "x-correlation-id",
+  "x-trace-id",
+  "user-agent",
+  "cache-control",
+  "if-",
+];
+
 function listSensitiveHeaderKeys(headers: Record<string, string> | undefined): string[] {
   if (!headers) return [];
   return Object.keys(headers).filter((key) => {
     const lowered = key.toLowerCase();
-    return (
-      lowered.includes("authorization") ||
-      lowered.includes("cookie") ||
-      lowered.includes("token") ||
-      lowered.includes("api-key") ||
-      lowered.includes("apikey") ||
-      lowered.includes("secret")
+    return !ALLOWED_HEADER_PREFIXES.some(
+      (prefix) => lowered === prefix || lowered.startsWith(prefix),
     );
   });
 }
@@ -67,12 +77,14 @@ function inferApiKeyEnvVar(profile: {
     );
   }
 
-  const runtimeId = profile.runtimeId.toLowerCase();
-  const providerId = profile.providerId.toLowerCase();
-  if (runtimeId === "claude" || providerId === "anthropic") {
-    return "ANTHROPIC_API_KEY";
-  }
-  return "OPENAI_API_KEY";
+  // Delegate provider-specific logic to the resolution layer via a lightweight resolve pass.
+  const resolved = resolveRuntimeProfile({
+    source: "api-key-inference",
+    profile: { runtimeId: profile.runtimeId, providerId: profile.providerId },
+    fallbackRuntimeId: profile.runtimeId,
+    fallbackProviderId: profile.providerId,
+  });
+  return resolved.apiKeyEnvVar ?? "OPENAI_API_KEY";
 }
 
 function sanitizeBooleanQuery(value: string | undefined, fallback = false): boolean {
@@ -158,6 +170,9 @@ runtimeProfilesRouter.get("/runtimes", async (c) => {
       displayName: runtime.displayName,
       description: runtime.description ?? null,
       capabilities: runtime.capabilities,
+      defaultApiKeyEnvVar: runtime.defaultApiKeyEnvVar ?? null,
+      defaultModelPlaceholder: runtime.defaultModelPlaceholder ?? null,
+      supportedTransports: runtime.supportedTransports ?? [],
     })),
   );
 });
@@ -187,7 +202,8 @@ runtimeProfilesRouter.get("/:id", async (c) => {
 // POST /runtime-profiles
 runtimeProfilesRouter.post(
   "/",
-  zValidator("json", createRuntimeProfileSchema as never),
+  mutationRateLimit,
+  jsonValidator(createRuntimeProfileSchema),
   async (c) => {
     const body = c.req.valid("json") as CreateRuntimeProfilePayload;
     const sensitiveHeaderKeys = listSensitiveHeaderKeys(body.headers);
@@ -220,7 +236,8 @@ runtimeProfilesRouter.post(
 // PUT /runtime-profiles/:id
 runtimeProfilesRouter.put(
   "/:id",
-  zValidator("json", updateRuntimeProfileSchema as never),
+  mutationRateLimit,
+  jsonValidator(updateRuntimeProfileSchema),
   async (c) => {
     const { id } = c.req.param();
     const body = c.req.valid("json") as UpdateRuntimeProfilePayload;
@@ -249,7 +266,7 @@ runtimeProfilesRouter.put(
 );
 
 // DELETE /runtime-profiles/:id
-runtimeProfilesRouter.delete("/:id", async (c) => {
+runtimeProfilesRouter.delete("/:id", mutationRateLimit, async (c) => {
   const { id } = c.req.param();
   const existing = findRuntimeProfileById(id);
   if (!existing) return c.json({ error: "Runtime profile not found" }, 404);
@@ -298,8 +315,8 @@ runtimeProfilesRouter.get("/effective/chat/:projectId", async (c) => {
     source: effective.source,
     profile: effective.profile,
     workflow,
-    fallbackRuntimeId: "claude",
-    fallbackProviderId: "anthropic",
+    fallbackRuntimeId: getEnv().AIF_DEFAULT_RUNTIME_ID,
+    fallbackProviderId: getEnv().AIF_DEFAULT_PROVIDER_ID,
     env: process.env,
     allowDisabled: true,
   });
@@ -317,7 +334,8 @@ runtimeProfilesRouter.get("/effective/chat/:projectId", async (c) => {
 // POST /runtime-profiles/validate
 runtimeProfilesRouter.post(
   "/validate",
-  zValidator("json", runtimeProfileValidationSchema as never),
+  validationRateLimit,
+  jsonValidator(runtimeProfileValidationSchema),
   async (c) => {
     const body = c.req.valid("json") as RuntimeProfileValidationPayload;
     const resolvedInput = resolveValidationProfile({
@@ -336,7 +354,7 @@ runtimeProfilesRouter.post(
       );
     }
 
-    const env = { ...process.env };
+    const env: Record<string, string | undefined> = {};
     if (body.apiKey) {
       const envKey = inferApiKeyEnvVar(resolvedInput.profile);
       env[envKey] = body.apiKey;
@@ -363,32 +381,44 @@ runtimeProfilesRouter.post(
       env,
     });
 
-    const discovery = await getApiRuntimeModelDiscoveryService();
-    const validation = await discovery.validateConnection(resolved, body.forceRefresh ?? true);
+    try {
+      const discovery = await getApiRuntimeModelDiscoveryService();
+      const validation = await discovery.validateConnection(resolved, body.forceRefresh ?? true);
 
-    log.info(
-      {
-        runtimeId: resolved.runtimeId,
-        providerId: resolved.providerId,
-        profileId: resolved.profileId,
+      log.info(
+        {
+          runtimeId: resolved.runtimeId,
+          providerId: resolved.providerId,
+          profileId: resolved.profileId,
+          ok: validation.ok,
+        },
+        "INFO [runtime-profile-route] Validation completed",
+      );
+
+      return c.json({
         ok: validation.ok,
-      },
-      "INFO [runtime-profile-route] Validation completed",
-    );
-
-    return c.json({
-      ok: validation.ok,
-      message: validation.message,
-      details: validation.details ?? null,
-      profile: redactResolvedRuntimeProfile(resolved),
-    });
+        message: validation.message,
+        details: validation.details ?? null,
+        profile: redactResolvedRuntimeProfile(resolved),
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      log.error({ err, runtimeId: resolved.runtimeId }, "Runtime profile validation failed");
+      return c.json({
+        ok: false,
+        message,
+        details: null,
+        profile: redactResolvedRuntimeProfile(resolved),
+      });
+    }
   },
 );
 
 // POST /runtime-profiles/models
 runtimeProfilesRouter.post(
   "/models",
-  zValidator("json", runtimeProfileModelsSchema as never),
+  validationRateLimit,
+  jsonValidator(runtimeProfileModelsSchema),
   async (c) => {
     const body = c.req.valid("json") as RuntimeProfileModelsPayload;
     const resolvedInput = resolveValidationProfile({
@@ -407,7 +437,7 @@ runtimeProfilesRouter.post(
       );
     }
 
-    const env = { ...process.env };
+    const env: Record<string, string | undefined> = {};
     if (body.apiKey) {
       const envKey = inferApiKeyEnvVar(resolvedInput.profile);
       env[envKey] = body.apiKey;
@@ -434,22 +464,31 @@ runtimeProfilesRouter.post(
       env,
     });
 
-    const discovery = await getApiRuntimeModelDiscoveryService();
-    const models = await discovery.listModels(resolved, body.forceRefresh ?? true);
+    try {
+      const discovery = await getApiRuntimeModelDiscoveryService();
+      const models = await discovery.listModels(resolved, body.forceRefresh ?? true);
 
-    log.info(
-      {
-        runtimeId: resolved.runtimeId,
-        providerId: resolved.providerId,
-        profileId: resolved.profileId,
-        modelCount: models.length,
-      },
-      "INFO [runtime-profile-route] Model discovery completed",
-    );
+      log.info(
+        {
+          runtimeId: resolved.runtimeId,
+          providerId: resolved.providerId,
+          profileId: resolved.profileId,
+          modelCount: models.length,
+        },
+        "INFO [runtime-profile-route] Model discovery completed",
+      );
 
-    return c.json({
-      models,
-      profile: redactResolvedRuntimeProfile(resolved),
-    });
+      return c.json({
+        models,
+        profile: redactResolvedRuntimeProfile(resolved),
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      log.error({ err, runtimeId: resolved.runtimeId }, "Runtime model discovery failed");
+      return c.json(
+        { error: message, models: [], profile: redactResolvedRuntimeProfile(resolved) },
+        422,
+      );
+    }
   },
 );

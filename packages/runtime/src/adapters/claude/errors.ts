@@ -1,4 +1,4 @@
-import { RuntimeExecutionError } from "../../errors.js";
+import { RuntimeExecutionError, type RuntimeErrorCategory } from "../../errors.js";
 
 const USAGE_LIMIT_PATTERNS = ["usage limit", "out of extra usage", "rate limit", "quota"];
 const PERMISSION_PATTERNS = ["permission denied", "write permission", "blocked by permissions"];
@@ -7,30 +7,39 @@ function messageFromUnknown(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function classifyCode(message: string): string {
+function classify(message: string): { adapterCode: string; category: RuntimeErrorCategory } {
   const lowered = message.toLowerCase();
 
-  if (USAGE_LIMIT_PATTERNS.some((pattern) => lowered.includes(pattern))) {
-    return "CLAUDE_USAGE_LIMIT";
+  if (USAGE_LIMIT_PATTERNS.some((p) => lowered.includes(p))) {
+    return { adapterCode: "CLAUDE_USAGE_LIMIT", category: "rate_limit" };
   }
-  if (PERMISSION_PATTERNS.some((pattern) => lowered.includes(pattern))) {
-    return "CLAUDE_PERMISSION_DENIED";
+  if (PERMISSION_PATTERNS.some((p) => lowered.includes(p))) {
+    return { adapterCode: "CLAUDE_PERMISSION_DENIED", category: "permission" };
   }
   if (lowered.includes("query_start_timeout")) {
-    return "CLAUDE_QUERY_START_TIMEOUT";
+    return { adapterCode: "CLAUDE_QUERY_START_TIMEOUT", category: "timeout" };
   }
-  if (lowered.includes("stream")) {
-    return "CLAUDE_STREAM_ERROR";
+  if (
+    lowered.includes("stream_error") ||
+    lowered.includes("stream closed") ||
+    lowered.includes("stream interrupted")
+  ) {
+    return { adapterCode: "CLAUDE_STREAM_ERROR", category: "stream" };
   }
 
-  return "CLAUDE_RUNTIME_ERROR";
+  return { adapterCode: "CLAUDE_RUNTIME_ERROR", category: "unknown" };
 }
 
 export class ClaudeRuntimeAdapterError extends RuntimeExecutionError {
   public readonly adapterCode: string;
 
-  constructor(message: string, adapterCode: string, cause?: unknown) {
-    super(message, cause);
+  constructor(
+    message: string,
+    adapterCode: string,
+    category: RuntimeErrorCategory,
+    cause?: unknown,
+  ) {
+    super(message, cause, category);
     this.name = "ClaudeRuntimeAdapterError";
     this.adapterCode = adapterCode;
   }
@@ -38,8 +47,8 @@ export class ClaudeRuntimeAdapterError extends RuntimeExecutionError {
 
 export function classifyClaudeRuntimeError(error: unknown): ClaudeRuntimeAdapterError {
   const message = messageFromUnknown(error);
-  const adapterCode = classifyCode(message);
-  return new ClaudeRuntimeAdapterError(message, adapterCode, error);
+  const { adapterCode, category } = classify(message);
+  return new ClaudeRuntimeAdapterError(message, adapterCode, category, error);
 }
 
 function normalizeDetail(detail: string | null | undefined): string | null {

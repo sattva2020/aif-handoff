@@ -53,14 +53,14 @@ Environment validation is handled by Zod in `packages/shared/src/env.ts`. The ap
 
 ## Authentication
 
-Runtime profiles support provider-specific auth setup. Common flows:
+Runtime profiles support provider-specific auth setup. Each adapter resolves credentials from its corresponding env vars:
 
-1. **Claude profile auth (recommended for local Claude runtime):** uses credentials from `~/.claude/`.
-2. **Anthropic API key:** set `ANTHROPIC_API_KEY`.
-3. **Anthropic bearer token (proxy/custom backend):** set `ANTHROPIC_AUTH_TOKEN`.
-4. **OpenAI-compatible API key:** set `OPENAI_API_KEY` (plus `OPENAI_BASE_URL` for custom endpoint).
+1. **Claude adapter (SDK transport):** uses credentials from `~/.claude/` or `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN`.
+2. **Codex adapter (CLI transport):** uses `OPENAI_API_KEY` (plus `OPENAI_BASE_URL` for custom endpoint).
+3. **Codex adapter (API transport):** uses `OPENAI_API_KEY` + `AGENTAPI_BASE_URL` for remote execution.
+4. **Custom adapters:** loaded via `AIF_RUNTIME_MODULES`, each adapter resolves its own env vars.
 
-For custom Claude-compatible endpoints, set `ANTHROPIC_MODEL` if your backend requires an explicit model id and does not auto-route model selection.
+The default runtime can be changed via `AIF_DEFAULT_RUNTIME_ID` and `AIF_DEFAULT_PROVIDER_ID` (defaults: `claude` / `anthropic`).
 
 Optional runtime defaults:
 

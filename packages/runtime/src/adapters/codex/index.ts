@@ -1,19 +1,23 @@
 import { existsSync } from "node:fs";
-import type {
-  RuntimeAdapter,
-  RuntimeConnectionValidationInput,
-  RuntimeConnectionValidationResult,
-  RuntimeModel,
-  RuntimeModelListInput,
-  RuntimeRunInput,
-  RuntimeRunResult,
+import { getCodexMcpStatus, installCodexMcpServer, uninstallCodexMcpServer } from "./mcp.js";
+import { initCodexProject } from "./project.js";
+import {
+  RuntimeTransport,
+  type RuntimeAdapter,
+  type RuntimeConnectionValidationInput,
+  type RuntimeConnectionValidationResult,
+  type RuntimeModel,
+  type RuntimeModelListInput,
+  type RuntimeRunInput,
+  type RuntimeRunResult,
 } from "../../types.js";
 import { runCodexCli, type CodexCliLogger } from "./cli.js";
 import {
+  listCodexAgentApiModels,
   runCodexAgentApi,
   validateCodexAgentApiConnection,
   type CodexAgentApiLogger,
-} from "./agentapi.js";
+} from "./api.js";
 import { classifyCodexRuntimeError } from "./errors.js";
 
 export type CodexRuntimeAdapterLogger = CodexCliLogger & CodexAgentApiLogger;
@@ -61,9 +65,11 @@ function readString(value: unknown): string | null {
 function resolveTransport(input: {
   transport?: string;
   options?: Record<string, unknown>;
-}): "cli" | "agentapi" {
+}): typeof RuntimeTransport.CLI | typeof RuntimeTransport.API {
   const requested = readString(input.transport) ?? readString(asRecord(input.options).transport);
-  return requested === "agentapi" ? "agentapi" : "cli";
+  return requested === RuntimeTransport.API || requested === "agentapi"
+    ? RuntimeTransport.API
+    : RuntimeTransport.CLI;
 }
 
 function resolveCliPath(input: RuntimeConnectionValidationInput): string | null {
@@ -115,7 +121,7 @@ export function createCodexRuntimeAdapter(
       "INFO [runtime:codex] Selected transport",
     );
 
-    if (transport === "agentapi") {
+    if (transport === RuntimeTransport.API) {
       return runCodexAgentApi({ ...input, transport }, logger);
     }
 
@@ -127,9 +133,13 @@ export function createCodexRuntimeAdapter(
       id: runtimeId,
       providerId,
       displayName: options.displayName ?? "Codex",
-      defaultTransport: "cli",
+      lightModel: null,
+      defaultApiKeyEnvVar: "OPENAI_API_KEY",
+      defaultModelPlaceholder: "gpt-5.4",
+      supportedTransports: [RuntimeTransport.CLI, RuntimeTransport.API],
+      defaultTransport: RuntimeTransport.CLI,
       capabilities: {
-        supportsResume: true,
+        supportsResume: false,
         supportsSessionList: false,
         supportsAgentDefinitions: false,
         supportsStreaming: true,
@@ -155,22 +165,91 @@ export function createCodexRuntimeAdapter(
     async validateConnection(
       input: RuntimeConnectionValidationInput,
     ): Promise<RuntimeConnectionValidationResult> {
+      const rawTransport = readString(input.transport);
+      if (
+        rawTransport &&
+        rawTransport !== RuntimeTransport.CLI &&
+        rawTransport !== RuntimeTransport.API &&
+        rawTransport !== "agentapi"
+      ) {
+        return {
+          ok: false,
+          message: `Codex does not support "${rawTransport}" transport. Use "cli" or "api".`,
+        };
+      }
       const transport = resolveTransport({ transport: input.transport, options: input.options });
-      if (transport === "agentapi") {
+      if (transport === RuntimeTransport.API) {
+        const issues: string[] = [];
+        const options = asRecord(input.options);
+        const apiKey = readString(options.apiKey);
+        const baseUrl =
+          readString(options.agentApiBaseUrl) ??
+          readString(options.baseUrl) ??
+          readString(process.env.AGENTAPI_BASE_URL) ??
+          readString(process.env.OPENAI_BASE_URL);
+        if (!apiKey) {
+          issues.push("Missing API key (expected env var: OPENAI_API_KEY)");
+        }
+        if (!baseUrl) {
+          issues.push(
+            "Missing base URL for API transport (set AGENTAPI_BASE_URL or OPENAI_BASE_URL or profile baseUrl)",
+          );
+        }
+        if (issues.length > 0) {
+          return { ok: false, message: issues.join("; ") };
+        }
         return validateCodexAgentApiConnection({ ...input, transport });
       }
       return validateCodexCliConnection({ ...input, transport });
     },
     async listModels(input: RuntimeModelListInput): Promise<RuntimeModel[]> {
+      const options = asRecord(input);
+      const transport = resolveTransport({ transport: undefined, options });
+      if (transport === RuntimeTransport.API) {
+        try {
+          const models = await listCodexAgentApiModels(input);
+          if (models.length > 0) {
+            logger.debug?.(
+              {
+                runtimeId: input.runtimeId,
+                profileId: input.profileId ?? null,
+                modelCount: models.length,
+              },
+              "DEBUG [runtime:codex] Fetched model list from AgentAPI",
+            );
+            return models;
+          }
+        } catch {
+          logger.warn?.(
+            {
+              runtimeId: input.runtimeId,
+              profileId: input.profileId ?? null,
+            },
+            "WARN [runtime:codex] AgentAPI model discovery failed, falling back to built-in list",
+          );
+        }
+      }
       logger.debug?.(
         {
           runtimeId: input.runtimeId,
           profileId: input.profileId ?? null,
-          projectRoot: input.projectRoot ?? null,
+          transport,
         },
         "DEBUG [runtime:codex] Returning built-in model list",
       );
       return DEFAULT_CODEX_MODELS;
+    },
+    initProject(projectRoot) {
+      initCodexProject(projectRoot);
+    },
+    async getMcpStatus(input) {
+      return getCodexMcpStatus(input);
+    },
+    async installMcpServer(input) {
+      return installCodexMcpServer(input);
+    },
+    async uninstallMcpServer(input) {
+      return uninstallCodexMcpServer(input);
     },
   };
 }

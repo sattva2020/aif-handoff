@@ -1,5 +1,5 @@
 import { appendTaskActivityLog } from "@aif/data";
-import { logger, findMonorepoRootFromUrl, getEnv, findClaudePath } from "@aif/shared";
+import { logger, findMonorepoRootFromUrl, getEnv } from "@aif/shared";
 import { notifyTaskBroadcast } from "./notifier.js";
 
 const log = logger("agent-hooks");
@@ -7,25 +7,17 @@ const log = logger("agent-hooks");
 const PROJECT_ROOT = findMonorepoRootFromUrl(import.meta.url);
 
 /**
- * Returns the monorepo root so agents work with the correct cwd
- * and can find .claude/agents/ definitions.
+ * Returns the monorepo root so agents work with the correct cwd.
  */
 export function getProjectRoot(): string {
   return PROJECT_ROOT;
-}
-
-const CLAUDE_PATH = findClaudePath();
-
-/** Returns the resolved path to the claude binary, if found. */
-export function getClaudePath(): string | undefined {
-  return CLAUDE_PATH;
 }
 
 /** Log categories for activity entries. */
 export type ActivityCategory = "Tool" | "Agent" | "Subagent";
 
 /**
- * Runtime-neutral callback signature for Claude hook-style events.
+ * Runtime-neutral callback signature for hook-style events.
  * Keeps @aif/agent decoupled from SDK-specific type imports.
  */
 export type RuntimeHookCallback = (

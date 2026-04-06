@@ -1,36 +1,52 @@
-import { RuntimeExecutionError } from "../../errors.js";
+import { RuntimeExecutionError, type RuntimeErrorCategory } from "../../errors.js";
 
 const CLI_NOT_FOUND_PATTERNS = ["enoent", "not recognized", "not found", "no such file"];
 const TIMEOUT_PATTERNS = ["timed out", "timeout", "etimedout"];
 const AUTH_PATTERNS = ["unauthorized", "invalid api key", "forbidden", "401", "403"];
 const TRANSPORT_PATTERNS = ["connection refused", "econnrefused", "network", "fetch failed"];
+const RATE_LIMIT_PATTERNS = [
+  "rate limit",
+  "rate_limit",
+  "too many requests",
+  "429",
+  "insufficient_quota",
+  "quota",
+];
 
 function messageFromUnknown(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function classifyCode(message: string): string {
+function classify(message: string): { adapterCode: string; category: RuntimeErrorCategory } {
   const lowered = message.toLowerCase();
-  if (CLI_NOT_FOUND_PATTERNS.some((pattern) => lowered.includes(pattern))) {
-    return "CODEX_CLI_NOT_FOUND";
+  if (RATE_LIMIT_PATTERNS.some((p) => lowered.includes(p))) {
+    return { adapterCode: "CODEX_RATE_LIMIT", category: "rate_limit" };
   }
-  if (TIMEOUT_PATTERNS.some((pattern) => lowered.includes(pattern))) {
-    return "CODEX_TIMEOUT";
+  if (CLI_NOT_FOUND_PATTERNS.some((p) => lowered.includes(p))) {
+    return { adapterCode: "CODEX_CLI_NOT_FOUND", category: "unknown" };
   }
-  if (AUTH_PATTERNS.some((pattern) => lowered.includes(pattern))) {
-    return "CODEX_AUTH_ERROR";
+  if (TIMEOUT_PATTERNS.some((p) => lowered.includes(p))) {
+    return { adapterCode: "CODEX_TIMEOUT", category: "timeout" };
   }
-  if (TRANSPORT_PATTERNS.some((pattern) => lowered.includes(pattern))) {
-    return "CODEX_TRANSPORT_ERROR";
+  if (AUTH_PATTERNS.some((p) => lowered.includes(p))) {
+    return { adapterCode: "CODEX_AUTH_ERROR", category: "auth" };
   }
-  return "CODEX_RUNTIME_ERROR";
+  if (TRANSPORT_PATTERNS.some((p) => lowered.includes(p))) {
+    return { adapterCode: "CODEX_TRANSPORT_ERROR", category: "unknown" };
+  }
+  return { adapterCode: "CODEX_RUNTIME_ERROR", category: "unknown" };
 }
 
 export class CodexRuntimeAdapterError extends RuntimeExecutionError {
   public readonly adapterCode: string;
 
-  constructor(message: string, adapterCode: string, cause?: unknown) {
-    super(message, cause);
+  constructor(
+    message: string,
+    adapterCode: string,
+    category: RuntimeErrorCategory,
+    cause?: unknown,
+  ) {
+    super(message, cause, category);
     this.name = "CodexRuntimeAdapterError";
     this.adapterCode = adapterCode;
   }
@@ -38,6 +54,6 @@ export class CodexRuntimeAdapterError extends RuntimeExecutionError {
 
 export function classifyCodexRuntimeError(error: unknown): CodexRuntimeAdapterError {
   const message = messageFromUnknown(error);
-  const adapterCode = classifyCode(message);
-  return new CodexRuntimeAdapterError(message, adapterCode, error);
+  const { adapterCode, category } = classify(message);
+  return new CodexRuntimeAdapterError(message, adapterCode, category, error);
 }

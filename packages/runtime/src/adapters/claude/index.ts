@@ -1,16 +1,22 @@
-import type {
-  RuntimeAdapter,
-  RuntimeConnectionValidationInput,
-  RuntimeConnectionValidationResult,
-  RuntimeModel,
-  RuntimeModelListInput,
-  RuntimeRunInput,
-  RuntimeRunResult,
-  RuntimeSession,
-  RuntimeSessionEventsInput,
-  RuntimeSessionGetInput,
-  RuntimeSessionListInput,
+import { findClaudePath } from "./findPath.js";
+import {
+  RuntimeTransport,
+  type RuntimeAdapter,
+  type RuntimeConnectionValidationInput,
+  type RuntimeConnectionValidationResult,
+  type RuntimeDiagnoseErrorInput,
+  type RuntimeModel,
+  type RuntimeModelListInput,
+  type RuntimeRunInput,
+  type RuntimeRunResult,
+  type RuntimeSession,
+  type RuntimeSessionEventsInput,
+  type RuntimeSessionGetInput,
+  type RuntimeSessionListInput,
 } from "../../types.js";
+import { diagnoseClaudeError } from "./diagnostics.js";
+import { getClaudeMcpStatus, installClaudeMcpServer, uninstallClaudeMcpServer } from "./mcp.js";
+import { initClaudeProject } from "./project.js";
 import {
   listClaudeRuntimeSessionEvents,
   getClaudeRuntimeSession,
@@ -25,6 +31,8 @@ export interface CreateClaudeRuntimeAdapterOptions {
   providerId?: string;
   displayName?: string;
   logger?: ClaudeRuntimeAdapterLogger;
+  /** Override for Claude CLI path. If omitted, auto-discovered via findClaudePath(). */
+  executablePath?: string;
 }
 
 const DEFAULT_CLAUDE_MODELS: RuntimeModel[] = [
@@ -59,23 +67,39 @@ function readStringOption(input: RuntimeConnectionValidationInput, key: string):
 async function validateClaudeConnection(
   input: RuntimeConnectionValidationInput,
 ): Promise<RuntimeConnectionValidationResult> {
-  const transport = input.transport ?? "sdk";
+  const transport = input.transport ?? RuntimeTransport.SDK;
   const apiKey = readStringOption(input, "apiKey");
   const apiKeyEnvVar = readStringOption(input, "apiKeyEnvVar");
+  const baseUrl = readStringOption(input, "baseUrl");
 
-  if (transport !== "cli" && !apiKey) {
+  if (transport === RuntimeTransport.SDK) {
+    // SDK transport uses ~/.claude/ session auth — API key is optional
     return {
-      ok: false,
-      message: "Missing API key for Claude runtime profile",
-      details: {
-        expectedEnvVar: apiKeyEnvVar ?? "ANTHROPIC_API_KEY",
-      },
+      ok: true,
+      message: apiKey
+        ? "Claude SDK profile configured with API key"
+        : "Claude SDK profile configured (using session auth)",
     };
   }
 
+  if (transport === RuntimeTransport.API) {
+    const issues: string[] = [];
+    if (!apiKey) {
+      issues.push(`Missing API key (expected env var: ${apiKeyEnvVar ?? "ANTHROPIC_API_KEY"})`);
+    }
+    if (!baseUrl) {
+      issues.push("Missing base URL for API transport (set ANTHROPIC_BASE_URL or profile baseUrl)");
+    }
+    if (issues.length > 0) {
+      return { ok: false, message: issues.join("; ") };
+    }
+    return { ok: true, message: "Claude API profile configured" };
+  }
+
+  // CLI transport — no key needed
   return {
     ok: true,
-    message: "Claude runtime profile configuration looks valid",
+    message: "Claude CLI profile configured",
   };
 }
 
@@ -89,12 +113,17 @@ export function createClaudeRuntimeAdapter(
   const runtimeId = options.runtimeId ?? "claude";
   const providerId = options.providerId ?? "anthropic";
   const logger = options.logger ?? createFallbackLogger();
+  const executablePath = options.executablePath ?? findClaudePath();
 
   return {
     descriptor: {
       id: runtimeId,
       providerId,
       displayName: options.displayName ?? "Claude",
+      lightModel: "claude-haiku-3-5",
+      defaultApiKeyEnvVar: "ANTHROPIC_API_KEY",
+      defaultModelPlaceholder: "claude-sonnet-4-5",
+      supportedTransports: [RuntimeTransport.SDK, RuntimeTransport.API],
       capabilities: {
         supportsResume: true,
         supportsSessionList: true,
@@ -106,10 +135,12 @@ export function createClaudeRuntimeAdapter(
       },
     },
     async run(input: RuntimeRunInput): Promise<RuntimeRunResult> {
-      return runClaudeRuntime(input, logger);
+      return runClaudeRuntime(input, logger, { pathToClaudeCodeExecutable: executablePath });
     },
     async resume(input: RuntimeRunInput & { sessionId: string }): Promise<RuntimeRunResult> {
-      return runClaudeRuntime({ ...input, resume: true }, logger);
+      return runClaudeRuntime({ ...input, resume: true }, logger, {
+        pathToClaudeCodeExecutable: executablePath,
+      });
     },
     async listSessions(input: RuntimeSessionListInput): Promise<RuntimeSession[]> {
       return listClaudeRuntimeSessions(input);
@@ -127,6 +158,31 @@ export function createClaudeRuntimeAdapter(
     },
     async listModels(input: RuntimeModelListInput): Promise<RuntimeModel[]> {
       return listClaudeModels(input);
+    },
+    async diagnoseError(input: RuntimeDiagnoseErrorInput): Promise<string> {
+      return diagnoseClaudeError(input, executablePath);
+    },
+    sanitizeInput(text: string): string {
+      return text
+        .replace(/<command-name>[^<]*<\/command-name>/g, "")
+        .replace(/<command-message>[^<]*<\/command-message>/g, "")
+        .replace(/<command-args>([^<]*)<\/command-args>/g, "$1")
+        .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "")
+        .replace(/<task-notification>[\s\S]*?<\/task-notification>/g, "")
+        .replace(/<user-prompt-submit-hook>[\s\S]*?<\/user-prompt-submit-hook>/g, "")
+        .trim();
+    },
+    initProject(projectRoot) {
+      initClaudeProject(projectRoot);
+    },
+    async getMcpStatus(input) {
+      return getClaudeMcpStatus(input);
+    },
+    async installMcpServer(input) {
+      return installClaudeMcpServer(input);
+    },
+    async uninstallMcpServer(input) {
+      return uninstallClaudeMcpServer(input);
     },
   };
 }

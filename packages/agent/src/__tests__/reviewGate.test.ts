@@ -1,11 +1,15 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { executeSubagentQueryMock } = vi.hoisted(() => ({
+const { executeSubagentQueryMock, resolveAdapterForTaskMock } = vi.hoisted(() => ({
   executeSubagentQueryMock: vi.fn(),
+  resolveAdapterForTaskMock: vi.fn().mockResolvedValue({
+    descriptor: { lightModel: "claude-haiku-3-5" },
+  }),
 }));
 
 vi.mock("../subagentQuery.js", () => ({
   executeSubagentQuery: executeSubagentQueryMock,
+  resolveAdapterForTask: resolveAdapterForTaskMock,
 }));
 
 import { evaluateReviewCommentsForAutoMode } from "../reviewGate.js";
@@ -95,14 +99,14 @@ describe("evaluateReviewCommentsForAutoMode", () => {
     expect(result).toEqual({ status: "success" });
   });
 
-  it("passes haiku model when no Anthropic proxy base URL is configured", async () => {
+  it("uses adapter lightModel for review-gate model override", async () => {
     executeSubagentQueryMock.mockResolvedValueOnce({ resultText: "SUCCESS" });
 
     await evaluateReviewCommentsForAutoMode(baseInput);
 
     expect(executeSubagentQueryMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        modelOverride: "haiku",
+        modelOverride: "claude-haiku-3-5",
         suppressModelFallback: false,
         workflowSpec: expect.objectContaining({
           sessionReusePolicy: "never",
@@ -111,8 +115,10 @@ describe("evaluateReviewCommentsForAutoMode", () => {
     );
   });
 
-  it("omits model override when Anthropic proxy base URL is configured", async () => {
-    process.env.ANTHROPIC_BASE_URL = "https://proxy.example/v1";
+  it("suppresses model fallback when adapter has no lightModel", async () => {
+    resolveAdapterForTaskMock.mockResolvedValueOnce({
+      descriptor: { lightModel: null },
+    });
     executeSubagentQueryMock.mockResolvedValueOnce({ resultText: "SUCCESS" });
 
     await evaluateReviewCommentsForAutoMode(baseInput);

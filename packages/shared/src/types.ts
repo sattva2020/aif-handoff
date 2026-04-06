@@ -21,6 +21,8 @@ export interface Project {
   reviewSidecarMaxBudgetUsd: number | null;
   parallelEnabled: boolean;
   defaultTaskRuntimeProfileId?: string | null;
+  defaultPlanRuntimeProfileId?: string | null;
+  defaultReviewRuntimeProfileId?: string | null;
   defaultChatRuntimeProfileId?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -35,6 +37,8 @@ export interface CreateProjectInput {
   reviewSidecarMaxBudgetUsd?: number;
   parallelEnabled?: boolean;
   defaultTaskRuntimeProfileId?: string | null;
+  defaultPlanRuntimeProfileId?: string | null;
+  defaultReviewRuntimeProfileId?: string | null;
   defaultChatRuntimeProfileId?: string | null;
 }
 
@@ -243,6 +247,36 @@ export interface WsEvent {
     | ChatDonePayload
     | ChatErrorPayload
     | ChatSession;
+}
+
+export const RuntimeTransport = {
+  /** Agent SDK — in-process query */
+  SDK: "sdk",
+  /** CLI subprocess — spawn a binary and parse stdout */
+  CLI: "cli",
+  /** HTTP API — POST to a remote runtime endpoint */
+  API: "api",
+} as const;
+
+export type RuntimeTransport = (typeof RuntimeTransport)[keyof typeof RuntimeTransport];
+
+/** All known transport values for validation and UI selects. */
+export const RUNTIME_TRANSPORTS: readonly RuntimeTransport[] = Object.values(RuntimeTransport);
+
+export function isRuntimeTransport(value: unknown): value is RuntimeTransport {
+  return typeof value === "string" && RUNTIME_TRANSPORTS.includes(value as RuntimeTransport);
+}
+
+/** Runtime descriptor returned by GET /runtime-profiles/runtimes */
+export interface RuntimeDescriptor {
+  id: string;
+  providerId: string;
+  displayName: string;
+  description?: string | null;
+  capabilities: Record<string, boolean>;
+  defaultApiKeyEnvVar?: string | null;
+  defaultModelPlaceholder?: string | null;
+  supportedTransports?: string[];
 }
 
 export interface RuntimeProfile {

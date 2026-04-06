@@ -1,14 +1,14 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { z } from "zod";
-import { logger, getEnv, modelOption, getProjectConfig } from "@aif/shared";
+import { logger, getEnv, getProjectConfig } from "@aif/shared";
 import {
   createTask,
   findProjectById,
   findTasksByRoadmapAlias,
   incrementTaskTokenUsage,
 } from "@aif/data";
-import { runApiRuntimeOneShot } from "./runtime.js";
+import { resolveApiLightModel, runApiRuntimeOneShot } from "./runtime.js";
 
 const log = logger("roadmap-generation");
 
@@ -102,14 +102,11 @@ export async function generateRoadmapFile(
 
   let rawResult = "";
   try {
-    const modelSelection = modelOption("sonnet");
-    const modelOverride = "model" in modelSelection ? modelSelection.model : null;
     const { result } = await runApiRuntimeOneShot({
       projectId,
       projectRoot: project.rootPath,
       prompt,
       workflowKind: "roadmap-generate",
-      modelOverride,
       systemPromptAppend:
         "Do not use tools or subagents. Reply directly with the ROADMAP.md content in markdown format. No JSON, no code fences around the entire output.",
     });
@@ -221,15 +218,14 @@ export async function generateRoadmapTasks(
 
   let rawResult = "";
   try {
-    const modelSelection = modelOption("haiku");
-    const modelOverride = "model" in modelSelection ? modelSelection.model : null;
+    const lightModel = await resolveApiLightModel(projectId, trackingTaskId);
     const { result } = await runApiRuntimeOneShot({
       projectId,
       projectRoot: project.rootPath,
       taskId: trackingTaskId ?? null,
       prompt,
       workflowKind: "roadmap-extract",
-      modelOverride,
+      modelOverride: lightModel,
       systemPromptAppend:
         "Do not use tools or subagents. Reply directly with JSON only. No markdown fences.",
     });

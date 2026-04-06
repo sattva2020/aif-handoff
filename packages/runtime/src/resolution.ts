@@ -1,5 +1,5 @@
 import { RuntimeResolutionError, RuntimeValidationError } from "./errors.js";
-import type { RuntimeTransport } from "./types.js";
+import { RuntimeTransport } from "./types.js";
 import type { RuntimeWorkflowSpec } from "./workflowSpec.js";
 
 export interface RuntimeProfileLike {
@@ -111,8 +111,8 @@ function inferDefaultBaseUrl(
 }
 
 function inferDefaultTransport(runtimeId: string): RuntimeTransport {
-  if (runtimeId.toLowerCase() === "codex") return "cli";
-  return "sdk";
+  if (runtimeId.toLowerCase() === "codex") return RuntimeTransport.CLI;
+  return RuntimeTransport.SDK;
 }
 
 function inferDefaultModel(
@@ -153,14 +153,14 @@ function applyTransportDefaults(
   options: Record<string, unknown>,
   env: RuntimeResolutionEnv,
 ): Record<string, unknown> {
-  if (transport === "cli") {
+  if (transport === RuntimeTransport.CLI) {
     const codexCliPath = normalizeString(env.CODEX_CLI_PATH);
     if (codexCliPath && options.codexCliPath == null) {
       return { ...options, codexCliPath };
     }
   }
 
-  if (transport === "agentapi") {
+  if (transport === RuntimeTransport.API) {
     const agentApiBaseUrl = normalizeString(env.AGENTAPI_BASE_URL);
     if (agentApiBaseUrl && options.agentApiBaseUrl == null) {
       return { ...options, agentApiBaseUrl };
@@ -188,9 +188,11 @@ export function resolveRuntimeProfile(input: ResolveRuntimeProfileInput): Resolv
     throw new RuntimeValidationError(`Runtime profile "${profile.id ?? "unknown"}" is disabled`);
   }
 
-  const transport =
-    (normalizeString(profile?.transport) as RuntimeTransport | null) ??
-    inferDefaultTransport(runtimeId);
+  const rawTransport = normalizeString(profile?.transport);
+  const transport: RuntimeTransport =
+    (rawTransport === "agentapi"
+      ? RuntimeTransport.API
+      : (rawTransport as RuntimeTransport | null)) ?? inferDefaultTransport(runtimeId);
   const explicitApiKeyEnvVar = normalizeString(profile?.apiKeyEnvVar);
   const defaultApiKeyEnvVar = inferDefaultApiKeyEnvVar(runtimeId, providerId, env);
   let apiKeyEnvVar = defaultApiKeyEnvVar;
@@ -287,19 +289,27 @@ export function validateResolvedRuntimeProfile(
 ): RuntimeValidationResult {
   const warnings: string[] = [];
 
-  if (!resolved.apiKey && resolved.transport !== "cli") {
-    warnings.push(
-      `Missing API key env var ${resolved.apiKeyEnvVar ?? "unknown"} for runtime "${resolved.runtimeId}"`,
-    );
+  // API transport requires both key and base URL
+  if (resolved.transport === RuntimeTransport.API) {
+    if (!resolved.apiKey) {
+      warnings.push(
+        `Missing API key env var ${resolved.apiKeyEnvVar ?? "unknown"} for runtime "${resolved.runtimeId}" (API transport)`,
+      );
+    }
+    if (!resolved.baseUrl && typeof resolved.options.agentApiBaseUrl !== "string") {
+      warnings.push("API transport requires a base URL (set profile baseUrl or AGENTAPI_BASE_URL)");
+    }
   }
 
-  if (resolved.transport === "agentapi" && typeof resolved.options.agentApiBaseUrl !== "string") {
-    warnings.push("AgentAPI transport is selected but agentApiBaseUrl is missing");
-  }
-
-  if (resolved.transport === "cli" && typeof resolved.options.codexCliPath !== "string") {
+  // CLI transport requires a CLI path
+  if (
+    resolved.transport === RuntimeTransport.CLI &&
+    typeof resolved.options.codexCliPath !== "string"
+  ) {
     warnings.push("CLI transport is selected but codexCliPath is missing");
   }
+
+  // SDK transport — API key is optional (session auth may be used)
 
   const ok = warnings.length === 0;
   return {

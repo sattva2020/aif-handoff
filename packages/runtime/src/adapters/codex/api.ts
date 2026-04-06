@@ -2,6 +2,7 @@ import type {
   RuntimeConnectionValidationInput,
   RuntimeConnectionValidationResult,
   RuntimeModel,
+  RuntimeModelListInput,
   RuntimeRunInput,
   RuntimeRunResult,
 } from "../../types.js";
@@ -23,6 +24,21 @@ function readString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
+const SENSITIVE_OPTION_KEYS = new Set(["apiKey", "apikey", "api_key", "secret", "password"]);
+
+function stripSensitiveOptions(
+  options: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!options) return options;
+  const cleaned: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(options)) {
+    if (!SENSITIVE_OPTION_KEYS.has(key)) {
+      cleaned[key] = value;
+    }
+  }
+  return cleaned;
+}
+
 function resolveAgentApiBaseUrl(input: RuntimeRunInput | RuntimeConnectionValidationInput): string {
   const options = asRecord(input.options);
   const baseUrl =
@@ -32,7 +48,7 @@ function resolveAgentApiBaseUrl(input: RuntimeRunInput | RuntimeConnectionValida
     readString(process.env.OPENAI_BASE_URL);
   if (!baseUrl) {
     throw classifyCodexRuntimeError(
-      "Codex AgentAPI transport requires agentApiBaseUrl/baseUrl/AGENTAPI_BASE_URL",
+      "Codex API transport requires agentApiBaseUrl/baseUrl/AGENTAPI_BASE_URL",
     );
   }
   return baseUrl.replace(/\/+$/, "");
@@ -91,7 +107,7 @@ export async function runCodexAgentApi(
   logger?.info?.(
     {
       runtimeId: input.runtimeId,
-      transport: "agentapi",
+      transport: "api",
       url,
     },
     "Starting Codex AgentAPI run",
@@ -110,7 +126,7 @@ export async function runCodexAgentApi(
         model: input.model,
         sessionId: input.sessionId,
         resume: input.resume,
-        options: input.options,
+        options: stripSensitiveOptions(input.options),
         metadata: input.metadata,
       }),
     });
@@ -162,17 +178,18 @@ export async function validateCodexAgentApiConnection(
 }
 
 export async function listCodexAgentApiModels(
-  input: RuntimeConnectionValidationInput,
+  input: RuntimeConnectionValidationInput | RuntimeModelListInput,
 ): Promise<RuntimeModel[]> {
-  const baseUrl = resolveAgentApiBaseUrl(input);
-  const options = asRecord(input.options);
+  const inputWithOptions = input as RuntimeConnectionValidationInput;
+  const baseUrl = resolveAgentApiBaseUrl(inputWithOptions);
+  const options = asRecord(inputWithOptions.options);
   const path = readString(options.agentApiModelsPath) ?? "/v1/models";
   const url = `${baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
 
   try {
     const response = await fetch(url, {
       method: "GET",
-      headers: buildHeaders(input),
+      headers: buildHeaders(inputWithOptions),
     });
     if (!response.ok) {
       throw new Error(`AgentAPI model listing failed with status ${response.status}`);

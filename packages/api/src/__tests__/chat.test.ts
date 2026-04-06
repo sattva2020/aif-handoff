@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
-import type { RuntimeAdapter, RuntimeRunInput } from "@aif/runtime";
+import { RuntimeExecutionError, type RuntimeAdapter, type RuntimeRunInput } from "@aif/runtime";
 
 const mockFindProjectById = vi.fn();
 const mockFindTaskById = vi.fn();
@@ -246,7 +246,7 @@ describe("chat API", () => {
 
   it("returns 429 and emits chat:error for usage-limit failures", async () => {
     mockAdapterRun.mockRejectedValue(
-      new Error("Claude Code returned an error result: You're out of extra usage"),
+      new RuntimeExecutionError("You're out of extra usage", undefined, "rate_limit"),
     );
 
     const res = await app.request("/chat", {

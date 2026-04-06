@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import type { Project, RuntimeProfile } from "@aif/shared/browser";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Select } from "@/components/ui/select";
 import { useUpdateProject } from "@/hooks/useProjects";
 import {
   useCreateRuntimeProfile,
@@ -36,10 +38,17 @@ export function ProjectRuntimeSettings({
   const [taskDefaultId, setTaskDefaultId] = useState(
     () => project.defaultTaskRuntimeProfileId ?? "",
   );
+  const [planDefaultId, setPlanDefaultId] = useState(
+    () => project.defaultPlanRuntimeProfileId ?? "",
+  );
+  const [reviewDefaultId, setReviewDefaultId] = useState(
+    () => project.defaultReviewRuntimeProfileId ?? "",
+  );
   const [chatDefaultId, setChatDefaultId] = useState(
     () => project.defaultChatRuntimeProfileId ?? "",
   );
   const [editingProfile, setEditingProfile] = useState<RuntimeProfile | null>(null);
+  const [deletingProfile, setDeletingProfile] = useState<RuntimeProfile | null>(null);
   const [creating, setCreating] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
@@ -72,6 +81,8 @@ export function ProjectRuntimeSettings({
           reviewSidecarMaxBudgetUsd: project.reviewSidecarMaxBudgetUsd ?? undefined,
           parallelEnabled: project.parallelEnabled,
           defaultTaskRuntimeProfileId: taskDefaultId || null,
+          defaultPlanRuntimeProfileId: planDefaultId || null,
+          defaultReviewRuntimeProfileId: reviewDefaultId || null,
           defaultChatRuntimeProfileId: chatDefaultId || null,
         },
       });
@@ -155,34 +166,52 @@ export function ProjectRuntimeSettings({
 
       <div className="grid gap-2 md:grid-cols-2">
         <div className="space-y-1">
-          <p className="text-xs text-muted-foreground">Default task runtime profile</p>
-          <select
-            className="h-9 w-full rounded border border-input bg-background px-2 text-sm"
+          <p className="text-xs text-muted-foreground">Implementation (default)</p>
+          <Select
             value={taskDefaultId}
             onChange={(e) => setTaskDefaultId(e.target.value)}
-          >
-            <option value="">(none)</option>
-            {runtimeOptions.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+            placeholder="(none)"
+            options={[
+              { value: "", label: "(none)" },
+              ...runtimeOptions.map((o) => ({ value: o.id, label: o.label })),
+            ]}
+          />
         </div>
         <div className="space-y-1">
-          <p className="text-xs text-muted-foreground">Default chat runtime profile</p>
-          <select
-            className="h-9 w-full rounded border border-input bg-background px-2 text-sm"
+          <p className="text-xs text-muted-foreground">Planning</p>
+          <Select
+            value={planDefaultId}
+            onChange={(e) => setPlanDefaultId(e.target.value)}
+            placeholder="(inherit from default)"
+            options={[
+              { value: "", label: "(inherit from default)" },
+              ...runtimeOptions.map((o) => ({ value: o.id, label: o.label })),
+            ]}
+          />
+        </div>
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">Review</p>
+          <Select
+            value={reviewDefaultId}
+            onChange={(e) => setReviewDefaultId(e.target.value)}
+            placeholder="(inherit from default)"
+            options={[
+              { value: "", label: "(inherit from default)" },
+              ...runtimeOptions.map((o) => ({ value: o.id, label: o.label })),
+            ]}
+          />
+        </div>
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">Chat</p>
+          <Select
             value={chatDefaultId}
             onChange={(e) => setChatDefaultId(e.target.value)}
-          >
-            <option value="">(none)</option>
-            {runtimeOptions.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+            placeholder="(none)"
+            options={[
+              { value: "", label: "(none)" },
+              ...runtimeOptions.map((o) => ({ value: o.id, label: o.label })),
+            ]}
+          />
         </div>
       </div>
 
@@ -195,16 +224,11 @@ export function ProjectRuntimeSettings({
       {statusMessage && <p className="text-xs text-muted-foreground">{statusMessage}</p>}
 
       <div className="space-y-2 border-t border-border pt-3">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Profiles
-          </p>
-          <Button size="sm" variant="outline" onClick={() => setCreating((value) => !value)}>
-            {creating ? "Hide Form" : "New Profile"}
-          </Button>
-        </div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Profiles
+        </p>
 
-        {creating && (
+        {creating ? (
           <RuntimeProfileForm
             mode="create"
             projectId={project.id}
@@ -212,6 +236,10 @@ export function ProjectRuntimeSettings({
             onSubmit={handleCreateProfile}
             onCancel={() => setCreating(false)}
           />
+        ) : (
+          <Button className="w-full" size="sm" variant="outline" onClick={() => setCreating(true)}>
+            + New Profile
+          </Button>
         )}
 
         {editingProfile && (
@@ -262,9 +290,8 @@ export function ProjectRuntimeSettings({
                   </Button>
                   <Button
                     size="sm"
-                    variant="outline"
-                    onClick={() => void deleteProfile.mutateAsync(profile.id)}
-                    disabled={deleteProfile.isPending}
+                    variant="destructive"
+                    onClick={() => setDeletingProfile(profile)}
                   >
                     Delete
                   </Button>
@@ -274,6 +301,22 @@ export function ProjectRuntimeSettings({
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={deletingProfile !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeletingProfile(null);
+        }}
+        title="Delete Runtime Profile"
+        description={`Delete "${deletingProfile?.name}"? Tasks and projects using this profile will fall back to defaults.`}
+        confirmLabel="Delete"
+        variant="destructive"
+        disabled={deleteProfile.isPending}
+        onConfirm={() => {
+          if (!deletingProfile) return;
+          void deleteProfile.mutateAsync(deletingProfile.id).then(() => setDeletingProfile(null));
+        }}
+      />
     </div>
   );
 }

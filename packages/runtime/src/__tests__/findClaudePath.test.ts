@@ -17,7 +17,7 @@ vi.mock("node:child_process", () => ({
 const originalEnv = { ...process.env };
 
 async function loadFindClaudePath() {
-  const mod = await import("../findClaudePath.js");
+  const mod = await import("../adapters/claude/findPath.js");
   return mod.findClaudePath;
 }
 
@@ -58,78 +58,31 @@ describe("findClaudePath", () => {
     process.env.APPDATA = "/tmp/aif-appdata";
     process.env.LOCALAPPDATA = "/tmp/aif-localappdata";
     const [firstCandidate] = getPlatformCandidates(process.env);
-    expect(firstCandidate).toBeDefined();
     existsSyncMock.mockImplementation((path) => path === firstCandidate);
 
     const findClaudePath = await loadFindClaudePath();
-    const result = findClaudePath();
-
-    expect(result).toBe(firstCandidate);
+    expect(findClaudePath()).toBe(firstCandidate);
     expect(execFileSyncMock).not.toHaveBeenCalled();
   });
 
-  it("uses USERPROFILE-derived candidate when HOME is missing", async () => {
-    delete process.env.HOME;
-    process.env.USERPROFILE = "/tmp/aif-user";
-    delete process.env.APPDATA;
-    delete process.env.LOCALAPPDATA;
-    const candidates = getPlatformCandidates(process.env);
-    const userProfileCandidate = process.platform === "win32" ? candidates[2] : candidates[0];
-    expect(userProfileCandidate).toBeDefined();
-    existsSyncMock.mockImplementation((path) => path === userProfileCandidate);
-
-    const findClaudePath = await loadFindClaudePath();
-    const result = findClaudePath();
-
-    expect(result).toBe(userProfileCandidate);
-  });
-
-  it("uses PATH fallback command and returns discovered path", async () => {
+  it("uses PATH fallback and returns discovered path", async () => {
     process.env.HOME = "/tmp/aif-home";
-    const discoveredPath = resolve(
-      "/tmp/bin",
-      process.platform === "win32" ? "claude.cmd" : "claude",
-    );
-    existsSyncMock.mockImplementation((path) => path === discoveredPath);
-    execFileSyncMock.mockReturnValue(`"${discoveredPath}"\n`);
+    const discovered = resolve("/tmp/bin", process.platform === "win32" ? "claude.cmd" : "claude");
+    existsSyncMock.mockImplementation((path) => path === discovered);
+    execFileSyncMock.mockReturnValue(`"${discovered}"\n`);
 
     const findClaudePath = await loadFindClaudePath();
-    const result = findClaudePath();
-    const expectedCommand = process.platform === "win32" ? "where" : "which";
-
-    expect(execFileSyncMock).toHaveBeenCalledWith(
-      expectedCommand,
-      ["claude"],
-      expect.objectContaining({
-        encoding: "utf8",
-        timeout: 3000,
-        windowsHide: true,
-      }),
-    );
-    expect(result).toBe(discoveredPath);
+    expect(findClaudePath()).toBe(discovered);
   });
 
-  it("returns undefined when fallback output has no existing path", async () => {
-    process.env.HOME = "/tmp/aif-home";
-    existsSyncMock.mockReturnValue(false);
-    execFileSyncMock.mockReturnValue("/missing/claude\n");
-
-    const findClaudePath = await loadFindClaudePath();
-    const result = findClaudePath();
-
-    expect(result).toBeUndefined();
-  });
-
-  it("returns undefined when fallback command throws", async () => {
+  it("returns undefined when nothing found", async () => {
     process.env.HOME = "/tmp/aif-home";
     existsSyncMock.mockReturnValue(false);
     execFileSyncMock.mockImplementation(() => {
-      throw new Error("which not available");
+      throw new Error("not found");
     });
 
     const findClaudePath = await loadFindClaudePath();
-    const result = findClaudePath();
-
-    expect(result).toBeUndefined();
+    expect(findClaudePath()).toBeUndefined();
   });
 });

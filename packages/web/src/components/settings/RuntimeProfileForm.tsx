@@ -1,14 +1,15 @@
 import { useState, type FormEvent } from "react";
-import type { CreateRuntimeProfileInput, RuntimeProfile } from "@aif/shared/browser";
+import {
+  RUNTIME_TRANSPORTS,
+  type CreateRuntimeProfileInput,
+  type RuntimeDescriptor,
+  type RuntimeProfile,
+} from "@aif/shared/browser";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-
-interface RuntimeDescriptor {
-  id: string;
-  providerId: string;
-  displayName: string;
-}
 
 interface Props {
   mode: "create" | "edit";
@@ -44,14 +45,16 @@ export function RuntimeProfileForm({
   onCancel,
 }: Props) {
   const [name, setName] = useState(initial?.name ?? "");
-  const [runtimeId, setRuntimeId] = useState(initial?.runtimeId ?? runtimes[0]?.id ?? "claude");
+  const firstRuntime = runtimes[0];
+  const [runtimeId, setRuntimeId] = useState(initial?.runtimeId ?? firstRuntime?.id ?? "");
   const [providerId, setProviderId] = useState(
     initial?.providerId ??
-      runtimes.find((runtime) => runtime.id === (initial?.runtimeId ?? runtimes[0]?.id))
+      runtimes.find((runtime) => runtime.id === (initial?.runtimeId ?? firstRuntime?.id))
         ?.providerId ??
-      "anthropic",
+      firstRuntime?.providerId ??
+      "",
   );
-  const [transport, setTransport] = useState(initial?.transport ?? "sdk");
+  const [transport, setTransport] = useState(initial?.transport ?? RUNTIME_TRANSPORTS[0]);
   const [baseUrl, setBaseUrl] = useState(initial?.baseUrl ?? "");
   const [apiKeyEnvVar, setApiKeyEnvVar] = useState(initial?.apiKeyEnvVar ?? "");
   const [defaultModel, setDefaultModel] = useState(initial?.defaultModel ?? "");
@@ -60,15 +63,17 @@ export function RuntimeProfileForm({
   const [enabled, setEnabled] = useState(initial?.enabled ?? true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const currentRuntime = runtimes.find((r) => r.id === runtimeId);
 
   const handleRuntimeChange = (nextRuntimeId: string) => {
     setRuntimeId(nextRuntimeId);
     const runtime = runtimes.find((item) => item.id === nextRuntimeId);
     if (runtime) {
       setProviderId(runtime.providerId);
-    }
-    if (nextRuntimeId === "codex" && !transport) {
-      setTransport("cli");
+      const supported = runtime.supportedTransports ?? [];
+      if (supported.length > 0 && !supported.includes(transport)) {
+        setTransport(supported[0]);
+      }
     }
   };
 
@@ -113,28 +118,32 @@ export function RuntimeProfileForm({
         </div>
         <div className="space-y-1">
           <p className="text-xs font-medium text-muted-foreground">Runtime</p>
-          <select
-            className="h-9 w-full rounded border border-input bg-background px-2 text-sm"
+          <Select
             value={runtimeId}
             onChange={(e) => handleRuntimeChange(e.target.value)}
-          >
-            {runtimes.map((runtime) => (
-              <option key={runtime.id} value={runtime.id}>
-                {runtime.displayName} ({runtime.id})
-              </option>
-            ))}
-          </select>
+            options={runtimes.map((runtime) => ({
+              value: runtime.id,
+              label: `${runtime.displayName} (${runtime.id})`,
+            }))}
+          />
         </div>
         <div className="space-y-1">
-          <p className="text-xs font-medium text-muted-foreground">Provider</p>
-          <Input value={providerId} onChange={(e) => setProviderId(e.target.value)} />
+          <p className="text-xs font-medium text-muted-foreground">Default model</p>
+          <Input
+            value={defaultModel}
+            onChange={(e) => setDefaultModel(e.target.value)}
+            placeholder={currentRuntime?.defaultModelPlaceholder ?? "model-id"}
+          />
         </div>
         <div className="space-y-1">
           <p className="text-xs font-medium text-muted-foreground">Transport</p>
-          <Input
+          <Select
             value={transport}
             onChange={(e) => setTransport(e.target.value)}
-            placeholder="sdk | cli | agentapi"
+            options={(currentRuntime?.supportedTransports ?? RUNTIME_TRANSPORTS).map((t) => ({
+              value: t,
+              label: t.toUpperCase(),
+            }))}
           />
         </div>
         <div className="space-y-1">
@@ -150,28 +159,16 @@ export function RuntimeProfileForm({
           <Input
             value={apiKeyEnvVar}
             onChange={(e) => setApiKeyEnvVar(e.target.value)}
-            placeholder="ANTHROPIC_API_KEY"
+            placeholder={currentRuntime?.defaultApiKeyEnvVar ?? "API_KEY"}
             autoComplete="off"
             spellCheck={false}
             pattern="^[A-Za-z0-9_.-]+$"
             title="Environment variable name may contain letters, numbers, dot, underscore, and hyphen"
           />
           <p className="text-[11px] text-muted-foreground">
-            Use env var name only (A-Z, 0-9, ., _, -)
+            Env var name only — secrets are never stored in profiles
           </p>
         </div>
-        <div className="space-y-1">
-          <p className="text-xs font-medium text-muted-foreground">Default model</p>
-          <Input
-            value={defaultModel}
-            onChange={(e) => setDefaultModel(e.target.value)}
-            placeholder="gpt-5.4"
-          />
-        </div>
-        <label className="mt-6 inline-flex items-center gap-2 text-xs text-muted-foreground">
-          <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-          Enabled
-        </label>
       </div>
 
       <div className="grid gap-2 md:grid-cols-2">
@@ -201,15 +198,21 @@ export function RuntimeProfileForm({
 
       {error && <p className="text-xs text-destructive">{error}</p>}
 
-      <div className="flex items-center gap-2">
-        <Button type="submit" size="sm" disabled={saving || !name.trim()}>
-          {saving ? "Saving..." : mode === "create" ? "Create Profile" : "Save Profile"}
-        </Button>
-        {onCancel && (
-          <Button type="button" size="sm" variant="outline" onClick={onCancel}>
-            Cancel
+      <div className="flex items-center justify-between">
+        <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+          <Switch size="sm" checked={enabled} onCheckedChange={setEnabled} />
+          Enabled
+        </label>
+        <div className="flex items-center gap-2">
+          <Button type="submit" size="sm" disabled={saving || !name.trim()}>
+            {saving ? "Saving..." : mode === "create" ? "Create Profile" : "Save Profile"}
           </Button>
-        )}
+          {onCancel && (
+            <Button type="button" size="sm" variant="outline" onClick={onCancel}>
+              Cancel
+            </Button>
+          )}
+        </div>
       </div>
     </form>
   );

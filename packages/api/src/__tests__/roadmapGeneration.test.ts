@@ -17,6 +17,7 @@ vi.mock("@aif/shared/server", async (importOriginal) => {
 const mockRunApiRuntimeOneShot = vi.fn();
 vi.mock("../services/runtime.js", () => ({
   runApiRuntimeOneShot: (...args: unknown[]) => mockRunApiRuntimeOneShot(...args),
+  resolveApiLightModel: async () => "claude-haiku-3-5",
 }));
 
 const {

@@ -27,8 +27,14 @@ interface ClaudeSessionMessage {
 }
 
 function toIso(value: string | number | undefined): string {
-  if (typeof value === "string") return new Date(value).toISOString();
-  if (typeof value === "number") return new Date(value).toISOString();
+  try {
+    if (typeof value === "string" || typeof value === "number") {
+      const date = new Date(value);
+      if (!Number.isNaN(date.getTime())) return date.toISOString();
+    }
+  } catch {
+    // fall through to default
+  }
   return new Date().toISOString();
 }
 
