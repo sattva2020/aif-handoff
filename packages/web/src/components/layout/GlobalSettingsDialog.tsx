@@ -41,7 +41,14 @@ export function GlobalSettingsDialog({ open, onOpenChange, projectId }: GlobalSe
     api.getMcpStatus().then(
       (res) => {
         setMcpInstalled(res.installed);
-        setMcpRuntimes(res.runtimes ?? []);
+        setMcpRuntimes(
+          (res.runtimes ?? []).map(
+            (r: { runtimeId: string; success?: boolean; installed?: boolean }) => ({
+              runtimeId: r.runtimeId,
+              installed: r.installed ?? r.success ?? false,
+            }),
+          ),
+        );
       },
       () => setMcpInstalled(null),
     );
@@ -74,7 +81,14 @@ export function GlobalSettingsDialog({ open, onOpenChange, projectId }: GlobalSe
     try {
       const res = await api.installMcp();
       setMcpInstalled(res.success);
-      setMcpRuntimes(res.runtimes ?? []);
+      setMcpRuntimes(
+        (res.runtimes ?? []).map(
+          (r: { runtimeId: string; success?: boolean; installed?: boolean }) => ({
+            runtimeId: r.runtimeId,
+            installed: r.installed ?? r.success ?? false,
+          }),
+        ),
+      );
     } catch (err) {
       setMcpError(err instanceof Error ? err.message : "Failed to install");
     } finally {
