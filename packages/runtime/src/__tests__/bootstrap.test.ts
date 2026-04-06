@@ -25,7 +25,7 @@ describe("bootstrapRuntimeRegistry", () => {
     const registry = await bootstrapRuntimeRegistry();
     const codex = registry.resolveRuntime("codex");
 
-    expect(codex.descriptor.capabilities.supportsResume).toBe(false);
+    expect(codex.descriptor.capabilities.supportsResume).toBe(true);
     expect(codex.descriptor.capabilities.supportsSessionList).toBe(false);
     expect(codex.descriptor.lightModel).toBeNull();
   });

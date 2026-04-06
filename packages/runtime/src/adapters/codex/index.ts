@@ -80,7 +80,7 @@ function readString(value: unknown): string | null {
  */
 
 const CLI_CAPABILITIES: RuntimeCapabilities = {
-  supportsResume: false,
+  supportsResume: true,
   supportsSessionList: false,
   supportsAgentDefinitions: false,
   supportsStreaming: true,

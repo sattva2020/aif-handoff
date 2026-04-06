@@ -28,14 +28,23 @@ function readStringArray(value: unknown): string[] | null {
 function normalizeCliArgs(input: RuntimeRunInput): string[] {
   const options = asRecord(input.options);
   const configured = readStringArray(options.codexCliArgs);
-  const args = configured ?? ["exec", "--json"];
 
-  return args.map((arg) => {
-    if (arg.includes("{prompt}")) return arg.replaceAll("{prompt}", input.prompt);
-    if (arg.includes("{model}")) return arg.replaceAll("{model}", input.model ?? "");
-    if (arg.includes("{session_id}")) return arg.replaceAll("{session_id}", input.sessionId ?? "");
-    return arg;
-  });
+  // Custom args — apply template substitutions
+  if (configured) {
+    return configured.map((arg) => {
+      if (arg.includes("{prompt}")) return arg.replaceAll("{prompt}", input.prompt);
+      if (arg.includes("{model}")) return arg.replaceAll("{model}", input.model ?? "");
+      if (arg.includes("{session_id}"))
+        return arg.replaceAll("{session_id}", input.sessionId ?? "");
+      return arg;
+    });
+  }
+
+  // Default args — resume session or fresh exec
+  if (input.resume && input.sessionId) {
+    return ["exec", "resume", input.sessionId, "--json"];
+  }
+  return ["exec", "--json"];
 }
 
 const ALLOWED_ENV_PREFIXES = [

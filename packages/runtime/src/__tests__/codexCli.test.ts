@@ -80,6 +80,22 @@ describe("codex cli transport", () => {
     expect(result.raw).toBe("plain output");
   });
 
+  it("uses exec resume subcommand when resume and sessionId are set", async () => {
+    const child = createMockChildProcess();
+    spawnMock.mockReturnValueOnce(child);
+
+    const runPromise = runCodexCli(createRunInput({ resume: true, sessionId: "thread-abc" }));
+
+    const [, args] = spawnMock.mock.calls[0] as [string, string[]];
+    expect(args).toEqual(["exec", "resume", "thread-abc", "--json"]);
+
+    child.stdout.emit("data", "resumed output");
+    child.emit("close", 0);
+
+    const result = await runPromise;
+    expect(result.outputText).toBe("resumed output");
+  });
+
   it("supports cli args placeholders and parses JSON output", async () => {
     const child = createMockChildProcess();
     spawnMock.mockReturnValueOnce(child);

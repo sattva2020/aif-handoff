@@ -89,11 +89,11 @@ describe("Codex adapter — SDK transport and capabilities", () => {
       expect(caps.supportsModelDiscovery).toBe(true);
     });
 
-    it("returns CLI capabilities without resume or sessions", () => {
+    it("returns CLI capabilities with resume but no session list", () => {
       const adapter = createCodexRuntimeAdapter();
       const caps = adapter.getEffectiveCapabilities!(RuntimeTransport.CLI);
 
-      expect(caps.supportsResume).toBe(false);
+      expect(caps.supportsResume).toBe(true);
       expect(caps.supportsSessionList).toBe(false);
       expect(caps.supportsStreaming).toBe(true);
     });
@@ -108,7 +108,7 @@ describe("Codex adapter — SDK transport and capabilities", () => {
 
     it("descriptor.capabilities matches CLI default transport", () => {
       const adapter = createCodexRuntimeAdapter();
-      expect(adapter.descriptor.capabilities.supportsResume).toBe(false);
+      expect(adapter.descriptor.capabilities.supportsResume).toBe(true);
       expect(adapter.descriptor.capabilities.supportsSessionList).toBe(false);
     });
   });
