@@ -190,9 +190,7 @@ export function Header({
                 : "Select project first"
             }
           >
-            <span className="md:hidden">RUNTIME</span>
-            <span className="hidden md:inline">RUNTIME:</span>
-            <span className="hidden max-w-40 truncate md:inline">{currentRuntimeLabel}</span>
+            <span>RUNTIME</span>
           </Button>
           <Button
             variant="outline"

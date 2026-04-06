@@ -527,6 +527,8 @@ export function updateProject(
     reviewSidecarMaxBudgetUsd?: number | null;
     parallelEnabled?: boolean;
     defaultTaskRuntimeProfileId?: string | null;
+    defaultPlanRuntimeProfileId?: string | null;
+    defaultReviewRuntimeProfileId?: string | null;
     defaultChatRuntimeProfileId?: string | null;
   },
 ): ProjectRow | undefined {
@@ -534,6 +536,8 @@ export function updateProject(
     {
       projectId: id,
       defaultTaskRuntimeProfileId: input.defaultTaskRuntimeProfileId ?? null,
+      defaultPlanRuntimeProfileId: input.defaultPlanRuntimeProfileId ?? null,
+      defaultReviewRuntimeProfileId: input.defaultReviewRuntimeProfileId ?? null,
       defaultChatRuntimeProfileId: input.defaultChatRuntimeProfileId ?? null,
     },
     "Updating project runtime defaults",
@@ -549,6 +553,8 @@ export function updateProject(
       reviewSidecarMaxBudgetUsd: input.reviewSidecarMaxBudgetUsd ?? null,
       parallelEnabled: input.parallelEnabled ?? false,
       defaultTaskRuntimeProfileId: input.defaultTaskRuntimeProfileId ?? null,
+      defaultPlanRuntimeProfileId: input.defaultPlanRuntimeProfileId ?? null,
+      defaultReviewRuntimeProfileId: input.defaultReviewRuntimeProfileId ?? null,
       defaultChatRuntimeProfileId: input.defaultChatRuntimeProfileId ?? null,
       updatedAt: new Date().toISOString(),
     })

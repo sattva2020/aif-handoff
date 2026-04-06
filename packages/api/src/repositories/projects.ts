@@ -62,6 +62,8 @@ export function updateProject(
     reviewSidecarMaxBudgetUsd?: number | null;
     parallelEnabled?: boolean;
     defaultTaskRuntimeProfileId?: string | null;
+    defaultPlanRuntimeProfileId?: string | null;
+    defaultReviewRuntimeProfileId?: string | null;
     defaultChatRuntimeProfileId?: string | null;
   },
 ): { project: ProjectRow | undefined; pathError?: string } {
