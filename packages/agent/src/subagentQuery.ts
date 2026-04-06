@@ -220,20 +220,27 @@ async function resolveExecutionContext(options: SubagentQueryOptions): Promise<{
   // capabilities depending on the active transport (SDK vs CLI vs API).
   const capabilities = resolveAdapterCapabilities(adapter, resolved.transport);
 
-  assertRuntimeCapabilities({
-    runtimeId: resolved.runtimeId,
-    workflowKind: workflow.workflowKind,
-    capabilities,
-    required: workflow.requiredCapabilities,
-    logger: {
-      debug(context, message) {
-        log.debug({ ...context }, `DEBUG [runtime-capabilities] ${message}`);
+  // Assert hard requirements, but exclude supportsAgentDefinitions —
+  // promptPolicy handles fallback to slash commands when agent defs are unsupported.
+  const hardRequired = workflow.requiredCapabilities.filter(
+    (cap) => cap !== "supportsAgentDefinitions",
+  );
+  if (hardRequired.length > 0) {
+    assertRuntimeCapabilities({
+      runtimeId: resolved.runtimeId,
+      workflowKind: workflow.workflowKind,
+      capabilities,
+      required: hardRequired,
+      logger: {
+        debug(context, message) {
+          log.debug({ ...context }, `DEBUG [runtime-capabilities] ${message}`);
+        },
+        warn(context, message) {
+          log.warn({ ...context }, `WARN [runtime-capabilities] ${message}`);
+        },
       },
-      warn(context, message) {
-        log.warn({ ...context }, `WARN [runtime-capabilities] ${message}`);
-      },
-    },
-  });
+    });
+  }
 
   const promptPolicy = resolveRuntimePromptPolicy({
     runtimeId: resolved.runtimeId,
