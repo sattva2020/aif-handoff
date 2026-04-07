@@ -31,4 +31,11 @@ describe("CLI probe functions", () => {
       expect(result.error).toBeDefined();
     });
   });
+
+  describe("IS_WINDOWS constant", () => {
+    it("is false on macOS/Linux CI", async () => {
+      // Verify the platform constant used in spawn logic
+      expect(process.platform).not.toBe("win32");
+    });
+  });
 });

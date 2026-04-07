@@ -91,6 +91,24 @@ export function probeClaudeCli(cliPath: string): { ok: boolean; version?: string
   }
 }
 
+/* v8 ignore start -- Windows-only spawn logic, untestable in macOS/Linux CI */
+function spawnCliWindows(
+  cliPath: string,
+  args: string[],
+  cwd: string | undefined,
+  env: Record<string, string>,
+) {
+  const cmd = process.env.ComSpec ?? "cmd.exe";
+  const cmdArgs = ["/d", "/s", "/c", `"${cliPath}" ${args.map((a) => `"${a}"`).join(" ")}`];
+  return spawn(cmd, cmdArgs, {
+    cwd,
+    env,
+    stdio: "pipe",
+    windowsVerbatimArguments: true,
+  });
+}
+/* v8 ignore stop */
+
 function resolveTimeoutMs(input: RuntimeRunInput): number {
   const exec = input.execution;
   if (
@@ -271,12 +289,10 @@ export async function runClaudeCli(
   );
 
   return new Promise<RuntimeRunResult>((resolve, reject) => {
-    const child = spawn(cliPath, args, {
-      cwd: input.cwd ?? input.projectRoot,
-      env,
-      stdio: "pipe",
-      shell: IS_WINDOWS,
-    });
+    /* v8 ignore next 2 -- Windows branch */
+    const child = IS_WINDOWS
+      ? spawnCliWindows(cliPath, args, input.cwd ?? input.projectRoot, env)
+      : spawn(cliPath, args, { cwd: input.cwd ?? input.projectRoot, env, stdio: "pipe" });
 
     let stdout = "";
     let stderr = "";

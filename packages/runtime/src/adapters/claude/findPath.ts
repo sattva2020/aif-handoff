@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 export function findClaudePath(): string | undefined {
   const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? "";
   const candidates =
+    /* v8 ignore next */
     process.platform === "win32"
       ? [
           // Prefer .exe (real binary) over .cmd (npm wrapper that requires shell)

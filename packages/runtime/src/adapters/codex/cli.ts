@@ -51,12 +51,6 @@ function normalizeCliArgs(input: RuntimeRunInput): string[] {
   if (input.model) {
     args.push("--model", input.model);
   }
-  // On Windows with shell: true, stdin piping through cmd.exe is unreliable.
-  // Pass the prompt as a positional argument to avoid "Reading prompt from stdin..." hangs.
-  // Usage: codex exec [OPTIONS] [PROMPT]
-  if (IS_WINDOWS && input.prompt) {
-    args.push(input.prompt);
-  }
   return args;
 }
 
@@ -126,6 +120,24 @@ function resolveTimeoutMs(input: RuntimeRunInput): number {
   }
   return 120_000;
 }
+
+/* v8 ignore start -- Windows-only spawn logic, untestable in macOS/Linux CI */
+function spawnCliWindows(
+  cliPath: string,
+  args: string[],
+  cwd: string | undefined,
+  env: Record<string, string>,
+) {
+  const cmd = process.env.ComSpec ?? "cmd.exe";
+  const cmdArgs = ["/d", "/s", "/c", `"${cliPath}" ${args.map((a) => `"${a}"`).join(" ")}`];
+  return spawn(cmd, cmdArgs, {
+    cwd,
+    env,
+    stdio: "pipe",
+    windowsVerbatimArguments: true,
+  });
+}
+/* v8 ignore stop */
 
 /**
  * Parse JSONL output from `codex exec --json`.
@@ -271,14 +283,15 @@ export async function runCodexCli(
   );
 
   return new Promise<RuntimeRunResult>((resolve, reject) => {
-    // On Windows, prompt is passed as positional arg (not stdin), so stdin can be ignored.
-    // This prevents cmd.exe from leaving stdin open and Codex hanging on "Reading additional input".
-    const child = spawn(cliPath, args, {
-      cwd: input.cwd ?? input.projectRoot,
-      env,
-      stdio: IS_WINDOWS ? ["ignore", "pipe", "pipe"] : "pipe",
-      shell: IS_WINDOWS,
-    });
+    // On Windows, spawn cannot launch .cmd files directly (ENOENT/EINVAL).
+    // Using shell: true breaks stdin piping — cmd.exe does not reliably forward
+    // stdin to the child process, causing Codex to hang on "Reading additional
+    // input from stdin...". Instead, invoke cmd.exe explicitly with /d /s /c
+    // which preserves the stdin pipe while resolving .cmd wrappers.
+    /* v8 ignore next 2 -- Windows branch */
+    const child = IS_WINDOWS
+      ? spawnCliWindows(cliPath, args, input.cwd ?? input.projectRoot, env)
+      : spawn(cliPath, args, { cwd: input.cwd ?? input.projectRoot, env, stdio: "pipe" });
 
     let stdout = "";
     let stderr = "";
@@ -289,11 +302,11 @@ export async function runCodexCli(
       child.kill("SIGKILL");
     }, timeoutMs);
 
-    child.stdout!.on("data", (chunk: Buffer | string) => {
+    child.stdout.on("data", (chunk: Buffer | string) => {
       stdout += String(chunk);
     });
 
-    child.stderr!.on("data", (chunk: Buffer | string) => {
+    child.stderr.on("data", (chunk: Buffer | string) => {
       stderr += String(chunk);
     });
 
@@ -321,14 +334,12 @@ export async function runCodexCli(
       }
     });
 
-    if (child.stdin) {
-      child.stdin.on("error", () => {
-        // Ignore broken-pipe errors — the child may exit before stdin is fully written
-      });
-      if (shouldWritePromptToStdin(args)) {
-        child.stdin.write(input.prompt);
-      }
-      child.stdin.end();
+    child.stdin.on("error", () => {
+      // Ignore broken-pipe errors — the child may exit before stdin is fully written
+    });
+    if (shouldWritePromptToStdin(args)) {
+      child.stdin.write(input.prompt);
     }
+    child.stdin.end();
   });
 }
