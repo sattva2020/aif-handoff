@@ -8,6 +8,13 @@ export function findClaudePath(): string | undefined {
   const candidates =
     process.platform === "win32"
       ? [
+          // Prefer .exe (real binary) over .cmd (npm wrapper that requires shell)
+          resolve(process.env.APPDATA ?? "", "npm/claude.exe"),
+          resolve(process.env.LOCALAPPDATA ?? "", "npm/claude.exe"),
+          resolve(homeDir, "scoop/shims/claude.exe"),
+          resolve(homeDir, ".local/bin/claude.exe"),
+          // Fall back to .cmd wrappers — CLI transport handles these via shell: true,
+          // SDK transport will omit .cmd paths and let the SDK do its own lookup.
           resolve(process.env.APPDATA ?? "", "npm/claude.cmd"),
           resolve(process.env.LOCALAPPDATA ?? "", "npm/claude.cmd"),
           resolve(homeDir, "scoop/shims/claude.cmd"),

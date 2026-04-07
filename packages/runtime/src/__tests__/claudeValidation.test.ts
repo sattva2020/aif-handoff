@@ -43,6 +43,16 @@ describe("Claude adapter validateConnection", () => {
     expect(result.message).toContain("CLI");
   });
 
+  it("CLI transport fails when binary is not reachable", async () => {
+    const result = await validate({
+      ...base,
+      transport: RuntimeTransport.CLI,
+      options: { claudeCliPath: "__nonexistent_claude_binary__" },
+    });
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("not reachable");
+  });
+
   it("API transport fails without API key", async () => {
     const result = await validate({
       ...base,
