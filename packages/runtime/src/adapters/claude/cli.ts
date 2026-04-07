@@ -92,6 +92,10 @@ export function probeClaudeCli(cliPath: string): { ok: boolean; version?: string
 }
 
 /* v8 ignore start -- Windows-only spawn logic, untestable in macOS/Linux CI */
+function quoteIfNeeded(arg: string): string {
+  return arg.includes(" ") || arg.includes('"') ? `"${arg.replace(/"/g, '\\"')}"` : arg;
+}
+
 function spawnCliWindows(
   cliPath: string,
   args: string[],
@@ -99,8 +103,8 @@ function spawnCliWindows(
   env: Record<string, string>,
 ) {
   const cmd = process.env.ComSpec ?? "cmd.exe";
-  const cmdArgs = ["/d", "/s", "/c", `"${cliPath}" ${args.map((a) => `"${a}"`).join(" ")}`];
-  return spawn(cmd, cmdArgs, {
+  const cmdLine = [cliPath, ...args.map(quoteIfNeeded)].join(" ");
+  return spawn(cmd, ["/d", "/c", cmdLine], {
     cwd,
     env,
     stdio: "pipe",
