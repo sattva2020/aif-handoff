@@ -1,6 +1,8 @@
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import type { RuntimeEvent, RuntimeRunInput, RuntimeRunResult, RuntimeUsage } from "../../types.js";
 import { classifyClaudeRuntimeError } from "./errors.js";
+
+const IS_WINDOWS = process.platform === "win32";
 
 export interface ClaudeCliLogger {
   debug?(context: Record<string, unknown>, message: string): void;
@@ -69,6 +71,24 @@ function resolveCliPath(input: RuntimeRunInput, adapterDefault?: string): string
     adapterDefault ??
     "claude"
   );
+}
+
+/**
+ * Probe whether the Claude CLI is actually reachable by running `claude --version`.
+ * On Windows bare command names like `"claude"` need `shell: true` to resolve `.cmd`.
+ */
+export function probeClaudeCli(cliPath: string): { ok: boolean; version?: string; error?: string } {
+  try {
+    const out = execFileSync(cliPath, ["--version"], {
+      timeout: 5_000,
+      shell: IS_WINDOWS,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return { ok: true, version: out.toString().trim() };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: message };
+  }
 }
 
 function resolveTimeoutMs(input: RuntimeRunInput): number {
@@ -255,6 +275,7 @@ export async function runClaudeCli(
       cwd: input.cwd ?? input.projectRoot,
       env,
       stdio: "pipe",
+      shell: IS_WINDOWS,
     });
 
     let stdout = "";

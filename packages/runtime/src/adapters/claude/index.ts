@@ -24,7 +24,7 @@ import {
   listClaudeRuntimeSessions,
 } from "./sessions.js";
 import { runClaudeRuntime, type ClaudeRuntimeRunLogger } from "./run.js";
-import { runClaudeCli, type ClaudeCliLogger } from "./cli.js";
+import { runClaudeCli, probeClaudeCli, type ClaudeCliLogger } from "./cli.js";
 
 export type ClaudeRuntimeAdapterLogger = ClaudeRuntimeRunLogger & ClaudeCliLogger;
 
@@ -138,10 +138,19 @@ async function validateClaudeConnection(
     return { ok: true, message: "Claude API profile configured" };
   }
 
-  // CLI transport — no key needed
+  // CLI transport — probe the binary to verify it's reachable
+  const cliPath = readStringOption(input, "claudeCliPath") ?? "claude";
+  const probe = probeClaudeCli(cliPath);
+  if (!probe.ok) {
+    return {
+      ok: false,
+      message: `Claude CLI is not reachable (${cliPath}): ${probe.error}`,
+    };
+  }
+
   return {
     ok: true,
-    message: "Claude CLI profile configured",
+    message: `Claude CLI ${probe.version ?? "unknown"} (${cliPath})`,
   };
 }
 

@@ -1,6 +1,8 @@
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import type { RuntimeRunInput, RuntimeRunResult } from "../../types.js";
 import { classifyCodexRuntimeError } from "./errors.js";
+
+const IS_WINDOWS = process.platform === "win32";
 
 export interface CodexCliLogger {
   debug?(context: Record<string, unknown>, message: string): void;
@@ -90,6 +92,24 @@ function buildCuratedEnv(apiKeyEnvVar: string): Record<string, string> {
 function resolveCliPath(input: RuntimeRunInput): string {
   const options = asRecord(input.options);
   return readString(options.codexCliPath) ?? readString(process.env.CODEX_CLI_PATH) ?? "codex";
+}
+
+/**
+ * Probe whether the Codex CLI is actually reachable by running `codex --version`.
+ * On Windows bare command names like `"codex"` need `shell: true` to resolve `.cmd`.
+ */
+export function probeCodexCli(cliPath: string): { ok: boolean; version?: string; error?: string } {
+  try {
+    const out = execFileSync(cliPath, ["--version"], {
+      timeout: 5_000,
+      shell: IS_WINDOWS,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return { ok: true, version: out.toString().trim() };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: message };
+  }
 }
 
 function resolveTimeoutMs(input: RuntimeRunInput): number {
@@ -249,6 +269,7 @@ export async function runCodexCli(
       cwd: input.cwd ?? input.projectRoot,
       env,
       stdio: "pipe",
+      shell: IS_WINDOWS,
     });
 
     let stdout = "";

@@ -17,7 +17,7 @@ import {
   type RuntimeSession,
   type RuntimeEvent,
 } from "../../types.js";
-import { runCodexCli, type CodexCliLogger } from "./cli.js";
+import { runCodexCli, probeCodexCli, type CodexCliLogger } from "./cli.js";
 import {
   listCodexAgentApiModels,
   runCodexAgentApi,
@@ -147,33 +147,49 @@ async function validateCodexCliConnection(
     };
   }
 
-  return {
-    ok: true,
-    message: `Codex CLI is configured (${cliPath})`,
-  };
-}
-
-async function validateCodexSdkConnection(
-  input: RuntimeConnectionValidationInput,
-): Promise<RuntimeConnectionValidationResult> {
-  const options = asRecord(input.options);
-
-  // SDK wraps the CLI — check CLI availability.
-  // Auth is handled by the CLI itself (via `codex auth login` or env vars),
-  // same as Claude SDK uses `claude /login` — no explicit API key required.
-  const cliPath =
-    readString(options.codexCliPath) ?? readString(process.env.CODEX_CLI_PATH) ?? "codex";
-  const looksLikePath = cliPath.includes("/") || cliPath.includes("\\");
-  if (looksLikePath && !existsSync(cliPath)) {
+  // Actually probe the CLI to verify it's reachable (catches Windows .cmd resolution issues)
+  const probe = probeCodexCli(cliPath);
+  if (!probe.ok) {
     return {
       ok: false,
-      message: `Codex SDK requires the CLI. Path does not exist: ${cliPath}`,
+      message: `Codex CLI is not reachable (${cliPath}): ${probe.error}`,
     };
   }
 
   return {
     ok: true,
-    message: `Codex SDK is configured (CLI: ${cliPath})`,
+    message: `Codex CLI ${probe.version ?? "unknown"} (${cliPath})`,
+  };
+}
+
+async function validateCodexSdkConnection(
+  _input: RuntimeConnectionValidationInput,
+): Promise<RuntimeConnectionValidationResult> {
+  // SDK internally locates a vendored platform binary from optional deps
+  // (e.g. @openai/codex-win32-x64). If that's missing, `new Codex()` will
+  // throw at thread start. We probe eagerly by attempting a minimal instantiation.
+  try {
+    const { Codex } = await import("@openai/codex-sdk");
+    // Codex constructor itself may throw if vendored binary is missing
+    new Codex({});
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("locate") || msg.includes("binaries") || msg.includes("optional")) {
+      return {
+        ok: false,
+        message: `Codex SDK vendor binary not found. Install platform-specific optional dep: ${msg}`,
+      };
+    }
+    // Other import/init errors — SDK itself may not be installed
+    return {
+      ok: false,
+      message: `Codex SDK is not available: ${msg}`,
+    };
+  }
+
+  return {
+    ok: true,
+    message: "Codex SDK is available (vendor binary found)",
   };
 }
 

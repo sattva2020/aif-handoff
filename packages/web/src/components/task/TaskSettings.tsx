@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Settings2 } from "lucide-react";
+import { Cpu, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -31,6 +31,9 @@ export function TaskSettings({ task, onSave }: Props) {
   const [maxReviewIterations, setMaxReviewIterations] = useState(task.maxReviewIterations);
   const [runtimeProfileId, setRuntimeProfileId] = useState(task.runtimeProfileId ?? "");
   const [modelOverride, setModelOverride] = useState(task.modelOverride ?? "");
+  const [runtimeOverrideOpen, setRuntimeOverrideOpen] = useState(
+    Boolean(task.runtimeProfileId || task.modelOverride),
+  );
 
   const selectedRuntimeProfile =
     runtimeProfiles.find((profile) => profile.id === runtimeProfileId) ?? null;
@@ -208,44 +211,54 @@ export function TaskSettings({ task, onSave }: Props) {
       )}
 
       <div className="space-y-2 border-t border-border/60 pt-2">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Runtime Override
-        </p>
-        <div className="space-y-1">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Runtime profile
-          </p>
-          <select
-            className="h-7 w-full rounded border border-input bg-background px-2 text-xs"
-            value={runtimeProfileId}
-            onChange={(e) => setRuntimeProfileId(e.target.value)}
-          >
-            <option value="">(project default)</option>
-            {runtimeProfiles.map((profile) => (
-              <option key={profile.id} value={profile.id}>
-                {profile.name} ({profile.runtimeId}/{profile.providerId})
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="space-y-1">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Model override
-          </p>
-          <Input
-            value={modelOverride}
-            onChange={(e) => setModelOverride(e.target.value)}
-            placeholder="runtime default"
-            className="h-7 text-xs"
-          />
-        </div>
-        {selectedRuntimeDescriptor &&
-          !selectedRuntimeDescriptor.capabilities.supportsAgentDefinitions && (
-            <p className="text-[10px] text-amber-500">
-              Selected runtime does not support agent definitions. Planner/implementer workflows may
-              fallback to slash commands.
-            </p>
-          )}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setRuntimeOverrideOpen((v) => !v)}
+          className="gap-1.5 text-muted-foreground"
+        >
+          <Cpu className="h-3.5 w-3.5" />
+          Runtime override
+        </Button>
+        {runtimeOverrideOpen && (
+          <div className="space-y-2 border border-border/60 bg-muted/20 p-2">
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Runtime profile
+              </p>
+              <select
+                className="h-7 w-full rounded border border-input bg-background px-2 text-xs"
+                value={runtimeProfileId}
+                onChange={(e) => setRuntimeProfileId(e.target.value)}
+              >
+                <option value="">(project default)</option>
+                {runtimeProfiles.map((profile) => (
+                  <option key={profile.id} value={profile.id}>
+                    {profile.name} ({profile.runtimeId}/{profile.providerId})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Model override
+              </p>
+              <Input
+                value={modelOverride}
+                onChange={(e) => setModelOverride(e.target.value)}
+                placeholder="runtime default"
+                className="h-7 text-xs"
+              />
+            </div>
+            {selectedRuntimeDescriptor &&
+              !selectedRuntimeDescriptor.capabilities.supportsAgentDefinitions && (
+                <p className="text-[10px] text-amber-500">
+                  Selected runtime does not support agent definitions. Planner/implementer workflows
+                  may fallback to slash commands.
+                </p>
+              )}
+          </div>
+        )}
       </div>
     </div>
   );
