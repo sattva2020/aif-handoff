@@ -165,6 +165,55 @@ describe("resolveRuntimeProfile", () => {
       }),
     ).toThrow(RuntimeValidationError);
   });
+
+  it("resolves openrouter defaults with OPENROUTER_API_KEY", () => {
+    const resolved = resolveRuntimeProfile({
+      source: "none",
+      profile: null,
+      fallbackRuntimeId: "openrouter",
+      fallbackProviderId: "openrouter",
+      env: {
+        OPENROUTER_API_KEY: "sk-or-test",
+      },
+    });
+
+    expect(resolved.runtimeId).toBe("openrouter");
+    expect(resolved.providerId).toBe("openrouter");
+    expect(resolved.apiKeyEnvVar).toBe("OPENROUTER_API_KEY");
+    expect(resolved.apiKey).toBe("sk-or-test");
+    expect(resolved.transport).toBe("api");
+    expect(resolved.baseUrl).toBe("https://openrouter.ai/api/v1");
+  });
+
+  it("resolves openrouter model from OPENROUTER_MODEL env", () => {
+    const resolved = resolveRuntimeProfile({
+      source: "none",
+      profile: null,
+      fallbackRuntimeId: "openrouter",
+      fallbackProviderId: "openrouter",
+      env: {
+        OPENROUTER_API_KEY: "sk-or-test",
+        OPENROUTER_MODEL: "openai/gpt-4o",
+      },
+    });
+
+    expect(resolved.model).toBe("openai/gpt-4o");
+  });
+
+  it("resolves openrouter with custom base URL from env", () => {
+    const resolved = resolveRuntimeProfile({
+      source: "none",
+      profile: null,
+      fallbackRuntimeId: "openrouter",
+      fallbackProviderId: "openrouter",
+      env: {
+        OPENROUTER_API_KEY: "sk-or-test",
+        OPENROUTER_BASE_URL: "https://my-proxy.example.com/v1",
+      },
+    });
+
+    expect(resolved.baseUrl).toBe("https://my-proxy.example.com/v1");
+  });
 });
 
 describe("validateResolvedRuntimeProfile", () => {

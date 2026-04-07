@@ -24,6 +24,9 @@ export interface RuntimeResolutionEnv {
   OPENAI_API_KEY?: string;
   OPENAI_BASE_URL?: string;
   OPENAI_MODEL?: string;
+  OPENROUTER_API_KEY?: string;
+  OPENROUTER_BASE_URL?: string;
+  OPENROUTER_MODEL?: string;
   CODEX_CLI_PATH?: string;
   AGENTAPI_BASE_URL?: string;
   [key: string]: string | undefined;
@@ -92,6 +95,9 @@ function inferDefaultApiKeyEnvVar(
     if (normalizeString(env.ANTHROPIC_AUTH_TOKEN)) return "ANTHROPIC_AUTH_TOKEN";
     return "ANTHROPIC_API_KEY";
   }
+  if (runtime === "openrouter" || provider === "openrouter") {
+    return "OPENROUTER_API_KEY";
+  }
   return "OPENAI_API_KEY";
 }
 
@@ -107,11 +113,16 @@ function inferDefaultBaseUrl(
     return normalizeString(env.ANTHROPIC_BASE_URL);
   }
 
+  if (runtime === "openrouter" || provider === "openrouter") {
+    return normalizeString(env.OPENROUTER_BASE_URL) ?? "https://openrouter.ai/api/v1";
+  }
+
   return normalizeString(env.OPENAI_BASE_URL);
 }
 
 function inferDefaultTransport(runtimeId: string): RuntimeTransport {
   if (runtimeId.toLowerCase() === "codex") return RuntimeTransport.CLI;
+  if (runtimeId.toLowerCase() === "openrouter") return RuntimeTransport.API;
   return RuntimeTransport.SDK;
 }
 
@@ -129,6 +140,10 @@ function inferDefaultModel(
 
   if (runtime === "codex" || provider === "openai") {
     return normalizeString(env.OPENAI_MODEL);
+  }
+
+  if (runtime === "openrouter" || provider === "openrouter") {
+    return normalizeString(env.OPENROUTER_MODEL);
   }
 
   return null;

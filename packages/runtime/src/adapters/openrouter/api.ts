@@ -1,0 +1,425 @@
+import type {
+  RuntimeConnectionValidationInput,
+  RuntimeConnectionValidationResult,
+  RuntimeEvent,
+  RuntimeModel,
+  RuntimeModelListInput,
+  RuntimeRunInput,
+  RuntimeRunResult,
+  RuntimeUsage,
+} from "../../types.js";
+import { classifyOpenRouterRuntimeError } from "./errors.js";
+
+export interface OpenRouterApiLogger {
+  debug?(context: Record<string, unknown>, message: string): void;
+  info?(context: Record<string, unknown>, message: string): void;
+  warn?(context: Record<string, unknown>, message: string): void;
+}
+
+const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
+const DEFAULT_APP_TITLE = "AIF Handoff";
+
+const SENSITIVE_OPTION_KEYS = new Set(["apiKey", "apikey", "api_key", "secret", "password"]);
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function readString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function stripSensitiveOptions(
+  options: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!options) return options;
+  const cleaned: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(options)) {
+    if (!SENSITIVE_OPTION_KEYS.has(key)) {
+      cleaned[key] = value;
+    }
+  }
+  return cleaned;
+}
+
+// ---------------------------------------------------------------------------
+// URL / Auth / Header resolution
+// ---------------------------------------------------------------------------
+
+function resolveBaseUrl(
+  input: RuntimeRunInput | RuntimeConnectionValidationInput | RuntimeModelListInput,
+): string {
+  const options = asRecord((input as RuntimeRunInput).options);
+  const baseUrl =
+    readString(options.baseUrl) ?? readString(process.env.OPENROUTER_BASE_URL) ?? DEFAULT_BASE_URL;
+  return baseUrl.replace(/\/+$/, "");
+}
+
+function resolveApiKey(
+  input: RuntimeRunInput | RuntimeConnectionValidationInput | RuntimeModelListInput,
+): string | null {
+  const options = asRecord((input as RuntimeRunInput).options);
+  return readString(options.apiKey) ?? readString(process.env.OPENROUTER_API_KEY);
+}
+
+function resolveHttpReferer(
+  input: RuntimeRunInput | RuntimeConnectionValidationInput | RuntimeModelListInput,
+): string {
+  const options = asRecord((input as RuntimeRunInput).options);
+  return readString(options.httpReferer) ?? readString(process.env.OPENROUTER_HTTP_REFERER) ?? "";
+}
+
+function resolveAppTitle(
+  input: RuntimeRunInput | RuntimeConnectionValidationInput | RuntimeModelListInput,
+): string {
+  const options = asRecord((input as RuntimeRunInput).options);
+  return (
+    readString(options.appTitle) ??
+    readString(process.env.OPENROUTER_APP_TITLE) ??
+    DEFAULT_APP_TITLE
+  );
+}
+
+function buildHeaders(
+  input: RuntimeRunInput | RuntimeConnectionValidationInput | RuntimeModelListInput,
+): Headers {
+  const headers = new Headers({ "Content-Type": "application/json" });
+  const apiKey = resolveApiKey(input);
+  if (apiKey) {
+    headers.set("Authorization", `Bearer ${apiKey}`);
+  }
+  const referer = resolveHttpReferer(input);
+  if (referer) {
+    headers.set("HTTP-Referer", referer);
+  }
+  const appTitle = resolveAppTitle(input);
+  if (appTitle) {
+    headers.set("X-Title", appTitle);
+  }
+
+  const rawHeaders = asRecord(asRecord((input as RuntimeRunInput).options).headers);
+  for (const [key, value] of Object.entries(rawHeaders)) {
+    if (typeof value === "string") {
+      headers.set(key, value);
+    }
+  }
+
+  return headers;
+}
+
+// ---------------------------------------------------------------------------
+// Request body builders
+// ---------------------------------------------------------------------------
+
+interface ChatMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
+function buildMessages(input: RuntimeRunInput): ChatMessage[] {
+  const messages: ChatMessage[] = [];
+
+  let systemContent = input.systemPrompt ?? "";
+  if (input.execution?.systemPromptAppend) {
+    systemContent = systemContent
+      ? `${systemContent}\n\n${input.execution.systemPromptAppend}`
+      : input.execution.systemPromptAppend;
+  }
+  if (systemContent) {
+    messages.push({ role: "system", content: systemContent });
+  }
+
+  messages.push({ role: "user", content: input.prompt });
+  return messages;
+}
+
+function buildRequestBody(input: RuntimeRunInput, stream: boolean): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    model: input.model,
+    messages: buildMessages(input),
+    stream,
+  };
+
+  if (input.execution?.outputSchema) {
+    body.response_format = {
+      type: "json_schema",
+      json_schema: {
+        name: "response",
+        strict: true,
+        schema: input.execution.outputSchema,
+      },
+    };
+  }
+
+  return body;
+}
+
+// ---------------------------------------------------------------------------
+// Usage normalization
+// ---------------------------------------------------------------------------
+
+function normalizeUsage(usage: unknown): RuntimeUsage | null {
+  if (!usage || typeof usage !== "object") return null;
+  const parsed = usage as Record<string, unknown>;
+  const inputTokens = (parsed.prompt_tokens as number) ?? (parsed.inputTokens as number) ?? 0;
+  const outputTokens = (parsed.completion_tokens as number) ?? (parsed.outputTokens as number) ?? 0;
+  const totalTokens =
+    (parsed.total_tokens as number) ?? (parsed.totalTokens as number) ?? inputTokens + outputTokens;
+  const costUsd =
+    typeof parsed.cost === "number"
+      ? parsed.cost
+      : typeof parsed.costUsd === "number"
+        ? parsed.costUsd
+        : undefined;
+  return { inputTokens, outputTokens, totalTokens, costUsd };
+}
+
+// ---------------------------------------------------------------------------
+// Non-streaming run
+// ---------------------------------------------------------------------------
+
+export async function runOpenRouterApi(
+  input: RuntimeRunInput,
+  logger?: OpenRouterApiLogger,
+): Promise<RuntimeRunResult> {
+  const baseUrl = resolveBaseUrl(input);
+  const url = `${baseUrl}/chat/completions`;
+
+  logger?.info?.(
+    {
+      runtimeId: input.runtimeId,
+      transport: "api",
+      url,
+      model: input.model ?? null,
+      options: stripSensitiveOptions(asRecord(input.options)),
+    },
+    "Starting OpenRouter API run",
+  );
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: buildHeaders(input),
+      body: JSON.stringify(buildRequestBody(input, false)),
+    });
+
+    const rawText = await response.text();
+    if (!response.ok) {
+      throw new Error(`OpenRouter HTTP ${response.status}: ${rawText}`);
+    }
+
+    const payload = rawText.trim().length > 0 ? JSON.parse(rawText) : {};
+    const choice = Array.isArray(payload.choices) ? payload.choices[0] : null;
+    const outputText = choice?.message?.content ?? "";
+
+    logger?.debug?.(
+      {
+        runtimeId: input.runtimeId,
+        hasOutput: outputText.length > 0,
+        usage: payload.usage ?? null,
+      },
+      "OpenRouter API run completed",
+    );
+
+    return {
+      outputText,
+      sessionId: payload.id ?? null,
+      usage: normalizeUsage(payload.usage),
+      raw: payload,
+    };
+  } catch (error) {
+    throw classifyOpenRouterRuntimeError(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Streaming run (SSE)
+// ---------------------------------------------------------------------------
+
+export async function runOpenRouterApiStreaming(
+  input: RuntimeRunInput,
+  logger?: OpenRouterApiLogger,
+): Promise<RuntimeRunResult> {
+  const baseUrl = resolveBaseUrl(input);
+  const url = `${baseUrl}/chat/completions`;
+
+  logger?.info?.(
+    {
+      runtimeId: input.runtimeId,
+      transport: "api",
+      url,
+      model: input.model ?? null,
+      streaming: true,
+    },
+    "Starting OpenRouter API streaming run",
+  );
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: buildHeaders(input),
+      body: JSON.stringify(buildRequestBody(input, true)),
+    });
+
+    if (!response.ok) {
+      const rawText = await response.text();
+      throw new Error(`OpenRouter HTTP ${response.status}: ${rawText}`);
+    }
+
+    if (!response.body) {
+      throw new Error("OpenRouter streaming response has no body");
+    }
+
+    let outputText = "";
+    let sessionId: string | null = null;
+    let usage: RuntimeUsage | null = null;
+    const events: RuntimeEvent[] = [];
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith(":")) continue;
+          if (!trimmed.startsWith("data: ")) continue;
+
+          const data = trimmed.slice(6);
+          if (data === "[DONE]") continue;
+
+          try {
+            const parsed = JSON.parse(data);
+            if (!sessionId && parsed.id) {
+              sessionId = parsed.id;
+            }
+
+            const delta = parsed.choices?.[0]?.delta;
+            if (delta?.content) {
+              outputText += delta.content;
+              const event: RuntimeEvent = {
+                type: "stream:text",
+                timestamp: new Date().toISOString(),
+                message: delta.content,
+              };
+              events.push(event);
+              input.execution?.onEvent?.(event);
+            }
+
+            if (parsed.usage) {
+              usage = normalizeUsage(parsed.usage);
+            }
+          } catch {
+            logger?.debug?.(
+              { runtimeId: input.runtimeId, rawLine: trimmed },
+              "Failed to parse SSE chunk, skipping",
+            );
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    logger?.debug?.(
+      {
+        runtimeId: input.runtimeId,
+        outputLength: outputText.length,
+        eventCount: events.length,
+      },
+      "OpenRouter API streaming run completed",
+    );
+
+    return {
+      outputText,
+      sessionId,
+      usage,
+      events,
+      raw: { streaming: true, eventCount: events.length },
+    };
+  } catch (error) {
+    throw classifyOpenRouterRuntimeError(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Connection validation
+// ---------------------------------------------------------------------------
+
+export async function validateOpenRouterApiConnection(
+  input: RuntimeConnectionValidationInput,
+): Promise<RuntimeConnectionValidationResult> {
+  const baseUrl = resolveBaseUrl(input);
+  const url = `${baseUrl}/models`;
+
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: buildHeaders(input),
+    });
+    if (!response.ok) {
+      return {
+        ok: false,
+        message: `OpenRouter health check failed with status ${response.status}`,
+      };
+    }
+    return {
+      ok: true,
+      message: "OpenRouter API connection validated",
+    };
+  } catch (error) {
+    throw classifyOpenRouterRuntimeError(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Model discovery
+// ---------------------------------------------------------------------------
+
+export async function listOpenRouterApiModels(
+  input: RuntimeConnectionValidationInput | RuntimeModelListInput,
+): Promise<RuntimeModel[]> {
+  const inputWithOptions = input as RuntimeConnectionValidationInput;
+  const baseUrl = resolveBaseUrl(inputWithOptions);
+  const url = `${baseUrl}/models`;
+
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: buildHeaders(inputWithOptions),
+    });
+    if (!response.ok) {
+      throw new Error(`OpenRouter model listing failed with status ${response.status}`);
+    }
+    const payload = (await response.json()) as {
+      data?: Array<{
+        id: string;
+        name?: string;
+        context_length?: number;
+        pricing?: { prompt?: string; completion?: string };
+      }>;
+    };
+    const models = payload.data ?? [];
+    return models.map((model) => ({
+      id: model.id,
+      label: model.name ?? model.id,
+      supportsStreaming: true,
+      metadata: {
+        contextLength: model.context_length,
+        pricing: model.pricing,
+      },
+    }));
+  } catch (error) {
+    throw classifyOpenRouterRuntimeError(error);
+  }
+}
