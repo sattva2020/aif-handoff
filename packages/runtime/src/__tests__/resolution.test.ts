@@ -166,6 +166,57 @@ describe("resolveRuntimeProfile", () => {
     ).toThrow(RuntimeValidationError);
   });
 
+  it("uses lightModelFallback when profile has no defaultModel and no env model", () => {
+    const resolved = resolveRuntimeProfile({
+      source: "none",
+      profile: null,
+      fallbackRuntimeId: "openrouter",
+      fallbackProviderId: "openrouter",
+      lightModelFallback: "meta-llama/llama-3-8b",
+      env: {
+        OPENROUTER_API_KEY: "sk-or-test",
+      },
+    });
+
+    expect(resolved.model).toBe("meta-llama/llama-3-8b");
+  });
+
+  it("prefers profile defaultModel over lightModelFallback", () => {
+    const resolved = resolveRuntimeProfile({
+      source: "task_override",
+      profile: {
+        id: "profile-1",
+        runtimeId: "openrouter",
+        providerId: "openrouter",
+        defaultModel: "anthropic/claude-sonnet-4",
+      },
+      lightModelFallback: "meta-llama/llama-3-8b",
+      env: {
+        OPENROUTER_API_KEY: "sk-or-test",
+      },
+    });
+
+    expect(resolved.model).toBe("anthropic/claude-sonnet-4");
+  });
+
+  it("prefers modelOverride over lightModelFallback", () => {
+    const resolved = resolveRuntimeProfile({
+      source: "task_override",
+      profile: {
+        id: "profile-1",
+        runtimeId: "claude",
+        providerId: "anthropic",
+      },
+      modelOverride: "task-model",
+      lightModelFallback: "haiku",
+      env: {
+        ANTHROPIC_API_KEY: "sk-ant-test",
+      },
+    });
+
+    expect(resolved.model).toBe("task-model");
+  });
+
   it("resolves openrouter defaults with OPENROUTER_API_KEY", () => {
     const resolved = resolveRuntimeProfile({
       source: "none",

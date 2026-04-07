@@ -44,6 +44,8 @@ export interface ResolveRuntimeProfileInput {
   env?: RuntimeResolutionEnv;
   workflow?: RuntimeWorkflowSpec;
   modelOverride?: string | null;
+  /** Adapter lightModel — used as fallback between profile.defaultModel and env inference. */
+  lightModelFallback?: string | null;
   suppressModelFallback?: boolean;
   runtimeOptionsOverride?: Record<string, unknown> | null;
   fallbackRuntimeId?: string;
@@ -254,6 +256,7 @@ export function resolveRuntimeProfile(input: ResolveRuntimeProfileInput): Resolv
       ? null
       : (normalizeString(input.modelOverride) ??
         normalizeString(profile?.defaultModel) ??
+        normalizeString(input.lightModelFallback) ??
         inferDefaultModel(runtimeId, providerId, env));
   const headers = profile?.headers ?? {};
   const mergedOptions = mergeRuntimeOptions(profile?.options, input.runtimeOptionsOverride);
