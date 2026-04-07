@@ -22,7 +22,7 @@ RUN npx turbo build
 # ---- API ----
 FROM base AS api
 ENV NODE_ENV=production HOME=/home/node
-RUN apt-get update && apt-get install -y --no-install-recommends gosu && rm -rf /var/lib/apt/lists/* \
+RUN apt-get update && apt-get install -y --no-install-recommends gosu git && rm -rf /var/lib/apt/lists/* \
     && npm i -g @anthropic-ai/claude-code @openai/codex
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/packages/shared ./packages/shared
@@ -48,7 +48,7 @@ EXPOSE 80 443
 # ---- Agent ----
 FROM base AS agent
 ENV NODE_ENV=production HOME=/home/node
-RUN apt-get update && apt-get install -y --no-install-recommends gosu && rm -rf /var/lib/apt/lists/* \
+RUN apt-get update && apt-get install -y --no-install-recommends gosu git && rm -rf /var/lib/apt/lists/* \
     && npm i -g @anthropic-ai/claude-code @openai/codex
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/packages/shared ./packages/shared
