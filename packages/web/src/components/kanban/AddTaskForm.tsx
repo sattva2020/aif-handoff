@@ -354,9 +354,8 @@ export function AddTaskForm({ projectId }: Props) {
             </div>
             {selectedRuntimeDescriptor &&
               !selectedRuntimeDescriptor.capabilities.supportsAgentDefinitions && (
-                <p className="text-[10px] text-amber-500">
-                  Selected runtime does not support agent definitions. Planner/implementer may
-                  fallback to slash commands.
+                <p className="text-[10px] text-muted-foreground">
+                  This runtime does not support subagents — skills mode will be used instead.
                 </p>
               )}
           </div>
