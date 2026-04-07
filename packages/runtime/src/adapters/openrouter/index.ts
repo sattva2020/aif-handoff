@@ -113,6 +113,7 @@ export function createOpenRouterRuntimeAdapter(
       displayName: options.displayName ?? "OpenRouter",
       lightModel: null,
       defaultApiKeyEnvVar: "OPENROUTER_API_KEY",
+      defaultBaseUrlEnvVar: "OPENROUTER_BASE_URL",
       defaultModelPlaceholder: "anthropic/claude-sonnet-4",
       supportedTransports: [RuntimeTransport.API],
       defaultTransport: RuntimeTransport.API,

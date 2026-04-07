@@ -249,6 +249,7 @@ export function ProjectRuntimeSettings({
 
         {editingProfile && (
           <RuntimeProfileForm
+            key={editingProfile.id}
             mode="edit"
             projectId={editingProfile.projectId}
             runtimes={runtimes}

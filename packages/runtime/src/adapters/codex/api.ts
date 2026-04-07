@@ -1,10 +1,12 @@
 import type {
   RuntimeConnectionValidationInput,
   RuntimeConnectionValidationResult,
+  RuntimeEvent,
   RuntimeModel,
   RuntimeModelListInput,
   RuntimeRunInput,
   RuntimeRunResult,
+  RuntimeUsage,
 } from "../../types.js";
 import { classifyCodexRuntimeError } from "./errors.js";
 
@@ -39,7 +41,7 @@ function stripSensitiveOptions(
   return cleaned;
 }
 
-function resolveAgentApiBaseUrl(input: RuntimeRunInput | RuntimeConnectionValidationInput): string {
+function resolveBaseUrl(input: RuntimeRunInput | RuntimeConnectionValidationInput): string {
   const options = asRecord(input.options);
   const baseUrl =
     readString(options.agentApiBaseUrl) ??
@@ -73,72 +75,126 @@ function buildHeaders(input: RuntimeRunInput | RuntimeConnectionValidationInput)
   return headers;
 }
 
-function normalizeUsage(usage: unknown) {
-  if (!usage || typeof usage !== "object") return null;
-  const parsed = usage as {
-    inputTokens?: number;
-    outputTokens?: number;
-    totalTokens?: number;
-    costUsd?: number;
-  };
-  const inputTokens = parsed.inputTokens ?? 0;
-  const outputTokens = parsed.outputTokens ?? 0;
-  const totalTokens = parsed.totalTokens ?? inputTokens + outputTokens;
-  return {
-    inputTokens,
-    outputTokens,
-    totalTokens,
-    costUsd: parsed.costUsd,
-  };
+// ---------------------------------------------------------------------------
+// Messages & request body (OpenAI Chat Completions format)
+// ---------------------------------------------------------------------------
+
+interface ChatMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
 }
+
+function buildMessages(input: RuntimeRunInput): ChatMessage[] {
+  const messages: ChatMessage[] = [];
+
+  let systemContent = input.systemPrompt ?? "";
+  if (input.execution?.systemPromptAppend) {
+    systemContent = systemContent
+      ? `${systemContent}\n\n${input.execution.systemPromptAppend}`
+      : input.execution.systemPromptAppend;
+  }
+  if (systemContent) {
+    messages.push({ role: "system", content: systemContent });
+  }
+
+  messages.push({ role: "user", content: input.prompt });
+  return messages;
+}
+
+function buildRequestBody(input: RuntimeRunInput, stream: boolean): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    model: input.model,
+    messages: buildMessages(input),
+    stream,
+  };
+
+  if (input.execution?.outputSchema) {
+    body.response_format = {
+      type: "json_schema",
+      json_schema: {
+        name: "response",
+        strict: true,
+        schema: input.execution.outputSchema,
+      },
+    };
+  }
+
+  return body;
+}
+
+// ---------------------------------------------------------------------------
+// Usage normalization
+// ---------------------------------------------------------------------------
+
+function normalizeUsage(usage: unknown): RuntimeUsage | null {
+  if (!usage || typeof usage !== "object") return null;
+  const parsed = usage as Record<string, unknown>;
+  const inputTokens = (parsed.prompt_tokens as number) ?? (parsed.inputTokens as number) ?? 0;
+  const outputTokens = (parsed.completion_tokens as number) ?? (parsed.outputTokens as number) ?? 0;
+  const totalTokens =
+    (parsed.total_tokens as number) ?? (parsed.totalTokens as number) ?? inputTokens + outputTokens;
+  const costUsd =
+    typeof parsed.cost === "number"
+      ? parsed.cost
+      : typeof parsed.costUsd === "number"
+        ? parsed.costUsd
+        : undefined;
+  return { inputTokens, outputTokens, totalTokens, costUsd };
+}
+
+// ---------------------------------------------------------------------------
+// Non-streaming run (OpenAI Chat Completions)
+// ---------------------------------------------------------------------------
 
 export async function runCodexAgentApi(
   input: RuntimeRunInput,
   logger?: CodexAgentApiLogger,
 ): Promise<RuntimeRunResult> {
-  const baseUrl = resolveAgentApiBaseUrl(input);
-  const options = asRecord(input.options);
-  const path = readString(options.agentApiRunPath) ?? "/v1/runtime/run";
-  const url = `${baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
+  const baseUrl = resolveBaseUrl(input);
+  const url = `${baseUrl}/chat/completions`;
 
   logger?.info?.(
     {
       runtimeId: input.runtimeId,
       transport: "api",
       url,
+      model: input.model ?? null,
+      options: stripSensitiveOptions(asRecord(input.options)),
     },
-    "Starting Codex OpenAI API run",
+    "Starting OpenAI API run",
   );
 
   try {
     const response = await fetch(url, {
       method: "POST",
       headers: buildHeaders(input),
-      body: JSON.stringify({
-        runtimeId: input.runtimeId,
-        providerId: input.providerId,
-        profileId: input.profileId,
-        workflowKind: input.workflowKind,
-        prompt: input.prompt,
-        model: input.model,
-        sessionId: input.sessionId,
-        resume: input.resume,
-        options: stripSensitiveOptions(input.options),
-        metadata: input.metadata,
-      }),
+      body: JSON.stringify(buildRequestBody(input, false)),
     });
 
     const rawText = await response.text();
     if (!response.ok) {
-      throw new Error(`OpenAI API HTTP ${response.status}: ${rawText}`);
+      return Promise.reject(
+        classifyCodexRuntimeError(new Error(`OpenAI API HTTP ${response.status}: ${rawText}`)),
+      );
     }
 
     const payload = rawText.trim().length > 0 ? JSON.parse(rawText) : {};
+    const choice = Array.isArray(payload.choices) ? payload.choices[0] : null;
+    const outputText = choice?.message?.content ?? "";
+
+    logger?.debug?.(
+      {
+        runtimeId: input.runtimeId,
+        hasOutput: outputText.length > 0,
+        usage: payload.usage ?? null,
+      },
+      "OpenAI API run completed",
+    );
+
     return {
-      outputText: payload.outputText ?? payload.result ?? "",
-      sessionId: payload.sessionId ?? input.sessionId ?? null,
+      outputText,
+      sessionId: payload.id ?? null,
       usage: normalizeUsage(payload.usage),
-      events: Array.isArray(payload.events) ? payload.events : undefined,
       raw: payload,
     };
   } catch (error) {
@@ -146,13 +202,137 @@ export async function runCodexAgentApi(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Streaming run (SSE, OpenAI Chat Completions)
+// ---------------------------------------------------------------------------
+
+export async function runCodexAgentApiStreaming(
+  input: RuntimeRunInput,
+  logger?: CodexAgentApiLogger,
+): Promise<RuntimeRunResult> {
+  const baseUrl = resolveBaseUrl(input);
+  const url = `${baseUrl}/chat/completions`;
+
+  logger?.info?.(
+    {
+      runtimeId: input.runtimeId,
+      transport: "api",
+      url,
+      model: input.model ?? null,
+      streaming: true,
+    },
+    "Starting OpenAI API streaming run",
+  );
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: buildHeaders(input),
+      body: JSON.stringify(buildRequestBody(input, true)),
+    });
+
+    if (!response.ok) {
+      const rawText = await response.text();
+      return Promise.reject(
+        classifyCodexRuntimeError(new Error(`OpenAI API HTTP ${response.status}: ${rawText}`)),
+      );
+    }
+
+    if (!response.body) {
+      return Promise.reject(
+        classifyCodexRuntimeError(new Error("OpenAI API streaming response has no body")),
+      );
+    }
+
+    let outputText = "";
+    let sessionId: string | null = null;
+    let usage: RuntimeUsage | null = null;
+    const events: RuntimeEvent[] = [];
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith(":")) continue;
+          if (!trimmed.startsWith("data: ")) continue;
+
+          const data = trimmed.slice(6);
+          if (data === "[DONE]") continue;
+
+          try {
+            const parsed = JSON.parse(data);
+            if (!sessionId && parsed.id) {
+              sessionId = parsed.id;
+            }
+
+            const delta = parsed.choices?.[0]?.delta;
+            if (delta?.content) {
+              outputText += delta.content;
+              const event: RuntimeEvent = {
+                type: "stream:text",
+                timestamp: new Date().toISOString(),
+                message: delta.content,
+              };
+              events.push(event);
+              input.execution?.onEvent?.(event);
+            }
+
+            if (parsed.usage) {
+              usage = normalizeUsage(parsed.usage);
+            }
+          } catch {
+            logger?.debug?.(
+              { runtimeId: input.runtimeId, rawLine: trimmed },
+              "Failed to parse SSE chunk, skipping",
+            );
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    logger?.debug?.(
+      {
+        runtimeId: input.runtimeId,
+        outputLength: outputText.length,
+        eventCount: events.length,
+      },
+      "OpenAI API streaming run completed",
+    );
+
+    return {
+      outputText,
+      sessionId,
+      usage,
+      events,
+      raw: { streaming: true, eventCount: events.length },
+    };
+  } catch (error) {
+    throw classifyCodexRuntimeError(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Connection validation
+// ---------------------------------------------------------------------------
+
 export async function validateCodexAgentApiConnection(
   input: RuntimeConnectionValidationInput,
 ): Promise<RuntimeConnectionValidationResult> {
-  const baseUrl = resolveAgentApiBaseUrl(input);
-  const options = asRecord(input.options);
-  const path = readString(options.agentApiValidationPath) ?? "/v1/models";
-  const url = `${baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
+  const baseUrl = resolveBaseUrl(input);
+  const url = `${baseUrl}/models`;
 
   try {
     const response = await fetch(url, {
@@ -174,14 +354,16 @@ export async function validateCodexAgentApiConnection(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Model discovery
+// ---------------------------------------------------------------------------
+
 export async function listCodexAgentApiModels(
   input: RuntimeConnectionValidationInput | RuntimeModelListInput,
 ): Promise<RuntimeModel[]> {
   const inputWithOptions = input as RuntimeConnectionValidationInput;
-  const baseUrl = resolveAgentApiBaseUrl(inputWithOptions);
-  const options = asRecord(inputWithOptions.options);
-  const path = readString(options.agentApiModelsPath) ?? "/v1/models";
-  const url = `${baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
+  const baseUrl = resolveBaseUrl(inputWithOptions);
+  const url = `${baseUrl}/models`;
 
   try {
     const response = await fetch(url, {
@@ -189,28 +371,25 @@ export async function listCodexAgentApiModels(
       headers: buildHeaders(inputWithOptions),
     });
     if (!response.ok) {
-      throw new Error(`OpenAI API model listing failed with status ${response.status}`);
+      return Promise.reject(
+        classifyCodexRuntimeError(
+          new Error(`OpenAI API model listing failed with status ${response.status}`),
+        ),
+      );
     }
     const payload = (await response.json()) as {
-      models?: Array<{
-        id: string;
-        label?: string;
-        supportsStreaming?: boolean;
-        metadata?: Record<string, unknown>;
-      }>;
       data?: Array<{
         id: string;
-        label?: string;
-        supportsStreaming?: boolean;
-        metadata?: Record<string, unknown>;
+        name?: string;
+        owned_by?: string;
       }>;
     };
-    const models = payload.models ?? payload.data ?? [];
+    const models = payload.data ?? [];
     return models.map((model) => ({
       id: model.id,
-      label: model.label,
-      supportsStreaming: model.supportsStreaming,
-      metadata: model.metadata,
+      label: model.name ?? model.id,
+      supportsStreaming: true,
+      metadata: { owned_by: model.owned_by },
     }));
   } catch (error) {
     throw classifyCodexRuntimeError(error);

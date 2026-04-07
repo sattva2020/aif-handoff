@@ -177,6 +177,35 @@ describe("OpenRouter API transport", () => {
       const result = await runOpenRouterApi(createRunInput({ options: { apiKey: "sk-test" } }));
       expect(result.outputText).toBe("");
     });
+
+    it("retries on HTTP 429 and succeeds", async () => {
+      fetchMock
+        .mockResolvedValueOnce(
+          new Response("rate limited", { status: 429, headers: { "Retry-After": "0" } }),
+        )
+        .mockResolvedValueOnce(
+          jsonResponse({ choices: [{ message: { content: "ok-after-retry" } }] }),
+        );
+
+      const result = await runOpenRouterApi(createRunInput({ options: { apiKey: "sk-test" } }));
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(result.outputText).toBe("ok-after-retry");
+    });
+
+    it("fails after max 429 retries", async () => {
+      fetchMock
+        .mockResolvedValueOnce(new Response("r1", { status: 429, headers: { "Retry-After": "0" } }))
+        .mockResolvedValueOnce(new Response("r2", { status: 429, headers: { "Retry-After": "0" } }))
+        .mockResolvedValueOnce(
+          new Response("r3", { status: 429, headers: { "Retry-After": "0" } }),
+        );
+
+      await expect(
+        runOpenRouterApi(createRunInput({ options: { apiKey: "sk-test" } })),
+      ).rejects.toBeInstanceOf(OpenRouterRuntimeAdapterError);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
   });
 
   // --- runOpenRouterApiStreaming ---
@@ -233,6 +262,26 @@ describe("OpenRouter API transport", () => {
         totalTokens: 7,
         costUsd: undefined,
       });
+    });
+
+    it("retries 429 in streaming mode and then succeeds", async () => {
+      fetchMock
+        .mockResolvedValueOnce(
+          new Response("Rate limit exceeded", { status: 429, headers: { "Retry-After": "0" } }),
+        )
+        .mockResolvedValueOnce(
+          sseResponse([
+            'data: {"id":"gen-2","choices":[{"delta":{"content":"retry"}}]}\n\n',
+            "data: [DONE]\n\n",
+          ]),
+        );
+
+      const result = await runOpenRouterApiStreaming(
+        createRunInput({ options: { apiKey: "sk-test" } }),
+      );
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(result.outputText).toBe("retry");
     });
   });
 

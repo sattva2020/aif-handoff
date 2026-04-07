@@ -18,6 +18,8 @@ export interface OpenRouterApiLogger {
 
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 const DEFAULT_APP_TITLE = "AIF Handoff";
+const RETRYABLE_STATUS = new Set([429]);
+const MAX_429_ATTEMPTS = 3;
 
 const SENSITIVE_OPTION_KEYS = new Set(["apiKey", "apikey", "api_key", "secret", "password"]);
 
@@ -176,6 +178,70 @@ function normalizeUsage(usage: unknown): RuntimeUsage | null {
   return { inputTokens, outputTokens, totalTokens, costUsd };
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function parseRetryAfterMs(value: string | null): number | null {
+  if (!value) return null;
+  const asSeconds = Number(value);
+  if (Number.isFinite(asSeconds) && asSeconds >= 0) {
+    return Math.floor(asSeconds * 1000);
+  }
+  const atMs = Date.parse(value);
+  if (!Number.isFinite(atMs)) return null;
+  return Math.max(0, atMs - Date.now());
+}
+
+function getBackoffMs(attempt: number): number {
+  // 1.5s, 3.0s for retries #1 and #2
+  return 1_500 * attempt;
+}
+
+async function postChatCompletionsWith429Retry(
+  input: RuntimeRunInput,
+  url: string,
+  stream: boolean,
+  logger?: OpenRouterApiLogger,
+): Promise<Response> {
+  for (let attempt = 1; attempt <= MAX_429_ATTEMPTS; attempt += 1) {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: buildHeaders(input),
+      body: JSON.stringify(buildRequestBody(input, stream)),
+    });
+
+    const isRetryable = RETRYABLE_STATUS.has(response.status);
+    const hasAttemptsLeft = attempt < MAX_429_ATTEMPTS;
+    if (!isRetryable || !hasAttemptsLeft) {
+      return response;
+    }
+
+    const retryAfterHeader = response.headers.get("retry-after");
+    const retryAfterMs = parseRetryAfterMs(retryAfterHeader);
+    const backoffMs = retryAfterMs ?? getBackoffMs(attempt);
+    const rawText = await response.text();
+
+    logger?.warn?.(
+      {
+        runtimeId: input.runtimeId,
+        model: input.model ?? null,
+        status: response.status,
+        attempt,
+        nextAttempt: attempt + 1,
+        retryAfterMs: backoffMs,
+        retryAfterHeader: retryAfterHeader ?? null,
+        errorPreview: rawText.slice(0, 240),
+      },
+      "OpenRouter returned retryable 429, retrying request",
+    );
+
+    await sleep(backoffMs);
+  }
+
+  throw new Error("Unreachable: 429 retry loop exhausted");
+}
+
 // ---------------------------------------------------------------------------
 // Non-streaming run
 // ---------------------------------------------------------------------------
@@ -199,15 +265,13 @@ export async function runOpenRouterApi(
   );
 
   try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: buildHeaders(input),
-      body: JSON.stringify(buildRequestBody(input, false)),
-    });
+    const response = await postChatCompletionsWith429Retry(input, url, false, logger);
 
     const rawText = await response.text();
     if (!response.ok) {
-      throw new Error(`OpenRouter HTTP ${response.status}: ${rawText}`);
+      return Promise.reject(
+        classifyOpenRouterRuntimeError(new Error(`OpenRouter HTTP ${response.status}: ${rawText}`)),
+      );
     }
 
     const payload = rawText.trim().length > 0 ? JSON.parse(rawText) : {};
@@ -257,19 +321,19 @@ export async function runOpenRouterApiStreaming(
   );
 
   try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: buildHeaders(input),
-      body: JSON.stringify(buildRequestBody(input, true)),
-    });
+    const response = await postChatCompletionsWith429Retry(input, url, true, logger);
 
     if (!response.ok) {
       const rawText = await response.text();
-      throw new Error(`OpenRouter HTTP ${response.status}: ${rawText}`);
+      return Promise.reject(
+        classifyOpenRouterRuntimeError(new Error(`OpenRouter HTTP ${response.status}: ${rawText}`)),
+      );
     }
 
     if (!response.body) {
-      throw new Error("OpenRouter streaming response has no body");
+      return Promise.reject(
+        classifyOpenRouterRuntimeError(new Error("OpenRouter streaming response has no body")),
+      );
     }
 
     let outputText = "";
@@ -399,7 +463,11 @@ export async function listOpenRouterApiModels(
       headers: buildHeaders(inputWithOptions),
     });
     if (!response.ok) {
-      throw new Error(`OpenRouter model listing failed with status ${response.status}`);
+      return Promise.reject(
+        classifyOpenRouterRuntimeError(
+          new Error(`OpenRouter model listing failed with status ${response.status}`),
+        ),
+      );
     }
     const payload = (await response.json()) as {
       data?: Array<{

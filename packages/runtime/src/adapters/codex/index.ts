@@ -21,6 +21,7 @@ import { runCodexCli, probeCodexCli, type CodexCliLogger } from "./cli.js";
 import {
   listCodexAgentApiModels,
   runCodexAgentApi,
+  runCodexAgentApiStreaming,
   validateCodexAgentApiConnection,
   type CodexAgentApiLogger,
 } from "./api.js";
@@ -220,6 +221,10 @@ export function createCodexRuntimeAdapter(
     }
 
     if (transport === RuntimeTransport.API) {
+      const wantsStreaming = input.execution?.onEvent != null;
+      if (wantsStreaming) {
+        return runCodexAgentApiStreaming({ ...input, transport }, logger);
+      }
       return runCodexAgentApi({ ...input, transport }, logger);
     }
 
@@ -233,6 +238,7 @@ export function createCodexRuntimeAdapter(
       displayName: options.displayName ?? "Codex",
       lightModel: null,
       defaultApiKeyEnvVar: "OPENAI_API_KEY",
+      defaultBaseUrlEnvVar: "OPENAI_BASE_URL",
       defaultModelPlaceholder: "gpt-5.4",
       supportedTransports: [RuntimeTransport.SDK, RuntimeTransport.CLI, RuntimeTransport.API],
       defaultTransport: RuntimeTransport.CLI,
