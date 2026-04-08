@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { checkRuntimeReadiness } from "@aif/runtime";
 import { logger, getEnv } from "@aif/shared";
 import { listProjects, listRuntimeProfiles, listStaleInProgressTasks } from "@aif/data";
 import { projectsRouter } from "./routes/projects.js";

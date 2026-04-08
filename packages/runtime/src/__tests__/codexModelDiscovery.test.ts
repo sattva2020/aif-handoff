@@ -56,6 +56,12 @@ describe("codex app-server model discovery env", () => {
 });
 
 describe("codex app-server startup retry", () => {
+  function getRetryWarnings(logger: { warn: ReturnType<typeof vi.fn> }) {
+    return logger.warn.mock.calls.filter(
+      (call) => call[1] === "WARN [runtime:codex] Codex app-server port handoff failed, retrying startup",
+    );
+  }
+
   it("retries startup when the first reserved port handoff fails", async () => {
     const reservePort = vi.fn().mockResolvedValueOnce(41001).mockResolvedValueOnce(41002);
     const spawnCodexAppServer = vi
@@ -96,7 +102,7 @@ describe("codex app-server startup retry", () => {
     expect(startup.listenUrl).toBe("ws://127.0.0.1:41002");
     expect(terminateProcess).toHaveBeenCalledTimes(1);
     expect(terminateProcess).toHaveBeenCalledWith(expect.objectContaining({ pid: 101 }));
-    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(getRetryWarnings(logger)).toHaveLength(1);
     expect(logger.error).not.toHaveBeenCalled();
     expect(sleep).toHaveBeenCalledTimes(1);
   });
@@ -128,7 +134,7 @@ describe("codex app-server startup retry", () => {
 
     expect(connectJsonRpcClient).toHaveBeenCalledTimes(3);
     expect(terminateProcess).toHaveBeenCalledTimes(3);
-    expect(logger.warn).toHaveBeenCalledTimes(2);
+    expect(getRetryWarnings(logger)).toHaveLength(2);
     expect(logger.error).toHaveBeenCalledTimes(1);
   });
 });
