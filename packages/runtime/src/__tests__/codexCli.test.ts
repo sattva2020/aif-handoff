@@ -32,6 +32,38 @@ function createMockChildProcess(): MockChildProcess {
   return child;
 }
 
+function splitCommandLine(commandLine: string): string[] {
+  const parts = commandLine.match(/"([^"\\]|\\.)*"|[^\s]+/g) ?? [];
+  return parts.map((part) => {
+    if (part.startsWith('"') && part.endsWith('"')) {
+      return part.slice(1, -1).replace(/\\"/g, '"');
+    }
+    return part;
+  });
+}
+
+function getSpawnInvocation() {
+  const [spawnPath, spawnArgs, spawnOptions] = spawnMock.mock.calls[0] as [
+    string,
+    string[],
+    Record<string, unknown>,
+  ];
+  if (spawnPath.toLowerCase().endsWith("cmd.exe")) {
+    const commandLine = spawnArgs[2] ?? "";
+    const [cliPath, ...cliArgs] = splitCommandLine(commandLine);
+    return {
+      cliPath: cliPath ?? "",
+      cliArgs,
+      spawnOptions,
+    };
+  }
+  return {
+    cliPath: spawnPath,
+    cliArgs: spawnArgs,
+    spawnOptions,
+  };
+}
+
 function createRunInput(overrides: Record<string, unknown> = {}) {
   return {
     runtimeId: "codex",
@@ -66,7 +98,7 @@ describe("codex cli transport", () => {
     const runPromise = runCodexCli(createRunInput());
 
     expect(spawnMock).toHaveBeenCalledTimes(1);
-    const [cliPath, args] = spawnMock.mock.calls[0] as [string, string[]];
+    const { cliPath, cliArgs: args } = getSpawnInvocation();
     expect(cliPath).toBe("codex");
     expect(args).toEqual(["exec", "--json", "--model", "gpt-5.4", "Implement feature"]);
     expect(child.stdin.write).not.toHaveBeenCalled();
@@ -86,7 +118,7 @@ describe("codex cli transport", () => {
 
     const runPromise = runCodexCli(createRunInput({ resume: true, sessionId: "thread-abc" }));
 
-    const [, args] = spawnMock.mock.calls[0] as [string, string[]];
+    const { cliArgs: args } = getSpawnInvocation();
     expect(args).toEqual([
       "exec",
       "resume",
@@ -126,11 +158,15 @@ describe("codex cli transport", () => {
       }),
     );
 
-    const [cliPath, args, spawnOptions] = spawnMock.mock.calls[0] as [
-      string,
-      string[],
-      { env?: Record<string, string> },
-    ];
+    const {
+      cliPath,
+      cliArgs: args,
+      spawnOptions,
+    } = getSpawnInvocation() as {
+      cliPath: string;
+      cliArgs: string[];
+      spawnOptions: { env?: Record<string, string> };
+    };
     expect(cliPath).toBe("/usr/local/bin/codex");
     expect(args).toEqual([
       "run",
