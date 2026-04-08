@@ -118,6 +118,51 @@ function discoverySession(
   };
 }
 
+function hangingDiscoverySession(returnSpy: ReturnType<typeof vi.fn>) {
+  return {
+    async supportedModels() {
+      await new Promise<never>(() => {
+        // intentionally never resolved
+      });
+      return [];
+    },
+    async return() {
+      returnSpy();
+      return { done: true, value: undefined };
+    },
+    async next() {
+      return { done: true, value: undefined };
+    },
+    async throw(error?: unknown) {
+      throw error;
+    },
+    [Symbol.asyncIterator]() {
+      return this;
+    },
+  };
+}
+
+function failingDiscoverySession(returnSpy: ReturnType<typeof vi.fn>, error: Error) {
+  return {
+    async supportedModels() {
+      throw error;
+    },
+    async return() {
+      returnSpy();
+      return { done: true, value: undefined };
+    },
+    async next() {
+      return { done: true, value: undefined };
+    },
+    async throw(throwError?: unknown) {
+      throw throwError;
+    },
+    [Symbol.asyncIterator]() {
+      return this;
+    },
+  };
+}
+
 function missingSessionFailure(sessionId: string) {
   return async function* () {
     yield {
@@ -161,6 +206,7 @@ describe("Claude runtime adapter", () => {
 
   afterEach(() => {
     vi.unstubAllEnvs();
+    vi.useRealTimers();
   });
 
   it("supports custom descriptor fields", () => {
@@ -408,6 +454,7 @@ describe("Claude runtime adapter", () => {
   });
 
   it("forwards temporary API key input into Claude model discovery env", async () => {
+    vi.stubEnv("npm_config_registry", "https://registry.npmjs.org");
     queryMock.mockImplementation(() =>
       discoverySession([
         {
@@ -431,6 +478,7 @@ describe("Claude runtime adapter", () => {
     expect(queryMock).toHaveBeenCalledTimes(1);
     const call = queryMock.mock.calls[0][0];
     expect(call.options.env.ANTHROPIC_API_KEY).toBe("sk-temp-discovery");
+    expect(call.options.env.npm_config_registry).toBeUndefined();
   });
 
   it("falls back to default Claude models when dynamic discovery fails", async () => {
@@ -453,6 +501,68 @@ describe("Claude runtime adapter", () => {
       supportsAdaptiveThinking: true,
       supportedEffortLevels: ["low", "medium", "high"],
     });
+  });
+
+  it("falls back to defaults when model discovery times out and still cleans up session", async () => {
+    vi.useFakeTimers();
+    const returnSpy = vi.fn();
+    queryMock.mockImplementation(() => hangingDiscoverySession(returnSpy));
+    const logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+    const adapter = createClaudeRuntimeAdapter({ logger });
+
+    const modelsPromise = adapter.listModels!({
+      runtimeId: "claude",
+      providerId: "anthropic",
+      profileId: "profile-1",
+      transport: "sdk",
+      options: {
+        modelDiscoveryTimeoutMs: 10,
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(10);
+    const models = await modelsPromise;
+
+    expect(models.map((model) => model.id)).toEqual(["opus", "sonnet", "haiku"]);
+    expect(returnSpy).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ timeoutMs: 10 }),
+      "WARN [runtime:claude] Claude model discovery timed out, falling back to built-in list",
+    );
+  });
+
+  it("logs unexpected model discovery failures after cleanup and falls back", async () => {
+    const returnSpy = vi.fn();
+    queryMock.mockImplementation(() =>
+      failingDiscoverySession(returnSpy, new Error("sdk discovery failed")),
+    );
+    const logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+    const adapter = createClaudeRuntimeAdapter({ logger });
+
+    const models = await adapter.listModels!({
+      runtimeId: "claude",
+      providerId: "anthropic",
+      profileId: "profile-1",
+      transport: "sdk",
+      options: {},
+    });
+
+    expect(models.map((model) => model.id)).toEqual(["opus", "sonnet", "haiku"]);
+    expect(returnSpy).toHaveBeenCalledTimes(1);
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ error: "sdk discovery failed" }),
+      "ERROR [runtime:claude] Claude model discovery failed after cleanup, falling back to built-in list",
+    );
   });
 
   it("forwards resume mode and session id to Claude query options", async () => {
@@ -524,6 +634,46 @@ describe("Claude runtime adapter", () => {
     const call = queryMock.mock.calls[0][0];
     expect(call.options.model).toBe("sonnet");
     expect(call.options.effort).toBe("high");
+  });
+
+  it("maps numeric effort values to supported Claude effort levels", async () => {
+    queryMock.mockImplementation(immediateSuccess("effort-mapped"));
+    const adapter = createClaudeRuntimeAdapter();
+
+    const result = await adapter.run(
+      createRunInput({
+        model: "sonnet",
+        options: {
+          apiKeyEnvVar: "ANTHROPIC_API_KEY",
+          effort: 3,
+        },
+      }),
+    );
+
+    expect(result.outputText).toBe("effort-mapped");
+    const call = queryMock.mock.calls[0][0];
+    expect(call.options.model).toBe("sonnet");
+    expect(call.options.effort).toBe("high");
+  });
+
+  it("drops unsupported effort values instead of passing them through", async () => {
+    queryMock.mockImplementation(immediateSuccess("effort-dropped"));
+    const adapter = createClaudeRuntimeAdapter();
+
+    const result = await adapter.run(
+      createRunInput({
+        model: "sonnet",
+        options: {
+          apiKeyEnvVar: "ANTHROPIC_API_KEY",
+          effort: 999,
+        },
+      }),
+    );
+
+    expect(result.outputText).toBe("effort-dropped");
+    const call = queryMock.mock.calls[0][0];
+    expect(call.options.model).toBe("sonnet");
+    expect(call.options.effort).toBeUndefined();
   });
 
   it("retries without resume when the previous session is missing", async () => {

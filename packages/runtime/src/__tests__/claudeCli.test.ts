@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeRunInput } from "../types.js";
+import { getCliSpawnInvocation } from "./helpers/cliSpawn.js";
 
 // Mock child_process.spawn
 const mockStdout = { on: vi.fn() };
@@ -55,33 +56,8 @@ function simulateClose(code: number, stdout = "", stderr = "") {
   closeHandler?.(code);
 }
 
-function splitCommandLine(commandLine: string): string[] {
-  const parts = commandLine.match(/"([^"\\]|\\.)*"|[^\s]+/g) ?? [];
-  return parts.map((part) => {
-    if (part.startsWith('"') && part.endsWith('"')) {
-      return part.slice(1, -1).replace(/\\"/g, '"');
-    }
-    return part;
-  });
-}
-
 function getSpawnInvocation() {
-  const [spawnPath, spawnArgs, spawnOptions] = (spawn as ReturnType<typeof vi.fn>).mock
-    .calls[0] as [string, string[], Record<string, unknown>];
-  if (spawnPath.toLowerCase().endsWith("cmd.exe")) {
-    const commandLine = spawnArgs[2] ?? "";
-    const [cliPath, ...cliArgs] = splitCommandLine(commandLine);
-    return {
-      cliPath: cliPath ?? "",
-      cliArgs,
-      spawnOptions,
-    };
-  }
-  return {
-    cliPath: spawnPath,
-    cliArgs: spawnArgs,
-    spawnOptions,
-  };
+  return getCliSpawnInvocation(spawn as ReturnType<typeof vi.fn>);
 }
 
 describe("runClaudeCli", () => {

@@ -6,6 +6,7 @@ import {
 } from "./modelDiscovery/modelCatalog.js";
 import {
   buildCodexAppServerDiscoveryEnv,
+  buildCodexAppServerDiscoveryEnvWithStats,
   reservePort,
   resolveDiscoveryExecutable,
   spawnCodexAppServer,
@@ -44,7 +45,31 @@ export async function startCodexAppServerWithRetry(
   executablePath: string;
 }> {
   const executablePath = resolveDiscoveryExecutable(input);
-  const env = buildCodexAppServerDiscoveryEnv(input);
+  const envResult = buildCodexAppServerDiscoveryEnvWithStats(input);
+  const env = envResult.env;
+  logger?.debug?.(
+    {
+      runtimeId: input.runtimeId,
+      profileId: input.profileId ?? null,
+      transport: input.transport ?? RuntimeTransport.CLI,
+      forwardedEnvCount: envResult.forwardedCount,
+      filteredEnvCount: envResult.filteredCount,
+      blockedEnvCount: envResult.blockedCount,
+      droppedDisallowedPrefixCount: envResult.droppedDisallowedPrefixKeys.length,
+    },
+    "DEBUG [runtime:codex] Built app-server discovery environment from curated allowlist",
+  );
+  if (envResult.droppedDisallowedPrefixKeys.length > 0) {
+    logger?.warn?.(
+      {
+        runtimeId: input.runtimeId,
+        profileId: input.profileId ?? null,
+        transport: input.transport ?? RuntimeTransport.CLI,
+        droppedDisallowedPrefixKeys: envResult.droppedDisallowedPrefixKeys.slice(0, 10),
+      },
+      "WARN [runtime:codex] Dropped disallowed environment prefix keys while building app-server discovery environment",
+    );
+  }
 
   let lastError: Error | null = null;
   for (let attempt = 1; attempt <= DEFAULT_APP_SERVER_STARTUP_ATTEMPTS; attempt += 1) {

@@ -70,6 +70,7 @@ const DEFAULT_CLAUDE_MODELS: RuntimeModel[] = [
     },
   },
 ];
+const DEFAULT_MODEL_DISCOVERY_TIMEOUT_MS = 8_000;
 
 function createFallbackLogger(): ClaudeRuntimeAdapterLogger {
   return {
@@ -167,6 +168,44 @@ function toClaudeModelDiscoveryInput(input: RuntimeModelListInput): RuntimeRunIn
   };
 }
 
+function resolveModelDiscoveryTimeoutMs(input: RuntimeModelListInput): number {
+  const rawTimeout = input.options?.modelDiscoveryTimeoutMs;
+  if (typeof rawTimeout === "number" && Number.isFinite(rawTimeout) && rawTimeout > 0) {
+    return Math.floor(rawTimeout);
+  }
+  if (typeof rawTimeout === "string") {
+    const parsed = Number.parseInt(rawTimeout, 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return DEFAULT_MODEL_DISCOVERY_TIMEOUT_MS;
+}
+
+async function withTimeout<T>(
+  operation: () => Promise<T>,
+  timeoutMs: number,
+  onTimeout: () => void,
+): Promise<T> {
+  return await new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      onTimeout();
+      reject(new Error(`Claude model discovery timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    void operation().then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 async function listClaudeModels(
   input: RuntimeModelListInput,
   logger: ClaudeRuntimeAdapterLogger,
@@ -183,7 +222,7 @@ async function listClaudeModels(
       configuredCliPath ?? adapterDefaults?.pathToClaudeCodeExecutable,
     ),
   });
-  const queryOptions = buildClaudeQueryOptions(discoveryInput, execution);
+  const queryOptions = buildClaudeQueryOptions(discoveryInput, execution, logger);
   const env = queryOptions.env;
   const envRecord =
     env && typeof env === "object" && !Array.isArray(env) ? (env as Record<string, unknown>) : {};
@@ -206,13 +245,34 @@ async function listClaudeModels(
     "DEBUG [runtime:claude] Starting Claude model discovery",
   );
   let session: ReturnType<typeof query> | null = null;
+  const discoveryStartedAt = Date.now();
+  const timeoutMs = resolveModelDiscoveryTimeoutMs(input);
+  let timedOut = false;
+  let discoveryError: unknown = null;
 
   try {
     session = query({
       prompt: (async function* emptyPrompt() {})(),
       options: queryOptions as Parameters<typeof query>[0]["options"],
     });
-    const models = await session.supportedModels();
+    const models = await withTimeout(
+      () => session!.supportedModels(),
+      timeoutMs,
+      () => {
+        timedOut = true;
+      },
+    );
+    logger.debug?.(
+      {
+        runtimeId: input.runtimeId,
+        profileId: input.profileId ?? null,
+        transport: input.transport ?? RuntimeTransport.SDK,
+        modelCount: models.length,
+        discoveryDurationMs: Date.now() - discoveryStartedAt,
+        timeoutMs,
+      },
+      "DEBUG [runtime:claude] Claude model discovery finished",
+    );
     if (models.length > 0) {
       return models.map((model) => ({
         id: model.value,
@@ -231,17 +291,50 @@ async function listClaudeModels(
       }));
     }
   } catch (error) {
-    logger.warn?.(
-      {
-        runtimeId: input.runtimeId,
-        profileId: input.profileId ?? null,
-        transport: input.transport ?? RuntimeTransport.SDK,
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "WARN [runtime:claude] Claude model discovery failed, falling back to built-in list",
-    );
+    discoveryError = error;
   } finally {
-    await session?.return?.();
+    try {
+      await session?.return?.();
+    } catch (cleanupError) {
+      logger.error?.(
+        {
+          runtimeId: input.runtimeId,
+          profileId: input.profileId ?? null,
+          transport: input.transport ?? RuntimeTransport.SDK,
+          error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+        },
+        "ERROR [runtime:claude] Failed to clean up Claude model discovery session",
+      );
+    }
+  }
+
+  if (discoveryError) {
+    const errorMessage =
+      discoveryError instanceof Error ? discoveryError.message : String(discoveryError);
+    if (timedOut) {
+      logger.warn?.(
+        {
+          runtimeId: input.runtimeId,
+          profileId: input.profileId ?? null,
+          transport: input.transport ?? RuntimeTransport.SDK,
+          timeoutMs,
+          discoveryDurationMs: Date.now() - discoveryStartedAt,
+          error: errorMessage,
+        },
+        "WARN [runtime:claude] Claude model discovery timed out, falling back to built-in list",
+      );
+    } else {
+      logger.error?.(
+        {
+          runtimeId: input.runtimeId,
+          profileId: input.profileId ?? null,
+          transport: input.transport ?? RuntimeTransport.SDK,
+          discoveryDurationMs: Date.now() - discoveryStartedAt,
+          error: errorMessage,
+        },
+        "ERROR [runtime:claude] Claude model discovery failed after cleanup, falling back to built-in list",
+      );
+    }
   }
 
   return DEFAULT_CLAUDE_MODELS;

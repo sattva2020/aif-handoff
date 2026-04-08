@@ -24,7 +24,6 @@ const ALLOWED_ENV_PREFIXES = [
   "AIF_",
   "HANDOFF_",
   "NODE_",
-  "npm_",
   "HOME",
   "USER",
   "LANG",
@@ -59,12 +58,35 @@ export function resolveDiscoveryExecutable(input: RuntimeModelListInput): string
 export function buildCodexAppServerDiscoveryEnv(
   input: RuntimeModelListInput,
 ): Record<string, string> {
+  return buildCodexAppServerDiscoveryEnvWithStats(input).env;
+}
+
+export function buildCodexAppServerDiscoveryEnvWithStats(input: RuntimeModelListInput): {
+  env: Record<string, string>;
+  forwardedCount: number;
+  filteredCount: number;
+  blockedCount: number;
+  droppedDisallowedPrefixKeys: string[];
+} {
   const env: Record<string, string> = {};
+  let forwardedCount = 0;
+  let filteredCount = 0;
+  let blockedCount = 0;
+  const droppedDisallowedPrefixKeys = new Set<string>();
   for (const [key, value] of Object.entries(process.env)) {
     if (value == null) continue;
-    if (BLOCKED_ENV_KEYS.has(key)) continue;
+    if (BLOCKED_ENV_KEYS.has(key)) {
+      blockedCount += 1;
+      continue;
+    }
     if (ALLOWED_ENV_PREFIXES.some((prefix) => key === prefix || key.startsWith(prefix))) {
       env[key] = value;
+      forwardedCount += 1;
+    } else {
+      filteredCount += 1;
+      if (key.startsWith("npm_")) {
+        droppedDisallowedPrefixKeys.add(key);
+      }
     }
   }
 
@@ -89,7 +111,13 @@ export function buildCodexAppServerDiscoveryEnv(
     env.CODEX_BASE_URL = baseUrl;
   }
 
-  return env;
+  return {
+    env,
+    forwardedCount,
+    filteredCount,
+    blockedCount,
+    droppedDisallowedPrefixKeys: [...droppedDisallowedPrefixKeys],
+  };
 }
 
 export async function reservePort(): Promise<number> {

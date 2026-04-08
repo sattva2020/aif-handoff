@@ -25,6 +25,7 @@ describe("codex app-server model discovery env", () => {
   it("does not forward ambient OPENAI_BASE_URL into app-server discovery env", () => {
     vi.stubEnv("OPENAI_API_KEY", "sk-env");
     vi.stubEnv("OPENAI_BASE_URL", "https://deprecated.example.com/v1");
+    vi.stubEnv("npm_config_registry", "https://registry.npmjs.org");
 
     const env = buildCodexAppServerDiscoveryEnv({
       runtimeId: "codex",
@@ -35,6 +36,7 @@ describe("codex app-server model discovery env", () => {
 
     expect(env.OPENAI_API_KEY).toBe("sk-env");
     expect(env.OPENAI_BASE_URL).toBeUndefined();
+    expect(env.npm_config_registry).toBeUndefined();
   });
 
   it("maps an explicit discovery baseUrl to CODEX_BASE_URL only", () => {

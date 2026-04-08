@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getCliSpawnInvocation } from "./helpers/cliSpawn.js";
 
 const spawnMock = vi.fn();
 
@@ -32,36 +33,8 @@ function createMockChildProcess(): MockChildProcess {
   return child;
 }
 
-function splitCommandLine(commandLine: string): string[] {
-  const parts = commandLine.match(/"([^"\\]|\\.)*"|[^\s]+/g) ?? [];
-  return parts.map((part) => {
-    if (part.startsWith('"') && part.endsWith('"')) {
-      return part.slice(1, -1).replace(/\\"/g, '"');
-    }
-    return part;
-  });
-}
-
 function getSpawnInvocation() {
-  const [spawnPath, spawnArgs, spawnOptions] = spawnMock.mock.calls[0] as [
-    string,
-    string[],
-    Record<string, unknown>,
-  ];
-  if (spawnPath.toLowerCase().endsWith("cmd.exe")) {
-    const commandLine = spawnArgs[2] ?? "";
-    const [cliPath, ...cliArgs] = splitCommandLine(commandLine);
-    return {
-      cliPath: cliPath ?? "",
-      cliArgs,
-      spawnOptions,
-    };
-  }
-  return {
-    cliPath: spawnPath,
-    cliArgs: spawnArgs,
-    spawnOptions,
-  };
+  return getCliSpawnInvocation(spawnMock);
 }
 
 function createRunInput(overrides: Record<string, unknown> = {}) {
@@ -234,6 +207,7 @@ describe("codex cli transport", () => {
 
     vi.stubEnv("OPENAI_API_KEY", "sk-test");
     vi.stubEnv("OPENAI_BASE_URL", "https://api.openai.com/v1");
+    vi.stubEnv("npm_config_registry", "https://registry.npmjs.org");
 
     const runPromise = runCodexCli(createRunInput());
 
@@ -244,6 +218,7 @@ describe("codex cli transport", () => {
     ];
     expect(spawnOptions.env?.OPENAI_API_KEY).toBe("sk-test");
     expect(spawnOptions.env?.OPENAI_BASE_URL).toBeUndefined();
+    expect(spawnOptions.env?.npm_config_registry).toBeUndefined();
 
     child.stdout.emit("data", "ok");
     child.emit("close", 0);
