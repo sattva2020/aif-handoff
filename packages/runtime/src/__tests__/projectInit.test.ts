@@ -6,6 +6,7 @@ import type { RuntimeRegistry } from "../registry.js";
 
 const execFileSyncMock = vi.fn();
 const aiFactoryResolveMock = vi.fn();
+const initBaseProjectDirectoryMock = vi.fn();
 
 vi.mock("node:child_process", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:child_process")>();
@@ -22,6 +23,14 @@ vi.mock("node:module", async (importOriginal) => {
     createRequire: () => ({
       resolve: (...args: unknown[]) => aiFactoryResolveMock(...args),
     }),
+  };
+});
+
+vi.mock("@aif/shared", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@aif/shared")>();
+  return {
+    ...actual,
+    initBaseProjectDirectory: (...args: unknown[]) => initBaseProjectDirectoryMock(...args),
   };
 });
 
@@ -66,6 +75,7 @@ describe("initProject (runtime)", () => {
     projectRoot = mkdtempSync(join(tmpdir(), "aif-runtime-init-"));
     execFileSyncMock.mockReset();
     aiFactoryResolveMock.mockReset();
+    initBaseProjectDirectoryMock.mockReset();
     aiFactoryResolveMock.mockReturnValue("C:\\fake\\ai-factory\\bin\\ai-factory.js");
   });
 
