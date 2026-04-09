@@ -28,7 +28,7 @@ interface AiFactoryCommand {
   args: string[];
 }
 
-function quoteForCmd(value: string): string {
+function quoteAgentIdsForCmd(value: string): string {
   return `"${value.replace(/"/g, '""')}"`;
 }
 
@@ -43,7 +43,7 @@ function resolveAiFactoryCommand(agentIds: string): AiFactoryCommand {
     if (IS_WINDOWS) {
       return {
         command: process.env.ComSpec ?? "cmd.exe",
-        args: ["/d", "/c", `npx ai-factory init --agents ${quoteForCmd(agentIds)}`],
+        args: ["/d", "/c", `npx ai-factory init --agents ${quoteAgentIdsForCmd(agentIds)}`],
       };
     }
 
