@@ -17,10 +17,25 @@ interface SessionStreamState {
   errorHandled: boolean;
 }
 
+async function waitForWsClientId(timeoutMs = 1500, pollIntervalMs = 50): Promise<string | null> {
+  const existing = getWsClientId();
+  if (existing) return existing;
+
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+    const clientId = getWsClientId();
+    if (clientId) return clientId;
+  }
+
+  return getWsClientId();
+}
+
 export function useChat(
   projectId: string | null,
   sessionId: string | null = null,
   taskId: string | null = null,
+  onSessionResolved?: (sessionId: string) => void,
 ) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -28,16 +43,15 @@ export function useChat(
   const [chatErrorCode, setChatErrorCode] = useState<string | null>(null);
   const currentSessionIdRef = useRef<string | null>(null);
 
-  // Per-session streaming state: conversationId → streamKey (sessionId or conversationId)
+  // Per-session streaming state: conversationId -> streamKey (sessionId or conversationId)
   const activeStreamsRef = useRef<Map<string, string>>(new Map());
-  // Per-session stream data: streamKey → state
+  // Per-session stream data: streamKey -> state
   const sessionStreamsRef = useRef<Map<string, SessionStreamState>>(new Map());
   // Track conversationId used when no session exists (for matching events)
   const conversationIdForNoSession = useRef<string | null>(null);
   // Deduplicate WS and HTTP error handling for the same conversation.
   const handledErrorConversationsRef = useRef<Set<string>>(new Set());
 
-  // Check if a specific session is currently streaming
   const isSessionStreaming = useCallback((sid: string | null) => {
     if (!sid) return false;
     for (const [, streamSid] of activeStreamsRef.current) {
@@ -46,7 +60,6 @@ export function useChat(
     return false;
   }, []);
 
-  // Load messages when sessionId changes
   const prevSessionIdRef = useRef<string | null>(null);
   useEffect(() => {
     const prevSessionId = prevSessionIdRef.current;
@@ -69,7 +82,6 @@ export function useChat(
 
     currentSessionIdRef.current = sessionId;
 
-    // If this session is actively streaming, restore its in-flight messages
     const streamState = sessionStreamsRef.current.get(sessionId);
     if (streamState) {
       console.debug("[useChat] Restoring streaming session %s", sessionId);
@@ -79,7 +91,6 @@ export function useChat(
       return;
     }
 
-    // Otherwise load from server
     queueMicrotask(() => setIsStreaming(false));
     console.debug("[useChat] Loading session messages sessionId=%s", sessionId);
 
@@ -88,7 +99,7 @@ export function useChat(
       .then((msgs) => {
         if (currentSessionIdRef.current !== sessionId) return;
         if (isSessionStreaming(sessionId)) {
-          console.debug("[useChat] Skipping session load — streaming in progress");
+          console.debug("[useChat] Skipping session load - streaming in progress");
           return;
         }
         console.debug("[useChat] Session changed, loaded %d messages", msgs.length);
@@ -106,9 +117,7 @@ export function useChat(
       });
   }, [sessionId, isSessionStreaming]);
 
-  // Listen for chat stream events dispatched by useWebSocket
   useEffect(() => {
-    // Check if a stream belongs to the currently viewed session
     const isCurrentStream = (streamKey: string) =>
       currentSessionIdRef.current === streamKey ||
       (!currentSessionIdRef.current && streamKey === conversationIdForNoSession.current);
@@ -191,15 +200,13 @@ export function useChat(
     async (text: string, attachments?: ChatAttachment[]) => {
       if (!projectId || !text.trim() || isStreaming) return;
 
-      const clientId = getWsClientId();
+      const clientId = await waitForWsClientId();
       if (!clientId) {
-        console.debug("[useChat] No clientId available, WebSocket not connected");
-        return;
+        console.debug("[useChat] No clientId available, proceeding with HTTP fallback");
       }
 
       const newConversationId = crypto.randomUUID();
       const effectiveSessionId = sessionId ?? currentSessionIdRef.current;
-      // Use sessionId or conversationId as stream key (for sessions not yet created)
       const streamKey = effectiveSessionId ?? newConversationId;
 
       const messageAttachments: ChatMessageAttachment[] | undefined = attachments?.map((a) => ({
@@ -214,7 +221,6 @@ export function useChat(
       };
       const newMessages = [...messages, userMessage];
 
-      // Register active stream
       if (!effectiveSessionId) {
         conversationIdForNoSession.current = newConversationId;
       }
@@ -242,17 +248,17 @@ export function useChat(
         const result = await api.sendChatMessage({
           projectId,
           message: text.trim(),
-          clientId,
           conversationId: newConversationId,
           sessionId: effectiveSessionId ?? undefined,
           explore,
+          ...(clientId ? { clientId } : {}),
           ...(taskId ? { taskId } : {}),
           ...(attachments?.length ? { attachments } : {}),
         });
 
-        if (result.sessionId && !currentSessionIdRef.current) {
+        if (result.sessionId) {
           currentSessionIdRef.current = result.sessionId;
-          // Migrate stream tracking from temp key (conversationId) to real sessionId
+
           if (streamKey !== result.sessionId) {
             const state = sessionStreamsRef.current.get(streamKey);
             if (state) {
@@ -261,14 +267,19 @@ export function useChat(
             }
             activeStreamsRef.current.set(newConversationId, result.sessionId);
           }
+
+          if (result.sessionId !== effectiveSessionId) {
+            onSessionResolved?.(result.sessionId);
+          }
+          window.dispatchEvent(
+            new CustomEvent("chat:session_created", { detail: { id: result.sessionId } }),
+          );
         }
 
-        // Update user message attachments with server-resolved paths (for download links)
         if (result.attachments?.length) {
           setMessages((prev) =>
             prev.map((m) => (m === userMessage ? { ...m, attachments: result.attachments } : m)),
           );
-          // Also update in-flight stream state
           const activeStreamKey = activeStreamsRef.current.get(newConversationId) ?? streamKey;
           const state = sessionStreamsRef.current.get(activeStreamKey);
           if (state) {
@@ -283,21 +294,44 @@ export function useChat(
           }
         }
 
-        // Safety net: HTTP response arrives after server sends chat:done.
-        // Give WS events a moment to arrive, then force stop if still active.
-        setTimeout(() => {
-          if (activeStreamsRef.current.has(newConversationId)) {
-            console.debug("[useChat] Stream still active after HTTP — forcing stop");
+        if (result.assistantMessage?.trim()) {
+          setTimeout(() => {
+            const activeStreamKey = activeStreamsRef.current.get(newConversationId);
+            if (!activeStreamKey) return;
+
+            const state = sessionStreamsRef.current.get(activeStreamKey);
+            if (!state || state.accumulator.trim().length > 0) return;
+
+            console.debug(
+              "[useChat] Applying HTTP assistant fallback for conversation %s",
+              newConversationId,
+            );
+            state.messages = [
+              ...state.messages,
+              { role: "assistant", content: result.assistantMessage as string },
+            ];
+            setMessages(state.messages);
             activeStreamsRef.current.delete(newConversationId);
-            sessionStreamsRef.current.delete(streamKey);
+            sessionStreamsRef.current.delete(activeStreamKey);
             setIsStreaming(false);
-          }
+          }, 100);
+        }
+
+        setTimeout(() => {
+          const activeStreamKey = activeStreamsRef.current.get(newConversationId);
+          if (!activeStreamKey) return;
+
+          console.debug("[useChat] Stream still active after HTTP - forcing stop");
+          activeStreamsRef.current.delete(newConversationId);
+          sessionStreamsRef.current.delete(activeStreamKey);
+          setIsStreaming(false);
         }, 500);
       } catch (err) {
         console.error("[useChat] Failed to send message:", err);
+        const activeStreamKey = activeStreamsRef.current.get(newConversationId) ?? streamKey;
         activeStreamsRef.current.delete(newConversationId);
-        const errorHandled = sessionStreamsRef.current.get(streamKey)?.errorHandled ?? false;
-        sessionStreamsRef.current.delete(streamKey);
+        const errorHandled = sessionStreamsRef.current.get(activeStreamKey)?.errorHandled ?? false;
+        sessionStreamsRef.current.delete(activeStreamKey);
         setIsStreaming(false);
         const wsHandled = handledErrorConversationsRef.current.has(newConversationId);
         if (!errorHandled && !wsHandled) {
@@ -309,7 +343,7 @@ export function useChat(
         handledErrorConversationsRef.current.delete(newConversationId);
       }
     },
-    [projectId, sessionId, messages, isStreaming, explore, taskId],
+    [projectId, sessionId, messages, isStreaming, explore, taskId, onSessionResolved],
   );
 
   const clearMessages = useCallback(() => {

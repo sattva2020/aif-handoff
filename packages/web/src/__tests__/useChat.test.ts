@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook, act } from "@testing-library/react";
+import { renderHook, act, waitFor } from "@testing-library/react";
 
 const mockSendChatMessage = vi.fn();
 const mockGetChatSessionMessages = vi.fn();
+const mockGetWsClientId = vi.fn();
 
 vi.mock("@/lib/api", () => ({
   api: {
@@ -12,7 +13,7 @@ vi.mock("@/lib/api", () => ({
 }));
 
 vi.mock("@/hooks/useWebSocket", () => ({
-  getWsClientId: () => "test-client-id",
+  getWsClientId: () => mockGetWsClientId(),
 }));
 
 const { useChat } = await import("@/hooks/useChat");
@@ -21,6 +22,8 @@ describe("useChat", () => {
   beforeEach(() => {
     mockSendChatMessage.mockReset();
     mockGetChatSessionMessages.mockReset();
+    mockGetWsClientId.mockReset();
+    mockGetWsClientId.mockReturnValue("test-client-id");
     mockSendChatMessage.mockResolvedValue({ conversationId: "conv-1", sessionId: "sess-1" });
     mockGetChatSessionMessages.mockResolvedValue([]);
   });
@@ -232,6 +235,51 @@ describe("useChat", () => {
     expect(result.current.isStreaming).toBe(false);
   });
 
+  it("falls back to HTTP response when websocket clientId is unavailable", async () => {
+    mockGetWsClientId.mockReturnValue(null);
+    mockSendChatMessage.mockResolvedValueOnce({
+      conversationId: "conv-http-1",
+      sessionId: "sess-http-1",
+      assistantMessage: "HTTP fallback reply",
+    });
+
+    const { result } = renderHook(() => useChat("p-1"));
+
+    await act(async () => {
+      await result.current.sendMessage("Hello");
+      await new Promise<void>((resolve) => setTimeout(resolve, 150));
+    });
+
+    expect(mockSendChatMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: "p-1",
+        message: "Hello",
+      }),
+    );
+    expect(mockSendChatMessage.mock.calls[0][0].clientId).toBeUndefined();
+    expect(result.current.messages).toEqual([
+      { role: "user", content: "Hello" },
+      { role: "assistant", content: "HTTP fallback reply" },
+    ]);
+    expect(result.current.isStreaming).toBe(false);
+  });
+
+  it("promotes the resolved session id after the first send", async () => {
+    const handleSessionResolved = vi.fn();
+    mockSendChatMessage.mockResolvedValueOnce({
+      conversationId: "conv-2",
+      sessionId: "sess-2",
+    });
+
+    const { result } = renderHook(() => useChat("p-1", null, null, handleSessionResolved));
+
+    await act(async () => {
+      await result.current.sendMessage("Hello");
+    });
+
+    expect(handleSessionResolved).toHaveBeenCalledWith("sess-2");
+  });
+
   it("does not duplicate error message when ws chat:error and http failure happen together", async () => {
     let rejectSend: ((reason?: unknown) => void) | null = null;
     mockSendChatMessage.mockImplementationOnce(
@@ -246,6 +294,7 @@ describe("useChat", () => {
     const sendPromise = act(async () => {
       await result.current.sendMessage("Hello");
     });
+    await waitFor(() => expect(mockSendChatMessage).toHaveBeenCalledTimes(1));
 
     const conversationId = mockSendChatMessage.mock.calls[0][0].conversationId as string;
 
