@@ -342,7 +342,8 @@ export function useChat(
           }
         }
 
-        if (result.assistantMessage?.trim()) {
+        const assistantMessage = result.assistantMessage;
+        if (assistantMessage?.trim()) {
           const fallbackTimer = window.setTimeout(() => {
             const activeStreamKey = activeStreamsRef.current.get(newConversationId);
             if (!activeStreamKey) {
@@ -366,10 +367,7 @@ export function useChat(
               newConversationId,
             );
             clearConversationTimers(newConversationId);
-            state.messages = [
-              ...state.messages,
-              { role: "assistant", content: result.assistantMessage },
-            ];
+            state.messages = [...state.messages, { role: "assistant", content: assistantMessage }];
             setMessages(state.messages);
             activeStreamsRef.current.delete(newConversationId);
             sessionStreamsRef.current.delete(activeStreamKey);
