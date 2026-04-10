@@ -6,6 +6,13 @@ import type { RuntimeMcpInput, RuntimeMcpInstallInput, RuntimeMcpStatus } from "
 
 const CODEX_CONFIG_PATH = join(homedir(), ".codex", "config.toml");
 
+interface CodexMcpServerEntry extends Record<string, unknown> {
+  command: string;
+  args: string[];
+  cwd?: string;
+  env?: Record<string, string>;
+}
+
 /**
  * Minimal TOML parser/writer for Codex MCP config.
  * Only handles the [mcp_servers.<name>] section format.
@@ -24,53 +31,110 @@ function serializeTomlString(value: string): string {
   return JSON.stringify(value);
 }
 
-function parseMcpServers(toml: string): Record<string, { command: string; args: string[] }> {
-  const servers: Record<string, { command: string; args: string[] }> = {};
-  const sectionRegex = /^\[mcp_servers\.([^\]]+)\]\s*$/;
+function parseMcpServers(toml: string): Record<string, CodexMcpServerEntry> {
+  const servers: Record<string, CodexMcpServerEntry> = {};
+  const envSectionRegex = /^\[mcp_servers\.([^\]]+)\.env\]\s*$/;
+  const sectionRegex = /^\[mcp_servers\.([^. \]]+)\]\s*$/;
   let currentName: string | null = null;
-  let currentCommand = "";
-  let currentArgs: string[] = [];
+  let currentSection: "main" | "env" | null = null;
 
   for (const line of toml.split("\n")) {
     const trimmed = line.trim();
-    const sectionMatch = sectionRegex.exec(trimmed);
-    if (sectionMatch) {
-      if (currentName) {
-        servers[currentName] = { command: currentCommand, args: currentArgs };
-      }
-      currentName = sectionMatch[1];
-      currentCommand = "";
-      currentArgs = [];
+    const envSectionMatch = envSectionRegex.exec(trimmed);
+    if (envSectionMatch) {
+      currentName = envSectionMatch[1];
+      currentSection = "env";
+      servers[currentName] ??= { command: "", args: [], env: {} };
       continue;
     }
+
+    const sectionMatch = sectionRegex.exec(trimmed);
+    if (sectionMatch) {
+      currentName = sectionMatch[1];
+      currentSection = "main";
+      servers[currentName] ??= { command: "", args: [], env: {} };
+      continue;
+    }
+
+    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+      currentName = null;
+      currentSection = null;
+      continue;
+    }
+
     if (!currentName) continue;
     const kvMatch = trimmed.match(/^(\w+)\s*=\s*(.+)$/);
     if (!kvMatch) continue;
     const [, key, rawValue] = kvMatch;
+
+    if (currentSection === "env") {
+      (servers[currentName].env ??= {})[key] = parseTomlString(rawValue);
+      continue;
+    }
+
     if (key === "command") {
-      currentCommand = parseTomlString(rawValue);
+      servers[currentName].command = parseTomlString(rawValue);
+    } else if (key === "cwd") {
+      servers[currentName].cwd = parseTomlString(rawValue);
     } else if (key === "args") {
       try {
-        currentArgs = JSON.parse(rawValue.replace(/'/g, '"'));
+        servers[currentName].args = JSON.parse(rawValue.replace(/'/g, '"'));
       } catch {
-        currentArgs = [];
+        servers[currentName].args = [];
       }
     }
   }
-  if (currentName) {
-    servers[currentName] = { command: currentCommand, args: currentArgs };
-  }
+
   return servers;
 }
 
-function serializeMcpSection(name: string, entry: { command: string; args?: string[] }): string {
+function serializeMcpSection(name: string, entry: CodexMcpServerEntry): string {
   const lines = [`[mcp_servers.${name}]`];
   lines.push(`command = ${serializeTomlString(entry.command)}`);
   if (entry.args && entry.args.length > 0) {
     const argsStr = entry.args.map((a) => serializeTomlString(a)).join(", ");
     lines.push(`args = [ ${argsStr} ]`);
   }
+  if (entry.cwd) {
+    lines.push(`cwd = ${serializeTomlString(entry.cwd)}`);
+  }
+  if (entry.env && Object.keys(entry.env).length > 0) {
+    lines.push("");
+    lines.push(`[mcp_servers.${name}.env]`);
+    for (const [envKey, envValue] of Object.entries(entry.env).sort(([a], [b]) =>
+      a.localeCompare(b),
+    )) {
+      lines.push(`${envKey} = ${serializeTomlString(envValue)}`);
+    }
+  }
   return lines.join("\n");
+}
+
+function removeServerSections(toml: string, serverName: string): string {
+  const mainSectionHeader = `[mcp_servers.${serverName}]`;
+  const envSectionHeader = `[mcp_servers.${serverName}.env]`;
+  const sectionHeaderRegex = /^\[[^\]]+\]\s*$/;
+  const keptLines: string[] = [];
+  let skipping = false;
+
+  for (const line of toml.split("\n")) {
+    const trimmed = line.trim();
+
+    if (trimmed === mainSectionHeader || trimmed === envSectionHeader) {
+      skipping = true;
+      continue;
+    }
+
+    if (skipping && sectionHeaderRegex.test(trimmed)) {
+      skipping = false;
+    }
+
+    if (!skipping) {
+      keptLines.push(line);
+    }
+  }
+
+  return keptLines.join("\n").trim();
 }
 
 async function readToml(): Promise<string> {
@@ -102,17 +166,13 @@ export async function getCodexMcpStatus(input: RuntimeMcpInput): Promise<Runtime
 
 export async function installCodexMcpServer(input: RuntimeMcpInstallInput): Promise<void> {
   let toml = await readToml();
-  const servers = parseMcpServers(toml);
-
-  // Remove existing section if present
-  if (input.serverName in servers) {
-    const sectionRegex = new RegExp(`\\[mcp_servers\\.${input.serverName}\\][^\\[]*`, "g");
-    toml = toml.replace(sectionRegex, "").trim();
-  }
+  toml = removeServerSections(toml, input.serverName);
 
   const section = serializeMcpSection(input.serverName, {
     command: input.command,
-    args: input.args,
+    args: input.args ?? [],
+    cwd: input.cwd,
+    env: input.env,
   });
 
   toml = toml ? `${toml}\n\n${section}\n` : `${section}\n`;
@@ -120,8 +180,6 @@ export async function installCodexMcpServer(input: RuntimeMcpInstallInput): Prom
 }
 
 export async function uninstallCodexMcpServer(input: RuntimeMcpInput): Promise<void> {
-  let toml = await readToml();
-  const sectionRegex = new RegExp(`\\[mcp_servers\\.${input.serverName}\\][^\\[]*`, "g");
-  toml = toml.replace(sectionRegex, "").trim();
+  const toml = removeServerSections(await readToml(), input.serverName);
   await writeToml(toml ? `${toml}\n` : "");
 }
