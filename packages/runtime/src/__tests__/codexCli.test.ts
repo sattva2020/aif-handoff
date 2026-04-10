@@ -294,4 +294,177 @@ describe("codex cli transport", () => {
       message: expect.stringContaining("Start timeout"),
     });
   });
+
+  it("captures thread_id, accumulates agent_message text, and fires stream:text events", async () => {
+    const child = createMockChildProcess();
+    spawnMock.mockReturnValueOnce(child);
+
+    const onEvent = vi.fn();
+    const runPromise = runCodexCli(createRunInput({ execution: { onEvent } }));
+
+    child.stdout.emit(
+      "data",
+      JSON.stringify({
+        type: "thread.started",
+        thread_id: "019d76a3-f039-7472-81de-7ffb0759542c",
+      }) + "\n",
+    );
+    child.stdout.emit("data", JSON.stringify({ type: "turn.started" }) + "\n");
+    child.stdout.emit(
+      "data",
+      JSON.stringify({
+        type: "item.completed",
+        item: { id: "item_0", type: "agent_message", text: "Hello " },
+      }) + "\n",
+    );
+    child.stdout.emit(
+      "data",
+      JSON.stringify({
+        type: "item.completed",
+        item: { id: "item_1", type: "agent_message", text: "world" },
+      }) + "\n",
+    );
+    child.stdout.emit(
+      "data",
+      JSON.stringify({
+        type: "turn.completed",
+        usage: { input_tokens: 100, cached_input_tokens: 20, output_tokens: 5 },
+      }) + "\n",
+    );
+    child.emit("close", 0);
+
+    const result = await runPromise;
+    expect(result.sessionId).toBe("019d76a3-f039-7472-81de-7ffb0759542c");
+    expect(result.outputText).toBe("Hello \n\nworld");
+    expect(result.usage).toMatchObject({
+      inputTokens: 120,
+      outputTokens: 5,
+      totalTokens: 125,
+    });
+
+    const streamTextEvents = onEvent.mock.calls
+      .map((c) => c[0] as { type: string; message?: string })
+      .filter((e) => e.type === "stream:text");
+    expect(streamTextEvents).toHaveLength(2);
+    expect(streamTextEvents[0]?.message).toBe("Hello ");
+    expect(streamTextEvents[1]?.message).toBe("world");
+
+    const initEvents = onEvent.mock.calls
+      .map((c) => c[0] as { type: string })
+      .filter((e) => e.type === "system:init");
+    expect(initEvents).toHaveLength(1);
+  });
+
+  it("emits tool:use and calls onToolUse for command_execution items", async () => {
+    const child = createMockChildProcess();
+    spawnMock.mockReturnValueOnce(child);
+
+    const onToolUse = vi.fn();
+    const onEvent = vi.fn();
+    const runPromise = runCodexCli(createRunInput({ execution: { onToolUse, onEvent } }));
+
+    child.stdout.emit(
+      "data",
+      JSON.stringify({
+        type: "thread.started",
+        thread_id: "thread-tool-1",
+      }) + "\n",
+    );
+    child.stdout.emit(
+      "data",
+      JSON.stringify({
+        type: "item.started",
+        item: {
+          id: "item_1",
+          type: "command_execution",
+          command: "/bin/zsh -lc ls",
+          status: "in_progress",
+        },
+      }) + "\n",
+    );
+    child.stdout.emit(
+      "data",
+      JSON.stringify({
+        type: "item.completed",
+        item: {
+          id: "item_1",
+          type: "command_execution",
+          command: "/bin/zsh -lc ls",
+          aggregated_output: "file1\nfile2",
+          exit_code: 0,
+          status: "completed",
+        },
+      }) + "\n",
+    );
+    child.stdout.emit(
+      "data",
+      JSON.stringify({
+        type: "item.completed",
+        item: { id: "item_2", type: "agent_message", text: "Listed files." },
+      }) + "\n",
+    );
+    child.stdout.emit(
+      "data",
+      JSON.stringify({
+        type: "turn.completed",
+        usage: { input_tokens: 50, output_tokens: 10 },
+      }) + "\n",
+    );
+    child.emit("close", 0);
+
+    const result = await runPromise;
+    expect(result.outputText).toBe("Listed files.");
+
+    // Tool use triggered once on item.started, NOT re-emitted on item.completed
+    expect(onToolUse).toHaveBeenCalledTimes(1);
+    const [toolName, detail] = onToolUse.mock.calls[0];
+    expect(toolName).toBe("Bash");
+    expect(detail).toContain("ls");
+
+    const toolEvents = onEvent.mock.calls
+      .map((c) => c[0] as { type: string; data?: { name?: string } })
+      .filter((e) => e.type === "tool:use");
+    expect(toolEvents).toHaveLength(1);
+    expect(toolEvents[0]?.data?.name).toBe("Bash");
+  });
+
+  it("handles JSONL lines split across multiple stdout chunks", async () => {
+    const child = createMockChildProcess();
+    spawnMock.mockReturnValueOnce(child);
+
+    const runPromise = runCodexCli(createRunInput());
+
+    // Split a single JSON line across two chunks to exercise the line buffer
+    const line1 = JSON.stringify({
+      type: "thread.started",
+      thread_id: "thread-split",
+    });
+    child.stdout.emit("data", line1.slice(0, 20));
+    child.stdout.emit("data", line1.slice(20) + "\n");
+    child.stdout.emit(
+      "data",
+      JSON.stringify({
+        type: "item.completed",
+        item: { id: "item_0", type: "agent_message", text: "ok" },
+      }) + "\n",
+    );
+    child.emit("close", 0);
+
+    const result = await runPromise;
+    expect(result.sessionId).toBe("thread-split");
+    expect(result.outputText).toBe("ok");
+  });
+
+  it("falls back to plain text when stdout is not JSONL", async () => {
+    const child = createMockChildProcess();
+    spawnMock.mockReturnValueOnce(child);
+
+    const runPromise = runCodexCli(createRunInput());
+    child.stdout.emit("data", "not json at all");
+    child.emit("close", 0);
+
+    const result = await runPromise;
+    expect(result.outputText).toBe("not json at all");
+    expect(result.raw).toBe("not json at all");
+  });
 });

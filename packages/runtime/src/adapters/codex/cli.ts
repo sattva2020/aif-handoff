@@ -1,5 +1,5 @@
 import { spawn, execFileSync } from "node:child_process";
-import type { RuntimeRunInput, RuntimeRunResult } from "../../types.js";
+import type { RuntimeEvent, RuntimeRunInput, RuntimeRunResult, RuntimeUsage } from "../../types.js";
 import {
   makeProcessRunTimeoutError,
   makeProcessStartTimeoutError,
@@ -206,117 +206,311 @@ function spawnCliWindows(
 }
 /* v8 ignore stop */
 
-/**
- * Parse JSONL output from `codex exec --json`.
- * Each line is a JSON event. We extract the final agent message text,
- * session/thread ID, and usage from relevant events.
- *
- * Falls back to single-JSON parsing for backwards compat with older CLI versions.
- */
-function parseCliResult(stdout: string, fallbackSessionId: string | null): RuntimeRunResult {
-  const trimmed = stdout.trim();
-  if (!trimmed) {
-    return { outputText: "", sessionId: fallbackSessionId };
-  }
+// ---------------------------------------------------------------------------
+// stream-json (JSONL) line processor
+// ---------------------------------------------------------------------------
 
-  const lines = trimmed.split("\n").filter((l) => l.trim().length > 0);
-  const events: Array<Record<string, unknown>> = [];
-  for (const line of lines) {
-    try {
-      events.push(JSON.parse(line) as Record<string, unknown>);
-    } catch {
-      // non-JSON line — skip
+interface CodexItem {
+  id?: string;
+  type?: string;
+  text?: string;
+  command?: string;
+  aggregated_output?: string;
+  exit_code?: number | null;
+  status?: string;
+  [key: string]: unknown;
+}
+
+interface CodexStreamMessage {
+  type?: string;
+  thread_id?: string;
+  item?: CodexItem;
+  text?: string;
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+    total_tokens?: number;
+    cached_input_tokens?: number;
+  };
+  total_cost_usd?: number;
+  cost_usd?: number;
+  // Legacy single-blob fields used by custom `codexCliArgs` integrations
+  outputText?: string;
+  result?: string;
+  sessionId?: string;
+  events?: Array<Record<string, unknown>>;
+}
+
+interface CodexCliStreamState {
+  sessionId: string | null;
+  outputText: string;
+  usage: RuntimeUsage | null;
+  events: RuntimeEvent[];
+  plainTextFallback: string;
+  /** Raw parsed JSONL events — preserved in `raw` for compatibility. */
+  rawEvents: Array<Record<string, unknown>>;
+  /** True once we have seen any JSONL line that was successfully parsed. */
+  sawAnyJsonLine: boolean;
+}
+
+function createCodexStreamState(fallbackSessionId: string | null): CodexCliStreamState {
+  return {
+    sessionId: fallbackSessionId,
+    outputText: "",
+    usage: null,
+    events: [],
+    plainTextFallback: "",
+    rawEvents: [],
+    sawAnyJsonLine: false,
+  };
+}
+
+function summarizeToolInput(input: unknown): string {
+  if (input == null) return "";
+  if (typeof input === "string") {
+    return input.length > 100 ? `${input.slice(0, 97)}...` : input;
+  }
+  try {
+    const json = JSON.stringify(input);
+    if (json.length <= 120) return json;
+    return `${json.slice(0, 117)}...`;
+  } catch {
+    return "";
+  }
+}
+
+function displayNameForCodexTool(itemType: string): string {
+  // Map internal codex item types to friendlier activity names that match
+  // the Claude convention where possible, so the UI shows "Bash ls" etc.
+  switch (itemType) {
+    case "command_execution":
+      return "Bash";
+    case "file_read":
+      return "Read";
+    case "file_write":
+      return "Write";
+    case "file_edit":
+      return "Edit";
+    default:
+      return itemType;
+  }
+}
+
+function emitCodexEvent(
+  state: CodexCliStreamState,
+  execution: RuntimeRunInput["execution"],
+  event: RuntimeEvent,
+): void {
+  state.events.push(event);
+  execution?.onEvent?.(event);
+}
+
+function accumulateCodexUsage(state: CodexCliStreamState, message: CodexStreamMessage): void {
+  const usage = message.usage;
+  if (!usage) return;
+  const rawInput = usage.input_tokens ?? 0;
+  const cached = usage.cached_input_tokens ?? 0;
+  const inputTokens = rawInput + cached;
+  const outputTokens = usage.output_tokens ?? 0;
+  const totalTokens = usage.total_tokens ?? inputTokens + outputTokens;
+  const costRaw = message.total_cost_usd ?? message.cost_usd;
+  if (state.usage) {
+    state.usage = {
+      inputTokens: state.usage.inputTokens + inputTokens,
+      outputTokens: state.usage.outputTokens + outputTokens,
+      totalTokens: state.usage.totalTokens + totalTokens,
+      costUsd:
+        typeof costRaw === "number" ? (state.usage.costUsd ?? 0) + costRaw : state.usage.costUsd,
+    };
+  } else {
+    state.usage = {
+      inputTokens,
+      outputTokens,
+      totalTokens,
+      costUsd: typeof costRaw === "number" ? costRaw : undefined,
+    };
+  }
+}
+
+function processCodexJsonLine(
+  line: string,
+  state: CodexCliStreamState,
+  execution: RuntimeRunInput["execution"],
+): void {
+  const trimmed = line.trim();
+  if (!trimmed) return;
+
+  let message: CodexStreamMessage;
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (!parsed || typeof parsed !== "object") {
+      state.plainTextFallback += (state.plainTextFallback ? "\n" : "") + trimmed;
+      return;
     }
+    message = parsed as CodexStreamMessage;
+  } catch {
+    state.plainTextFallback += (state.plainTextFallback ? "\n" : "") + trimmed;
+    return;
   }
 
-  // No parseable events — try single JSON blob (backwards compat)
-  if (events.length === 0) {
-    return { outputText: trimmed, sessionId: fallbackSessionId, raw: trimmed };
+  state.sawAnyJsonLine = true;
+  state.rawEvents.push(message as unknown as Record<string, unknown>);
+
+  const type = typeof message.type === "string" ? message.type : "";
+  const nowIso = new Date().toISOString();
+
+  if (type === "thread.started") {
+    if (typeof message.thread_id === "string" && message.thread_id.length > 0) {
+      state.sessionId = message.thread_id;
+    }
+    emitCodexEvent(state, execution, {
+      type: "system:init",
+      timestamp: nowIso,
+      level: "debug",
+      message: "Codex thread started",
+      data: { sessionId: state.sessionId },
+    });
+    return;
   }
 
-  // Single JSON object (old format) — handle directly
-  if (events.length === 1 && (events[0].outputText || events[0].result)) {
-    const parsed = events[0];
-    const usage = parsed.usage as Record<string, number> | undefined;
+  if (type === "item.started" && message.item) {
+    const item = message.item;
+    const itemType = typeof item.type === "string" ? item.type : "";
+    if (itemType && itemType !== "agent_message") {
+      const displayName = displayNameForCodexTool(itemType);
+      // Prefer the `command` field for shell tools, otherwise summarize the
+      // whole item object so the activity line carries meaningful context.
+      const detailSource: unknown =
+        typeof item.command === "string"
+          ? item.command
+          : { ...item, id: undefined, status: undefined };
+      const summary = summarizeToolInput(detailSource);
+      const detailSuffix = summary ? ` ${summary}` : "";
+      emitCodexEvent(state, execution, {
+        type: "tool:use",
+        timestamp: nowIso,
+        level: "info",
+        message: `${displayName}${detailSuffix}`,
+        data: { name: displayName, itemType, item },
+      });
+      execution?.onToolUse?.(displayName, detailSuffix);
+    }
+    return;
+  }
+
+  if (type === "item.completed" && message.item) {
+    const item = message.item;
+    const itemType = typeof item.type === "string" ? item.type : "";
+    if (itemType === "agent_message" && typeof item.text === "string") {
+      if (state.outputText) state.outputText += "\n\n";
+      state.outputText += item.text;
+      emitCodexEvent(state, execution, {
+        type: "stream:text",
+        timestamp: nowIso,
+        level: "debug",
+        message: item.text,
+        data: { text: item.text },
+      });
+    }
+    // Tool-complete events are intentionally not re-surfaced — the
+    // `item.started` already emitted tool:use, and re-emitting on completion
+    // would double-log in agent activity.
+    return;
+  }
+
+  // Legacy "message" event (older codex CLI format)
+  if (type === "message" && typeof message.text === "string") {
+    if (state.outputText) state.outputText += "\n\n";
+    state.outputText += message.text;
+    emitCodexEvent(state, execution, {
+      type: "stream:text",
+      timestamp: nowIso,
+      level: "debug",
+      message: message.text,
+      data: { text: message.text },
+    });
+    return;
+  }
+
+  if (type === "turn.completed") {
+    accumulateCodexUsage(state, message);
+    emitCodexEvent(state, execution, {
+      type: "result:success",
+      timestamp: nowIso,
+      level: "info",
+      message: "Codex turn completed",
+      data: { usage: message.usage },
+    });
+    return;
+  }
+
+  // Other event types (turn.started, rate limit, etc.) are ignored.
+}
+
+function finalizeCodexResult(
+  state: CodexCliStreamState,
+  fallbackSessionId: string | null,
+): RuntimeRunResult {
+  // Backwards-compat: if custom `codexCliArgs` integrations emit a single
+  // AIF-specific JSON blob (with outputText/result/sessionId/usage/events),
+  // we will have parsed it as a single message in rawEvents but none of the
+  // streaming handlers matched. Recover that shape here.
+  if (
+    state.rawEvents.length === 1 &&
+    !state.outputText &&
+    (state.rawEvents[0].outputText != null || state.rawEvents[0].result != null)
+  ) {
+    const parsed = state.rawEvents[0] as CodexStreamMessage & {
+      usage?: Record<string, number>;
+    };
+    const usageRaw = parsed.usage as Record<string, number> | undefined;
+    const legacyEvents = Array.isArray((parsed as Record<string, unknown>).events)
+      ? ((parsed as Record<string, unknown>).events as Array<Record<string, unknown>>).map((e) => ({
+          type: String(e.type ?? "unknown"),
+          timestamp: typeof e.timestamp === "string" ? e.timestamp : new Date().toISOString(),
+          message: typeof e.message === "string" ? e.message : undefined,
+          data: e.data as Record<string, unknown> | undefined,
+        }))
+      : undefined;
     return {
       outputText: String(parsed.outputText ?? parsed.result ?? ""),
-      sessionId: typeof parsed.sessionId === "string" ? parsed.sessionId : fallbackSessionId,
-      usage: usage
+      sessionId:
+        typeof (parsed as Record<string, unknown>).sessionId === "string"
+          ? ((parsed as Record<string, unknown>).sessionId as string)
+          : fallbackSessionId,
+      usage: usageRaw
         ? {
-            inputTokens: usage.inputTokens ?? usage.input_tokens ?? 0,
-            outputTokens: usage.outputTokens ?? usage.output_tokens ?? 0,
+            inputTokens: usageRaw.inputTokens ?? usageRaw.input_tokens ?? 0,
+            outputTokens: usageRaw.outputTokens ?? usageRaw.output_tokens ?? 0,
             totalTokens:
-              usage.totalTokens ??
-              usage.total_tokens ??
-              (usage.inputTokens ?? usage.input_tokens ?? 0) +
-                (usage.outputTokens ?? usage.output_tokens ?? 0),
-            costUsd: usage.costUsd ?? usage.cost_usd,
+              usageRaw.totalTokens ??
+              usageRaw.total_tokens ??
+              (usageRaw.inputTokens ?? usageRaw.input_tokens ?? 0) +
+                (usageRaw.outputTokens ?? usageRaw.output_tokens ?? 0),
+            costUsd: usageRaw.costUsd ?? usageRaw.cost_usd,
           }
         : undefined,
-      events: Array.isArray(parsed.events)
-        ? (parsed.events as Array<Record<string, unknown>>).map((e) => ({
-            type: String(e.type ?? "unknown"),
-            timestamp: typeof e.timestamp === "string" ? e.timestamp : new Date().toISOString(),
-            message: typeof e.message === "string" ? e.message : undefined,
-            data: e.data as Record<string, unknown> | undefined,
-          }))
-        : undefined,
+      events: legacyEvents,
       raw: parsed,
     };
   }
 
-  // JSONL events stream — extract output text, session ID, and usage
-  let outputText = "";
-  let sessionId = fallbackSessionId;
-  let inputTokens = 0;
-  let outputTokens = 0;
-  let costUsd: number | undefined;
-
-  for (const event of events) {
-    const type = String(event.type ?? "");
-
-    // Thread/session started
-    if (type === "thread.started" && typeof event.thread_id === "string") {
-      sessionId = event.thread_id;
-    }
-
-    // Agent message completed — collect text
-    if (type === "item.completed") {
-      const item = event.item as Record<string, unknown> | undefined;
-      if (item?.type === "agent_message" && typeof item.text === "string") {
-        if (outputText) outputText += "\n\n";
-        outputText += item.text;
-      }
-    }
-
-    // Turn completed — collect usage
-    if (type === "turn.completed") {
-      const usage = event.usage as Record<string, number> | undefined;
-      if (usage) {
-        inputTokens += usage.input_tokens ?? 0;
-        outputTokens += usage.output_tokens ?? 0;
-      }
-    }
-
-    // Message event with text (alternative format)
-    if (type === "message" && typeof event.text === "string") {
-      if (outputText) outputText += "\n\n";
-      outputText += event.text;
-    }
+  // No JSONL events parsed at all — expose raw stdout as plain text.
+  if (!state.sawAnyJsonLine) {
+    const raw = state.plainTextFallback;
+    return {
+      outputText: raw,
+      sessionId: fallbackSessionId,
+      raw,
+    };
   }
 
-  const totalTokens = inputTokens + outputTokens;
   return {
-    outputText,
-    sessionId,
-    usage: totalTokens > 0 ? { inputTokens, outputTokens, totalTokens, costUsd } : undefined,
-    events: events.map((e) => ({
-      type: String(e.type ?? "unknown"),
-      timestamp: typeof e.timestamp === "string" ? e.timestamp : new Date().toISOString(),
-      message: typeof e.message === "string" ? e.message : undefined,
-      data: e,
-    })),
-    raw: events,
+    outputText: state.outputText,
+    sessionId: state.sessionId ?? fallbackSessionId,
+    usage: state.usage ?? undefined,
+    events: state.events,
+    raw: state.rawEvents,
   };
 }
 
@@ -357,15 +551,36 @@ function runCodexCliAttempt(
     runTimeoutMs: execution?.runTimeoutMs ?? resolveTimeoutMs(input),
   });
 
-  let stdout = "";
+  const state = createCodexStreamState(input.sessionId ?? null);
+  let stdoutBuffer = "";
   let stderr = "";
 
+  const flushCompleteLines = (): void => {
+    let newlineIdx = stdoutBuffer.indexOf("\n");
+    while (newlineIdx !== -1) {
+      const line = stdoutBuffer.slice(0, newlineIdx);
+      stdoutBuffer = stdoutBuffer.slice(newlineIdx + 1);
+      processCodexJsonLine(line, state, execution);
+      newlineIdx = stdoutBuffer.indexOf("\n");
+    }
+  };
+
   child.stdout!.on("data", (chunk: Buffer | string) => {
-    stdout += String(chunk);
+    stdoutBuffer += String(chunk);
+    try {
+      flushCompleteLines();
+    } catch (err) {
+      logger?.error?.(
+        { runtimeId: input.runtimeId, err },
+        "Codex CLI stream-json processing error",
+      );
+    }
   });
 
   child.stderr!.on("data", (chunk: Buffer | string) => {
-    stderr += String(chunk);
+    const text = String(chunk);
+    stderr += text;
+    execution?.onStderr?.(text);
   });
 
   // If abort is requested, kill the child
@@ -396,6 +611,16 @@ function runCodexCliAttempt(
     child.on("close", async (code) => {
       timeouts.cleanup();
 
+      // Flush any trailing buffer content as a final line.
+      if (stdoutBuffer.length > 0) {
+        try {
+          processCodexJsonLine(stdoutBuffer, state, execution);
+        } catch {
+          /* ignore tail processing errors */
+        }
+        stdoutBuffer = "";
+      }
+
       const startTimedOut = await timeouts.startTimedOut;
 
       if (startTimedOut) {
@@ -414,13 +639,17 @@ function runCodexCliAttempt(
       }
 
       if (code !== 0) {
-        const message = `Codex CLI exited with code ${code}: ${stderr || stdout || "unknown error"}`;
+        const tail = state.outputText || state.plainTextFallback || "unknown error";
+        const message = `Codex CLI exited with code ${code}: ${stderr || tail}`;
         reject(classifyCodexRuntimeError(message));
         return;
       }
 
       try {
-        resolve({ result: parseCliResult(stdout, input.sessionId ?? null), startTimedOut: false });
+        resolve({
+          result: finalizeCodexResult(state, input.sessionId ?? null),
+          startTimedOut: false,
+        });
       } catch (error) {
         reject(classifyCodexRuntimeError(error));
       }
