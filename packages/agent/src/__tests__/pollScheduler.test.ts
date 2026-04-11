@@ -36,4 +36,34 @@ describe("pollScheduler", () => {
     await vi.advanceTimersByTimeAsync(600_000);
     expect(callback).toHaveBeenCalledTimes(1);
   });
+
+  it("skips interval ticks while the previous callback is still running", async () => {
+    let resolveCallback: (() => void) | null = null;
+    const callback = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveCallback = resolve;
+        }),
+    );
+    const scheduler = startPollScheduler(callback, 10_000);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(callback).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(callback).toHaveBeenCalledTimes(1);
+
+    const finishCallback: () => void =
+      resolveCallback ??
+      (() => {
+        throw new Error("Expected callback resolver to be captured");
+      });
+    finishCallback();
+    await Promise.resolve();
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(callback).toHaveBeenCalledTimes(2);
+
+    scheduler.stop();
+  });
 });

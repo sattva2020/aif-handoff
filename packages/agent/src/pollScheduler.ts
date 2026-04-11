@@ -18,8 +18,20 @@ export function startPollScheduler(
   intervalMs: number,
 ): PollScheduler {
   const normalizedIntervalMs = normalizePollIntervalMs(intervalMs);
+  let isRunning = false;
+
+  async function runTick(): Promise<void> {
+    if (isRunning) return;
+    isRunning = true;
+    try {
+      await callback();
+    } finally {
+      isRunning = false;
+    }
+  }
+
   const handle = setInterval(() => {
-    void callback();
+    void runTick();
   }, normalizedIntervalMs);
 
   return {
