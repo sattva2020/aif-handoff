@@ -42,6 +42,65 @@ function normalizeCodexCliEffort(value: unknown): CodexCliEffortLevel | null {
   return null;
 }
 
+const CODEX_APPROVAL_POLICIES = new Set([
+  "untrusted",
+  "on-failure",
+  "on-request",
+  "never",
+] as const);
+
+type CodexApprovalPolicy = "untrusted" | "on-failure" | "on-request" | "never";
+
+function normalizeCodexApprovalPolicy(value: unknown): CodexApprovalPolicy | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return CODEX_APPROVAL_POLICIES.has(trimmed as CodexApprovalPolicy)
+    ? (trimmed as CodexApprovalPolicy)
+    : null;
+}
+
+const CODEX_SANDBOX_MODES = new Set([
+  "read-only",
+  "workspace-write",
+  "danger-full-access",
+] as const);
+
+type CodexSandboxMode = "read-only" | "workspace-write" | "danger-full-access";
+
+function normalizeCodexSandboxMode(value: unknown): CodexSandboxMode | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return CODEX_SANDBOX_MODES.has(trimmed as CodexSandboxMode)
+    ? (trimmed as CodexSandboxMode)
+    : null;
+}
+
+/**
+ * Resolve the effective approval policy and sandbox mode for a Codex CLI run.
+ *
+ * Explicit profile options (`options.approvalPolicy` / `options.sandboxMode`)
+ * always win. If neither is set and `execution.bypassPermissions` is true, both
+ * default to the full-bypass pair (`never` + `danger-full-access`) — matching
+ * the effective behaviour of the single atomic flag
+ * `--dangerously-bypass-approvals-and-sandbox`, but routed through `-c`
+ * overrides so the same logic works uniformly on both `codex exec` and
+ * `codex exec resume` (`--sandbox` is rejected by the resume subcommand).
+ */
+function resolveCodexPermissionOverrides(input: RuntimeRunInput): {
+  approvalPolicy: CodexApprovalPolicy | null;
+  sandboxMode: CodexSandboxMode | null;
+} {
+  const options = asRecord(input.options);
+  const explicitApproval = normalizeCodexApprovalPolicy(options.approvalPolicy);
+  const explicitSandbox = normalizeCodexSandboxMode(options.sandboxMode);
+  const bypass = input.execution?.bypassPermissions === true;
+
+  return {
+    approvalPolicy: explicitApproval ?? (bypass ? "never" : null),
+    sandboxMode: explicitSandbox ?? (bypass ? "danger-full-access" : null),
+  };
+}
+
 function readStringArray(value: unknown): string[] | null {
   if (!Array.isArray(value)) return null;
   const parsed = value.filter((entry): entry is string => typeof entry === "string");
@@ -82,12 +141,21 @@ function normalizeCliArgs(input: RuntimeRunInput): string[] {
     args.push("--skip-git-repo-check");
   }
 
-  // bypassPermissions: parity with Claude's --dangerously-skip-permissions.
-  // Codex's single flag clears both approval prompts and the sandbox, which
-  // matches the "agent can do anything" contract. Intended for externally
-  // sandboxed environments (Docker containers).
-  if (input.execution?.bypassPermissions) {
-    args.push("--dangerously-bypass-approvals-and-sandbox");
+  // Approval policy and sandbox mode. Both routed via `-c` config overrides
+  // (instead of --sandbox / --dangerously-bypass-approvals-and-sandbox) so the
+  // same logic works on `codex exec` AND `codex exec resume` — the resume
+  // subcommand rejects the --sandbox flag outright.
+  //
+  // bypassPermissions=true defaults to ("never", "danger-full-access"),
+  // matching Claude's --dangerously-skip-permissions (no approval prompts,
+  // no OS sandbox). Explicit profile options always win — so a user can opt
+  // into a narrower policy even while AGENT_BYPASS_PERMISSIONS=1 is set.
+  const { approvalPolicy, sandboxMode } = resolveCodexPermissionOverrides(input);
+  if (approvalPolicy) {
+    args.push("-c", `approval_policy="${approvalPolicy}"`);
+  }
+  if (sandboxMode) {
+    args.push("-c", `sandbox_mode="${sandboxMode}"`);
   }
 
   return args;

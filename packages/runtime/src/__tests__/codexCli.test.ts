@@ -166,27 +166,34 @@ describe("codex cli transport", () => {
     expect(result.events?.[0]?.type).toBe("stream:text");
   });
 
-  it("appends --dangerously-bypass-approvals-and-sandbox when execution.bypassPermissions is true", async () => {
+  it("emits -c approval_policy and -c sandbox_mode defaults when execution.bypassPermissions is true", async () => {
     const child = createMockChildProcess();
     spawnMock.mockReturnValueOnce(child);
 
     const runPromise = runCodexCli(createRunInput({ execution: { bypassPermissions: true } }));
 
     const { cliArgs: args } = getSpawnInvocation();
-    expect(args).toContain("--dangerously-bypass-approvals-and-sandbox");
+    const approvalIdx = args.indexOf('approval_policy="never"');
+    expect(approvalIdx).toBeGreaterThan(0);
+    expect(args[approvalIdx - 1]).toBe("-c");
+    const sandboxIdx = args.indexOf('sandbox_mode="danger-full-access"');
+    expect(sandboxIdx).toBeGreaterThan(0);
+    expect(args[sandboxIdx - 1]).toBe("-c");
 
     child.stdout.emit("data", "ok");
     child.emit("close", 0);
     await runPromise;
   });
 
-  it("does not add bypass flag when execution.bypassPermissions is false or absent", async () => {
+  it("does not emit approval/sandbox overrides when bypassPermissions is absent and no explicit profile options", async () => {
     const child = createMockChildProcess();
     spawnMock.mockReturnValueOnce(child);
 
     const runPromise = runCodexCli(createRunInput());
 
     const { cliArgs: args } = getSpawnInvocation();
+    expect(args.some((arg) => arg.startsWith("approval_policy="))).toBe(false);
+    expect(args.some((arg) => arg.startsWith("sandbox_mode="))).toBe(false);
     expect(args).not.toContain("--dangerously-bypass-approvals-and-sandbox");
 
     child.stdout.emit("data", "ok");
@@ -194,7 +201,47 @@ describe("codex cli transport", () => {
     await runPromise;
   });
 
-  it("does not inject bypass flag into custom codexCliArgs templates", async () => {
+  it("lets explicit profile options.sandboxMode override the bypass default", async () => {
+    const child = createMockChildProcess();
+    spawnMock.mockReturnValueOnce(child);
+
+    const runPromise = runCodexCli(
+      createRunInput({
+        execution: { bypassPermissions: true },
+        options: { sandboxMode: "workspace-write" },
+      }),
+    );
+
+    const { cliArgs: args } = getSpawnInvocation();
+    expect(args).toContain('approval_policy="never"'); // bypass still applies to approval
+    expect(args).toContain('sandbox_mode="workspace-write"');
+    expect(args).not.toContain('sandbox_mode="danger-full-access"');
+
+    child.stdout.emit("data", "ok");
+    child.emit("close", 0);
+    await runPromise;
+  });
+
+  it("reads options.approvalPolicy even when bypassPermissions is false", async () => {
+    const child = createMockChildProcess();
+    spawnMock.mockReturnValueOnce(child);
+
+    const runPromise = runCodexCli(
+      createRunInput({
+        options: { approvalPolicy: "on-request" },
+      }),
+    );
+
+    const { cliArgs: args } = getSpawnInvocation();
+    expect(args).toContain('approval_policy="on-request"');
+    expect(args.some((arg) => arg.startsWith("sandbox_mode="))).toBe(false);
+
+    child.stdout.emit("data", "ok");
+    child.emit("close", 0);
+    await runPromise;
+  });
+
+  it("does not inject bypass or permission overrides into custom codexCliArgs templates", async () => {
     const child = createMockChildProcess();
     spawnMock.mockReturnValueOnce(child);
 
@@ -208,6 +255,8 @@ describe("codex cli transport", () => {
     );
 
     const { cliArgs: args } = getSpawnInvocation();
+    expect(args.some((arg) => arg.startsWith("approval_policy="))).toBe(false);
+    expect(args.some((arg) => arg.startsWith("sandbox_mode="))).toBe(false);
     expect(args).not.toContain("--dangerously-bypass-approvals-and-sandbox");
     expect(args).toEqual(["run", "--json", "--prompt=Implement feature"]);
 

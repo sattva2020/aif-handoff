@@ -192,17 +192,19 @@ Each adapter translates this to its native "trust me, just run" mechanism:
 | ------------------- | ----------------------------------------------------------------------------- |
 | Claude SDK          | `permissionMode="bypassPermissions"` + `allowDangerouslySkipPermissions=true` |
 | Claude CLI          | `--dangerously-skip-permissions`                                              |
-| Codex SDK           | `approvalPolicy="never"` + `sandboxMode="danger-full-access"`                 |
-| Codex CLI           | `--dangerously-bypass-approvals-and-sandbox`                                  |
+| Codex SDK           | `approvalPolicy="never"` + `sandboxMode="danger-full-access"` (ThreadOptions) |
+| Codex CLI           | `-c approval_policy="never" -c sandbox_mode="danger-full-access"`             |
 
 Why Codex disables both approval prompts **and** the sandbox: Codex has two orthogonal safety rails (approval policy + OS-level sandbox), while Claude has only one (permission prompts). To match Claude's effective "agent can do anything" behavior, both rails must be cleared. Leaving the Codex sandbox at its default `workspace-write` blocks network access — so `npm install`, `curl`, `git push`, and WebFetch would silently fail.
 
-**Opting out for Codex:** if you want narrower safety even in bypass mode, set `options.sandboxMode` or `options.approvalPolicy` explicitly in your profile — explicit profile values override the bypass defaults:
+The Codex CLI uses `--config` (`-c`) overrides instead of the single `--dangerously-bypass-approvals-and-sandbox` flag because the same code path must work for both `codex exec` and `codex exec resume` — the resume subcommand rejects the standalone `--sandbox` flag, while `--config` overrides are accepted on both. The end-state is identical to the atomic flag.
+
+**Opting out for Codex:** if you want narrower safety even in bypass mode, set `options.sandboxMode` or `options.approvalPolicy` explicitly in your profile — explicit profile values override the bypass defaults on both SDK and CLI transports:
 
 ```json
 {
   "runtimeId": "codex",
-  "transport": "sdk",
+  "transport": "cli",
   "options": {
     "sandboxMode": "workspace-write",
     "approvalPolicy": "never"
@@ -210,7 +212,7 @@ Why Codex disables both approval prompts **and** the sandbox: Codex has two orth
 }
 ```
 
-The `--dangerously-bypass-approvals-and-sandbox` CLI flag is a single-flag alias that clears both axes atomically — there is no per-axis opt-out for the CLI transport in bypass mode short of setting `AGENT_BYPASS_PERMISSIONS=0` and relying on profile options.
+With the example above, even when `AGENT_BYPASS_PERMISSIONS=1` is set, the agent runs with `approval_policy=never` (from the explicit option, which happens to coincide with the bypass default) and `sandbox_mode=workspace-write` (overrides the `danger-full-access` bypass default). You can mix and match — only the axis you set gets overridden.
 
 ### OpenRouter (API)
 
