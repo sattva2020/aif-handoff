@@ -26,7 +26,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - uses: lee-to/mcpunit@v1
+      - uses: lee-to/mcpunit@v1.0.0
         with:
           cmd: node packages/mcp/dist/index.js
           min-score: "80"
