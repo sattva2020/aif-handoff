@@ -111,6 +111,71 @@ describe("tasks API", () => {
     });
   });
 
+  describe("POST /tasks scheduledAt", () => {
+    it("accepts a future ISO-8601 scheduledAt", async () => {
+      const future = new Date(Date.now() + 3_600_000).toISOString();
+      const res = await app.request("/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "Scheduled",
+          projectId: "test-project",
+          scheduledAt: future,
+        }),
+      });
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      expect(body.scheduledAt).toBe(future);
+    });
+
+    it("rejects a past scheduledAt with 400", async () => {
+      const past = new Date(Date.now() - 60_000).toISOString();
+      const res = await app.request("/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "Past",
+          projectId: "test-project",
+          scheduledAt: past,
+        }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects a non-ISO-8601 scheduledAt", async () => {
+      const res = await app.request("/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "Garbage",
+          projectId: "test-project",
+          scheduledAt: "tomorrow",
+        }),
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it("PUT allows null to clear scheduledAt", async () => {
+      const future = new Date(Date.now() + 3_600_000).toISOString();
+      const created = await (
+        await app.request("/tasks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: "S", projectId: "test-project", scheduledAt: future }),
+        })
+      ).json();
+
+      const res = await app.request(`/tasks/${created.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scheduledAt: null }),
+      });
+      expect(res.status).toBe(200);
+      const updated = await res.json();
+      expect(updated.scheduledAt).toBeNull();
+    });
+  });
+
   describe("POST /tasks", () => {
     it("should create a task", async () => {
       const res = await app.request("/tasks", {

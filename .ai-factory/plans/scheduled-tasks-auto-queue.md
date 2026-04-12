@@ -53,8 +53,8 @@ Out of scope (per issue): recurring cron schedules, parallel auto-mode execution
 8. [x] Auto-mode toggle + board indicator (Task #8)
 
 ### Phase 5 — Quality & release
-9. Tests: scheduler + auto-queue coverage (Task #9)
-10. Docs + Docker + validation (Task #10)
+9. [x] Tests: scheduler + auto-queue coverage (Task #9)
+10. [ ] Docs + Docker + validation (Task #10)
 
 Dependencies are modeled in the task list (`TaskList`): #2 blocked by #1; #3–#6 blocked by #2; #7 blocked by #5; #8 blocked by #6; #9 blocked by #3/#4/#5/#6; #10 blocked by #7/#8/#9.
 
