@@ -24,6 +24,11 @@ export interface Project {
   defaultPlanRuntimeProfileId?: string | null;
   defaultReviewRuntimeProfileId?: string | null;
   defaultChatRuntimeProfileId?: string | null;
+  /** Aggregate token/cost usage across ALL sources (tasks, chat, commit, roadmap). */
+  tokenInput?: number;
+  tokenOutput?: number;
+  tokenTotal?: number;
+  costUsd?: number;
   createdAt: string;
   updatedAt: string;
 }
