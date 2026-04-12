@@ -161,6 +161,7 @@ data/                    # SQLite database files (gitignored)
   - `packages/runtime/src/adapters/TEMPLATE.ts` — verify the template still reflects current conventions.
   - `packages/runtime/src/bootstrap.ts` — register the new built-in adapter.
   - `.docker/Dockerfile` — add any new system-level dependencies.
+- **Cross-adapter consistency on shared changes.** When modifying shared runtime infrastructure (`errors.ts`, `types.ts`, `timeouts.ts`, `capabilities.ts`) or refactoring a pattern that exists across multiple adapters — enumerate ALL adapter directories under `packages/runtime/src/adapters/` and verify each is updated. Do not rely on the issue description or plan to list affected adapters — scan the directory.
 
 ## Project Rules
 
