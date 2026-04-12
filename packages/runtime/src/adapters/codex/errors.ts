@@ -6,7 +6,7 @@ import {
 } from "../../errors.js";
 
 /** Codex-specific CLI patterns that don't map to shared categories. */
-const CLI_NOT_FOUND_PATTERNS = ["enoent", "not recognized", "not found", "no such file"];
+const CLI_NOT_FOUND_PATTERNS = ["enoent", "not recognized", "no such file"];
 const THREAD_PATTERNS = [
   "thread not found",
   "session not found",
@@ -46,14 +46,14 @@ function classify(
 
   const lowered = message.toLowerCase();
 
+  // Codex-specific: thread/session not found (check before CLI patterns)
+  if (THREAD_PATTERNS.some((p) => lowered.includes(p))) {
+    return { adapterCode: "CODEX_THREAD_NOT_FOUND", category: "unknown" };
+  }
+
   // Codex-specific: CLI not found (no shared equivalent)
   if (CLI_NOT_FOUND_PATTERNS.some((p) => lowered.includes(p))) {
     return { adapterCode: "CODEX_CLI_NOT_FOUND", category: "unknown" };
-  }
-
-  // Codex-specific: thread/session not found
-  if (THREAD_PATTERNS.some((p) => lowered.includes(p))) {
-    return { adapterCode: "CODEX_THREAD_NOT_FOUND", category: "unknown" };
   }
 
   // Fallback: shared message-based classification
