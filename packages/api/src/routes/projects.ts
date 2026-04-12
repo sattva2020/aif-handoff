@@ -4,7 +4,12 @@ import { Hono } from "hono";
 import { jsonValidator } from "../middleware/zodValidator.js";
 import { logger, getProjectConfig } from "@aif/shared";
 import { findTaskById } from "@aif/data";
-import { createProjectSchema, roadmapImportSchema, roadmapGenerateSchema } from "../schemas.js";
+import {
+  createProjectSchema,
+  roadmapImportSchema,
+  roadmapGenerateSchema,
+  broadcastProjectSchema,
+} from "../schemas.js";
 import { broadcast } from "../ws.js";
 import {
   listProjects,
@@ -183,6 +188,22 @@ projectsRouter.post("/:id/roadmap/import", jsonValidator(roadmapImportSchema), a
     log.error({ projectId: id, roadmapAlias, err }, "Roadmap import unexpected error");
     return c.json({ error: "Internal server error" }, 500);
   }
+});
+
+// POST /projects/:id/broadcast — emit project-scoped WS event (used by agent coordinator)
+projectsRouter.post("/:id/broadcast", jsonValidator(broadcastProjectSchema), async (c) => {
+  const { id } = c.req.param();
+  const { type, taskId } = c.req.valid("json");
+  const project = findProjectById(id);
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
+  if (type === "project:auto_queue_advanced" && taskId) {
+    broadcast({ type, payload: { id: taskId } });
+  } else {
+    broadcast({ type, payload: project });
+  }
+  log.debug({ projectId: id, type, taskId }, "Project WS broadcast triggered");
+  return c.json({ success: true });
 });
 
 // DELETE /projects/:id

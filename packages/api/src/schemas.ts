@@ -100,7 +100,14 @@ export const reorderTaskSchema = z.object({
 });
 
 export const broadcastTaskSchema = z.object({
-  type: z.enum(["task:updated", "task:moved", "task:activity"]).default("task:updated"),
+  type: z
+    .enum(["task:updated", "task:moved", "task:activity", "task:scheduled_fired"])
+    .default("task:updated"),
+});
+
+export const broadcastProjectSchema = z.object({
+  type: z.enum(["project:auto_queue_mode_changed", "project:auto_queue_advanced"]),
+  taskId: z.string().uuid().optional(),
 });
 
 export const roadmapImportSchema = z.object({

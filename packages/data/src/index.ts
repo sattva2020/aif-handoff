@@ -896,6 +896,11 @@ export function getAutoQueueMode(projectId: string): boolean {
   return Boolean(row?.autoQueueMode);
 }
 
+/** Projects with `autoQueueMode = true`. Used by the coordinator's auto-advance pass. */
+export function listAutoQueueProjects(): ProjectRow[] {
+  return getDb().select().from(projects).where(eq(projects.autoQueueMode, true)).all();
+}
+
 /** Toggle the project-level auto-queue flag. */
 export function setAutoQueueMode(projectId: string, enabled: boolean): void {
   log.info({ projectId, enabled }, "Setting auto-queue mode");

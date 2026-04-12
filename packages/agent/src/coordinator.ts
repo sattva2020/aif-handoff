@@ -6,6 +6,11 @@ import {
   releaseTaskClaim,
   releaseStaleTaskClaims,
   updateTaskStatus as updateTaskStatusRow,
+  listDueScheduledTasks,
+  clearScheduledAt,
+  appendTaskActivityLog,
+  listAutoQueueProjects,
+  nextBacklogTaskByPosition,
   type CoordinatorStage,
   type TaskFieldsPatch,
   type TaskRow,
@@ -17,7 +22,11 @@ import { runPlanChecker } from "./subagents/planChecker.js";
 import { runImplementer } from "./subagents/implementer.js";
 import { runReviewer } from "./subagents/reviewer.js";
 import { flushActivityQueue } from "./hooks.js";
-import { notifyTaskBroadcast, type TaskNotificationInfo } from "./notifier.js";
+import {
+  notifyTaskBroadcast,
+  notifyProjectBroadcast,
+  type TaskNotificationInfo,
+} from "./notifier.js";
 import { handleAutoReviewGate } from "./autoReviewHandler.js";
 import { classifyStageError } from "./stageErrorHandler.js";
 import { setActiveStageAbortController } from "./stageAbort.js";
@@ -380,6 +389,121 @@ async function processOneTask(task: TaskRow, stage: StatusTransition): Promise<b
   }
 }
 
+// ── Scheduled-task trigger ───────────────────────────────────
+
+/**
+ * Fire due scheduled tasks into the planning stage.
+ *
+ * Backlog tasks with `scheduledAt <= now` transition to `planning` (same path
+ * as the human `start_ai` event). Clears `scheduledAt` atomically, records an
+ * activity-log entry, and broadcasts `task:scheduled_fired`.
+ */
+export function processDueScheduledTasks(): number {
+  const nowIso = new Date().toISOString();
+  const due = listDueScheduledTasks(nowIso);
+  if (due.length === 0) {
+    log.debug({ nowIso }, "No due scheduled tasks");
+    return 0;
+  }
+
+  log.info({ dueCount: due.length, nowIso }, "Firing due scheduled tasks");
+
+  let fired = 0;
+  for (const task of due) {
+    try {
+      // Transition backlog → planning using the same patch as start_ai,
+      // and clear scheduledAt in the same write so we don't re-fire.
+      updateTaskStatus(
+        task.id,
+        "planning",
+        { ...CLEAN_STATE_RESET, scheduledAt: null },
+        { title: task.title, fromStatus: task.status },
+      );
+      // Defensive: ensure scheduledAt is cleared even if a race modified the
+      // row between list and update. cheap idempotent write.
+      clearScheduledAt(task.id);
+      appendTaskActivityLog(
+        task.id,
+        `[${nowIso}] [scheduler] Fired scheduled task (was due at ${task.scheduledAt})`,
+      );
+      void notifyTaskBroadcast(task.id, "task:scheduled_fired", {
+        title: task.title,
+        fromStatus: task.status,
+        toStatus: "planning",
+      });
+      fired += 1;
+      log.info(
+        { taskId: task.id, title: task.title, scheduledAt: task.scheduledAt },
+        "Scheduled task fired",
+      );
+    } catch (err) {
+      log.error({ taskId: task.id, err }, "Failed to fire scheduled task");
+    }
+  }
+
+  log.info({ fired, attempted: due.length }, "Scheduled-task trigger pass complete");
+  return fired;
+}
+
+// ── Auto-queue advance ───────────────────────────────────────
+
+/**
+ * For each project with `autoQueueMode = true` that has no active/locked task,
+ * pick the next backlog task by position and fire it into planning.
+ *
+ * Reuses the sequential guarantee from `hasActiveLockedTaskForProject` — we
+ * never advance while the project is busy. This matches the non-parallel
+ * project semantics already enforced by the PIPELINE loop.
+ */
+export function processAutoQueueAdvance(): number {
+  const projects = listAutoQueueProjects();
+  if (projects.length === 0) {
+    log.debug("No projects with auto-queue mode enabled");
+    return 0;
+  }
+
+  let advanced = 0;
+  for (const project of projects) {
+    if (hasActiveLockedTaskForProject(project.id)) {
+      log.debug({ projectId: project.id }, "Auto-queue: project has active/locked task, skipping");
+      continue;
+    }
+
+    const next = nextBacklogTaskByPosition(project.id);
+    if (!next) {
+      log.debug({ projectId: project.id }, "Auto-queue: no backlog task ready to advance");
+      continue;
+    }
+
+    const nowIso = new Date().toISOString();
+    try {
+      updateTaskStatus(
+        next.id,
+        "planning",
+        { ...CLEAN_STATE_RESET, scheduledAt: null },
+        { title: next.title, fromStatus: next.status },
+      );
+      appendTaskActivityLog(
+        next.id,
+        `[${nowIso}] [auto-queue] Advanced by project auto-queue mode`,
+      );
+      void notifyProjectBroadcast(project.id, "project:auto_queue_advanced", { taskId: next.id });
+      advanced += 1;
+      log.info(
+        { projectId: project.id, taskId: next.id, title: next.title, position: next.position },
+        "Auto-queue advanced next backlog task",
+      );
+    } catch (err) {
+      log.error({ projectId: project.id, taskId: next.id, err }, "Auto-queue advance failed");
+    }
+  }
+
+  if (advanced > 0) {
+    log.info({ advanced, projectCount: projects.length }, "Auto-queue advance pass complete");
+  }
+  return advanced;
+}
+
 // ── Poll cycle ───────────────────────────────────────────────
 
 export async function pollAndProcess(): Promise<void> {
@@ -394,6 +518,8 @@ export async function pollAndProcess(): Promise<void> {
 
   releaseDueBlockedTasks();
   recoverStaleInProgressTasks();
+  processDueScheduledTasks();
+  processAutoQueueAdvance();
 
   const globalMax = env.COORDINATOR_MAX_CONCURRENT_TASKS;
 

@@ -41,8 +41,8 @@ Out of scope (per issue): recurring cron schedules, parallel auto-mode execution
 2. [x] Extend `@aif/data` layer with scheduler queries (Task #2, blocks Phase 2+)
 
 ### Phase 2 — Agent behavior
-3. Scheduled-task trigger in coordinator polling loop (Task #3)
-4. Auto-queue mode in coordinator (Task #4)
+3. [x] Scheduled-task trigger in coordinator polling loop (Task #3)
+4. [x] Auto-queue mode in coordinator (Task #4)
 
 ### Phase 3 — API surface
 5. `scheduledAt` on task endpoints (Task #5)
