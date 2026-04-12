@@ -333,6 +333,19 @@ const MIGRATIONS: Migration[] = [
       ALTER TABLE chat_sessions ADD COLUMN cost_usd REAL NOT NULL DEFAULT 0;
     `,
   },
+  {
+    version: 10,
+    description: "Backfill project token aggregates from existing task-level usage",
+    sql: `
+      UPDATE projects
+      SET
+        token_input  = token_input  + coalesce((SELECT sum(token_input)  FROM tasks WHERE tasks.project_id = projects.id), 0),
+        token_output = token_output + coalesce((SELECT sum(token_output) FROM tasks WHERE tasks.project_id = projects.id), 0),
+        token_total  = token_total  + coalesce((SELECT sum(token_total)  FROM tasks WHERE tasks.project_id = projects.id), 0),
+        cost_usd     = cost_usd     + coalesce((SELECT sum(cost_usd)     FROM tasks WHERE tasks.project_id = projects.id), 0)
+      WHERE EXISTS (SELECT 1 FROM tasks WHERE tasks.project_id = projects.id AND tasks.token_total > 0)
+    `,
+  },
 ];
 
 function splitSqlStatements(sqlText: string): string[] {
