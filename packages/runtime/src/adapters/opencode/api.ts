@@ -528,11 +528,9 @@ export async function getOpenCodeSession(
   } catch (error) {
     const classified =
       error instanceof OpenCodeRuntimeAdapterError ? error : classifyOpenCodeRuntimeError(error);
-    // Treat session-specific errors and generic "not found" as session-not-found
-    // (a 404 on /session/:id means the session doesn't exist)
+    // Treat session-specific errors or HTTP 404 on /session/:id as session-not-found
     const isSessionNotFound =
-      classified.adapterCode === "OPENCODE_SESSION_ERROR" ||
-      classified.message.toLowerCase().includes("not found");
+      classified.adapterCode === "OPENCODE_SESSION_ERROR" || classified.httpStatus === 404;
     if (isSessionNotFound) {
       logger?.warn?.(
         {

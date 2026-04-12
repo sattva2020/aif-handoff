@@ -79,4 +79,14 @@ describe("OpenCode error classification", () => {
     const error = classifyOpenCodeRuntimeError(new Error("rate limit"), 401);
     expect(error.category).toBe("auth");
   });
+
+  it("preserves httpStatus on classified error", () => {
+    const error = classifyOpenCodeRuntimeError(new Error("not found"), 404);
+    expect(error.httpStatus).toBe(404);
+  });
+
+  it("httpStatus is undefined when not provided", () => {
+    const error = classifyOpenCodeRuntimeError(new Error("timeout"));
+    expect(error.httpStatus).toBeUndefined();
+  });
 });

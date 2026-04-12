@@ -52,16 +52,19 @@ function classify(
 
 export class OpenCodeRuntimeAdapterError extends RuntimeExecutionError {
   public readonly adapterCode: string;
+  public readonly httpStatus?: number;
 
   constructor(
     message: string,
     adapterCode: string,
     category: RuntimeErrorCategory,
     cause?: unknown,
+    httpStatus?: number,
   ) {
     super(message, cause, category);
     this.name = "OpenCodeRuntimeAdapterError";
     this.adapterCode = adapterCode;
+    this.httpStatus = httpStatus;
   }
 }
 
@@ -74,5 +77,5 @@ export function classifyOpenCodeRuntimeError(
   }
   const message = messageFromUnknown(error);
   const { adapterCode, category } = classify(message, httpStatus);
-  return new OpenCodeRuntimeAdapterError(message, adapterCode, category, error);
+  return new OpenCodeRuntimeAdapterError(message, adapterCode, category, error, httpStatus);
 }
