@@ -8,6 +8,13 @@ import {
   withProcessTimeouts,
 } from "../../timeouts.js";
 import { classifyCodexRuntimeError } from "./errors.js";
+import {
+  normalizeCodexApprovalPolicy,
+  normalizeCodexSandboxMode,
+  warnOnInvalidCodexPermissionOverride,
+  type CodexApprovalPolicy,
+  type CodexSandboxMode,
+} from "./permissions.js";
 
 const IS_WINDOWS = process.platform === "win32";
 
@@ -40,61 +47,6 @@ function normalizeCodexCliEffort(value: unknown): CodexCliEffortLevel | null {
     }
   }
   return null;
-}
-
-const CODEX_APPROVAL_POLICIES = new Set([
-  "untrusted",
-  "on-failure",
-  "on-request",
-  "never",
-] as const);
-
-type CodexApprovalPolicy = "untrusted" | "on-failure" | "on-request" | "never";
-
-function normalizeCodexApprovalPolicy(value: unknown): CodexApprovalPolicy | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return CODEX_APPROVAL_POLICIES.has(trimmed as CodexApprovalPolicy)
-    ? (trimmed as CodexApprovalPolicy)
-    : null;
-}
-
-const CODEX_SANDBOX_MODES = new Set([
-  "read-only",
-  "workspace-write",
-  "danger-full-access",
-] as const);
-
-type CodexSandboxMode = "read-only" | "workspace-write" | "danger-full-access";
-
-function normalizeCodexSandboxMode(value: unknown): CodexSandboxMode | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return CODEX_SANDBOX_MODES.has(trimmed as CodexSandboxMode)
-    ? (trimmed as CodexSandboxMode)
-    : null;
-}
-
-function warnOnInvalidCodexPermissionOverride(input: {
-  logger?: CodexCliLogger;
-  runtimeId: string;
-  field: "approvalPolicy" | "sandboxMode";
-  rawValue: string | null;
-  normalizedValue: string | null;
-}): void {
-  if (!input.rawValue || input.normalizedValue) {
-    return;
-  }
-
-  input.logger?.warn?.(
-    {
-      runtimeId: input.runtimeId,
-      transport: "cli",
-      field: input.field,
-      invalidValue: input.rawValue,
-    },
-    `WARN [runtime:codex] Ignoring invalid Codex ${input.field} override`,
-  );
 }
 
 /**
@@ -134,6 +86,7 @@ function resolveCodexPermissionOverrides(
   warnOnInvalidCodexPermissionOverride({
     logger,
     runtimeId: input.runtimeId,
+    transport: "cli",
     field: "approvalPolicy",
     rawValue: rawApproval,
     normalizedValue: explicitApproval,
@@ -141,6 +94,7 @@ function resolveCodexPermissionOverrides(
   warnOnInvalidCodexPermissionOverride({
     logger,
     runtimeId: input.runtimeId,
+    transport: "cli",
     field: "sandboxMode",
     rawValue: rawSandbox,
     normalizedValue: explicitSandbox,
@@ -161,7 +115,7 @@ function resolveCodexPermissionOverrides(
       sandboxSource: explicitSandbox ? "options" : bypass ? "bypass-default" : "default",
       bypassPermissions: bypass,
     },
-    "DEBUG [runtime:codex] Resolved Codex CLI approval and sandbox settings",
+    "Resolved Codex CLI approval and sandbox settings",
   );
 
   return resolved;

@@ -489,7 +489,7 @@ describe("runCodexSdk", () => {
         source: "options",
         invalidValue: "bad-policy",
       }),
-      "WARN [runtime:codex] Ignoring invalid Codex approvalPolicy override",
+      "Ignoring invalid Codex approvalPolicy override",
     );
     expect(logger.warn).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -499,7 +499,7 @@ describe("runCodexSdk", () => {
         source: "options",
         invalidValue: "bad-sandbox",
       }),
-      "WARN [runtime:codex] Ignoring invalid Codex sandboxMode override",
+      "Ignoring invalid Codex sandboxMode override",
     );
     expect(logger.debug).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -508,7 +508,7 @@ describe("runCodexSdk", () => {
         approvalPolicy: "on-request",
         sandboxMode: "workspace-write",
       }),
-      "DEBUG [runtime:codex] Resolved Codex SDK approval and sandbox settings",
+      "Resolved Codex SDK approval and sandbox settings",
     );
   });
 });

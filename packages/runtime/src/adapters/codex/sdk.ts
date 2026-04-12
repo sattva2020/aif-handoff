@@ -21,6 +21,11 @@ import {
   withStreamTimeouts,
 } from "../../timeouts.js";
 import { classifyCodexRuntimeError } from "./errors.js";
+import {
+  normalizeCodexApprovalPolicy,
+  normalizeCodexSandboxMode,
+  warnOnInvalidCodexPermissionOverride,
+} from "./permissions.js";
 
 export interface CodexSdkLogger {
   debug?(context: Record<string, unknown>, message: string): void;
@@ -41,30 +46,6 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function readString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
-}
-
-function warnOnInvalidCodexThreadOverride(input: {
-  logger?: CodexSdkLogger;
-  runtimeId: string;
-  field: "approvalPolicy" | "sandboxMode";
-  source: "options" | "hooks";
-  rawValue: string | null;
-  normalizedValue: string | null;
-}): void {
-  if (!input.rawValue || input.normalizedValue) {
-    return;
-  }
-
-  input.logger?.warn?.(
-    {
-      runtimeId: input.runtimeId,
-      transport: "sdk",
-      field: input.field,
-      source: input.source,
-      invalidValue: input.rawValue,
-    },
-    `WARN [runtime:codex] Ignoring invalid Codex ${input.field} override`,
-  );
 }
 
 function formatToolDetail(value: unknown, maxLength = 200): string {
@@ -239,27 +220,18 @@ function buildThreadOptions(input: RuntimeRunInput, logger?: CodexSdkLogger): Th
   const rawApprovalOption = readString(options.approvalPolicy);
   const rawApprovalHook = readString(hooks.approvalPolicy);
   const explicitApproval = rawApprovalOption ?? rawApprovalHook;
-  warnOnInvalidCodexThreadOverride({
+  const normalizedApproval = normalizeCodexApprovalPolicy(explicitApproval);
+  warnOnInvalidCodexPermissionOverride({
     logger,
     runtimeId: input.runtimeId,
+    transport: "sdk",
     field: "approvalPolicy",
     source: rawApprovalOption ? "options" : "hooks",
     rawValue: explicitApproval,
-    normalizedValue:
-      explicitApproval === "never" ||
-      explicitApproval === "on-request" ||
-      explicitApproval === "on-failure" ||
-      explicitApproval === "untrusted"
-        ? explicitApproval
-        : null,
+    normalizedValue: normalizedApproval,
   });
-  if (
-    explicitApproval === "never" ||
-    explicitApproval === "on-request" ||
-    explicitApproval === "on-failure" ||
-    explicitApproval === "untrusted"
-  ) {
-    threadOpts.approvalPolicy = explicitApproval;
+  if (normalizedApproval) {
+    threadOpts.approvalPolicy = normalizedApproval;
   } else if (execution?.bypassPermissions) {
     threadOpts.approvalPolicy = "never";
   } else {
@@ -274,25 +246,18 @@ function buildThreadOptions(input: RuntimeRunInput, logger?: CodexSdkLogger): Th
   const rawSandboxOption = readString(options.sandboxMode);
   const rawSandboxHook = readString(hooks.sandboxMode);
   const explicitSandbox = rawSandboxOption ?? rawSandboxHook;
-  warnOnInvalidCodexThreadOverride({
+  const normalizedSandbox = normalizeCodexSandboxMode(explicitSandbox);
+  warnOnInvalidCodexPermissionOverride({
     logger,
     runtimeId: input.runtimeId,
+    transport: "sdk",
     field: "sandboxMode",
     source: rawSandboxOption ? "options" : "hooks",
     rawValue: explicitSandbox,
-    normalizedValue:
-      explicitSandbox === "read-only" ||
-      explicitSandbox === "workspace-write" ||
-      explicitSandbox === "danger-full-access"
-        ? explicitSandbox
-        : null,
+    normalizedValue: normalizedSandbox,
   });
-  if (
-    explicitSandbox === "read-only" ||
-    explicitSandbox === "workspace-write" ||
-    explicitSandbox === "danger-full-access"
-  ) {
-    threadOpts.sandboxMode = explicitSandbox;
+  if (normalizedSandbox) {
+    threadOpts.sandboxMode = normalizedSandbox;
   } else if (execution?.bypassPermissions) {
     threadOpts.sandboxMode = "danger-full-access";
   } else {
@@ -345,7 +310,7 @@ function buildThreadOptions(input: RuntimeRunInput, logger?: CodexSdkLogger): Th
               : "default",
       bypassPermissions: execution?.bypassPermissions === true,
     },
-    "DEBUG [runtime:codex] Resolved Codex SDK approval and sandbox settings",
+    "Resolved Codex SDK approval and sandbox settings",
   );
 
   return threadOpts;

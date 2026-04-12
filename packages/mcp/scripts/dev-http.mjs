@@ -4,6 +4,8 @@ import { spawnDev } from "../../../scripts/lib/spawn-dev.mjs";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
+// This script always starts MCP in HTTP mode, so invalid values are fatal here.
+// The root dev launcher in scripts/dev.mjs treats MCP HTTP as optional instead.
 function resolveMcpPort(value) {
   const trimmed = value?.trim();
   if (!trimmed) {

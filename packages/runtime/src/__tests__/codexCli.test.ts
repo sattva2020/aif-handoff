@@ -289,7 +289,7 @@ describe("codex cli transport", () => {
         field: "approvalPolicy",
         invalidValue: "bad-policy",
       }),
-      "WARN [runtime:codex] Ignoring invalid Codex approvalPolicy override",
+      "Ignoring invalid Codex approvalPolicy override",
     );
     expect(logger.warn).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -298,7 +298,7 @@ describe("codex cli transport", () => {
         field: "sandboxMode",
         invalidValue: "bad-sandbox",
       }),
-      "WARN [runtime:codex] Ignoring invalid Codex sandboxMode override",
+      "Ignoring invalid Codex sandboxMode override",
     );
     expect(logger.debug).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -307,7 +307,7 @@ describe("codex cli transport", () => {
         approvalPolicy: "on-request",
         sandboxMode: "workspace-write",
       }),
-      "DEBUG [runtime:codex] Resolved Codex CLI approval and sandbox settings",
+      "Resolved Codex CLI approval and sandbox settings",
     );
 
     child.stdout.emit("data", "ok");

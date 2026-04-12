@@ -1,4 +1,4 @@
-import { logger, getEnv } from "@aif/shared";
+import { logger, getEnv, parseMcpPortSetting } from "@aif/shared";
 
 const log = logger("mcp:env");
 
@@ -20,29 +20,28 @@ export interface McpEnv {
 }
 
 function resolveMcpPort(value: string | undefined, transport: McpEnv["transport"]): number {
-  const trimmed = value?.trim();
-  if (!trimmed) {
+  const parsed = parseMcpPortSetting(value);
+  if (parsed.status === "unset") {
     return 3100;
   }
 
-  const port = Number(trimmed);
-  if (Number.isInteger(port) && port > 0 && port <= 65_535) {
-    return port;
+  if (parsed.status === "valid") {
+    return parsed.port;
   }
 
   if (transport === "stdio") {
     log.warn(
       {
         transport,
-        invalidValue: trimmed,
+        invalidValue: parsed.value,
         fallbackPort: 3100,
       },
-      "[FIX] Ignoring invalid MCP_PORT because MCP transport is stdio",
+      "Ignoring invalid MCP_PORT because MCP transport is stdio",
     );
     return 3100;
   }
 
-  throw new Error(`Invalid MCP_PORT: ${trimmed}. Must be an integer between 1 and 65535.`);
+  throw new Error(`Invalid MCP_PORT: ${parsed.value}. Must be an integer between 1 and 65535.`);
 }
 
 /**

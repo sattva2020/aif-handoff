@@ -135,3 +135,4 @@ export {
 
 // Utilities
 export { withTimeout } from "./withTimeout.js";
+export { parseMcpPortSetting, type ParsedMcpPortSetting } from "./mcpPort.js";

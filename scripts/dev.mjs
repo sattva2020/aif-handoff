@@ -48,7 +48,8 @@ function loadRootEnv() {
   }
 }
 
-// Keep in sync with resolveMcpPort in packages/api/src/routes/settings.ts and packages/mcp/src/env.ts.
+// MCP HTTP is optional in the root dev launcher, so invalid values disable the
+// extra HTTP process instead of aborting the whole dev stack.
 function resolveMcpPort(value) {
   const trimmed = value?.trim();
   if (!trimmed) {
