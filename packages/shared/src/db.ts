@@ -92,6 +92,8 @@ function ensureTables(sqlite: Database.Database): void {
       rework_requested INTEGER NOT NULL DEFAULT 0,
       review_iteration_count INTEGER NOT NULL DEFAULT 0,
       max_review_iterations INTEGER NOT NULL DEFAULT 3,
+      manual_review_required INTEGER NOT NULL DEFAULT 0,
+      auto_review_state_json TEXT,
       paused INTEGER NOT NULL DEFAULT 0,
       last_heartbeat_at TEXT,
       last_synced_at TEXT,
@@ -281,6 +283,14 @@ const MIGRATIONS: Migration[] = [
       ALTER TABLE projects ADD COLUMN default_review_runtime_profile_id TEXT;
     `,
   },
+  {
+    version: 9,
+    description: "Add auto review manual handoff and state snapshot columns to tasks",
+    sql: `
+      ALTER TABLE tasks ADD COLUMN manual_review_required INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE tasks ADD COLUMN auto_review_state_json TEXT;
+    `,
+  },
 ];
 
 function splitSqlStatements(sqlText: string): string[] {
@@ -420,6 +430,22 @@ function runRuntimeBackfills(sqlite: Database.Database): void {
     log.info(
       { backfilledRows: enabledBackfill.changes },
       "Backfilled runtime profile enabled defaults",
+    );
+  }
+
+  if (hasColumn(sqlite, "tasks", "manual_review_required")) {
+    const manualReviewBackfill = sqlite
+      .prepare(
+        `
+        UPDATE tasks
+        SET manual_review_required = 0
+        WHERE manual_review_required IS NULL
+      `,
+      )
+      .run();
+    log.info(
+      { backfilledRows: manualReviewBackfill.changes },
+      "Backfilled task manual_review_required defaults",
     );
   }
 }
