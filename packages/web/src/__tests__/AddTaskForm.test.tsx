@@ -425,5 +425,21 @@ describe("AddTaskForm", () => {
         expect.any(Object),
       );
     });
+
+    it("resets priority back to None when dismissed via X and reopened", () => {
+      render(<AddTaskForm projectId="p-1" />);
+      fireEvent.click(screen.getByText("Add task"));
+      fireEvent.click(screen.getByText("None"));
+      fireEvent.click(screen.getByText("Critical"));
+      // Dismiss with the X button
+      const xButtons = screen.getAllByRole("button");
+      const xClose = xButtons.find((b) => b.querySelector("svg.lucide-x"));
+      expect(xClose).toBeDefined();
+      fireEvent.click(xClose!);
+      // Reopen — priority must be back to None
+      fireEvent.click(screen.getByText("Add task"));
+      expect(screen.getByText("None")).toBeDefined();
+      expect(screen.queryByText("Critical")).toBeNull();
+    });
   });
 });

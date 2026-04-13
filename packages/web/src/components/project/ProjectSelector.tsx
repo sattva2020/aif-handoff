@@ -358,8 +358,10 @@ export function ProjectSelector({ selectedId, onSelect, onDeselect }: Props) {
               <div>
                 <label className="text-sm font-medium">Auto-Queue Mode</label>
                 <p className="text-xs text-muted-foreground">
-                  When enabled, the coordinator advances the next backlog task (by position) into
-                  planning whenever the project has no active/locked task.
+                  When enabled, the coordinator advances backlog tasks (by position) into planning
+                  automatically. Sequential projects start the next task only after the previous
+                  reaches done. Parallel-enabled projects fill the pipeline up to the
+                  parallel-execution cap.
                 </p>
               </div>
               <Switch checked={autoQueueMode} onCheckedChange={setAutoQueueModeState} />

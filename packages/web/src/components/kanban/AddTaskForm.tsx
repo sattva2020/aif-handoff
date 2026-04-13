@@ -86,6 +86,7 @@ export function AddTaskForm({ projectId }: Props) {
     setPlanPath(defaultPlanPath);
     setRuntimeProfileId("");
     setModelOverride("");
+    setPriority(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [syncGen]);
 
@@ -408,6 +409,7 @@ export function AddTaskForm({ projectId }: Props) {
             setMaxReviewIterations(maxReviewIterationsDefault);
             setRuntimeProfileId("");
             setModelOverride("");
+            setPriority(0);
             userOverride.current = false;
           }}
         >

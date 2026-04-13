@@ -138,7 +138,9 @@ describe("ProjectSelector", () => {
 
       expect(screen.getByText("Auto-Queue Mode")).toBeDefined();
       expect(
-        screen.getByText(/When enabled, the coordinator advances the next backlog task/i),
+        screen.getByText(
+          /Sequential projects start the next task only after the previous reaches done/i,
+        ),
       ).toBeDefined();
     });
 
