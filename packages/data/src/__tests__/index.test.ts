@@ -56,6 +56,7 @@ const {
   setAutoQueueMode,
   nextBacklogTaskByPosition,
   listAutoQueueProjects,
+  countActivePipelineTasksForProject,
 } = await import("../index.js");
 
 function seedProject(id = "proj-1") {
@@ -1075,6 +1076,25 @@ describe("data layer", () => {
       const ready = createTask({ projectId: "proj-1", title: "Ready", description: "" });
       const next = nextBacklogTaskByPosition("proj-1");
       expect(next!.id).toBe(ready!.id);
+    });
+
+    it("countActivePipelineTasksForProject counts non-terminal pipeline statuses", () => {
+      const a = createTask({ projectId: "proj-1", title: "A", description: "" });
+      const b = createTask({ projectId: "proj-1", title: "B", description: "" });
+      const c = createTask({ projectId: "proj-1", title: "C", description: "" });
+      const d = createTask({ projectId: "proj-1", title: "D", description: "" });
+      // a stays in backlog (source — doesn't count)
+      updateTaskStatus(b!.id, "planning");
+      updateTaskStatus(c!.id, "implementing");
+      updateTaskStatus(d!.id, "done");
+      expect(countActivePipelineTasksForProject("proj-1")).toBe(2);
+      expect(a).toBeDefined();
+    });
+
+    it("countActivePipelineTasksForProject includes blocked_external", () => {
+      const a = createTask({ projectId: "proj-1", title: "A", description: "" });
+      updateTaskStatus(a!.id, "blocked_external");
+      expect(countActivePipelineTasksForProject("proj-1")).toBe(1);
     });
 
     it("nextBacklogTaskByPosition skips paused tasks", () => {

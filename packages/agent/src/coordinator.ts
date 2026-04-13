@@ -11,6 +11,7 @@ import {
   appendTaskActivityLog,
   listAutoQueueProjects,
   nextBacklogTaskByPosition,
+  countActivePipelineTasksForProject,
   type CoordinatorStage,
   type TaskFieldsPatch,
   type TaskRow,
@@ -448,12 +449,18 @@ export function processDueScheduledTasks(): number {
 // ── Auto-queue advance ───────────────────────────────────────
 
 /**
- * For each project with `autoQueueMode = true` that has no active/locked task,
- * pick the next backlog task by position and fire it into planning.
+ * For each project with `autoQueueMode = true`, fill the pipeline up to the
+ * project's pool depth by advancing backlog tasks (lowest `position` first)
+ * into `planning`. Pool depth is `1` for sequential projects and
+ * `COORDINATOR_MAX_CONCURRENT_TASKS` for parallel projects, so the same
+ * code path covers both:
+ *   - non-parallel project: strict sequential — next task starts only after
+ *     the previous reaches a terminal status (done/verified)
+ *   - parallel project: keeps the in-flight count at the parallel cap
  *
- * Reuses the sequential guarantee from `hasActiveLockedTaskForProject` — we
- * never advance while the project is busy. This matches the non-parallel
- * project semantics already enforced by the PIPELINE loop.
+ * "In flight" = any non-terminal pipeline status (planning..review and
+ * blocked_external). Terminal = done/verified. Backlog itself is the source
+ * pool and doesn't count.
  */
 export function processAutoQueueAdvance(): number {
   const projects = listAutoQueueProjects();
@@ -464,37 +471,62 @@ export function processAutoQueueAdvance(): number {
 
   let advanced = 0;
   for (const project of projects) {
-    if (hasActiveLockedTaskForProject(project.id)) {
-      log.debug({ projectId: project.id }, "Auto-queue: project has active/locked task, skipping");
+    const limit = project.parallelEnabled ? env.COORDINATOR_MAX_CONCURRENT_TASKS : 1;
+    let active = countActivePipelineTasksForProject(project.id);
+
+    if (active >= limit) {
+      log.debug(
+        { projectId: project.id, active, limit },
+        "Auto-queue: project pipeline at capacity, skipping",
+      );
       continue;
     }
 
-    const next = nextBacklogTaskByPosition(project.id);
-    if (!next) {
-      log.debug({ projectId: project.id }, "Auto-queue: no backlog task ready to advance");
-      continue;
-    }
+    // Fill the pool up to the limit in this single tick. Loop bound keeps it
+    // cheap (limit is small, default 3) and avoids waiting another full poll
+    // cycle to start the second/third task.
+    while (active < limit) {
+      const next = nextBacklogTaskByPosition(project.id);
+      if (!next) {
+        log.debug(
+          { projectId: project.id, active, limit },
+          "Auto-queue: no more backlog tasks ready to advance",
+        );
+        break;
+      }
 
-    const nowIso = new Date().toISOString();
-    try {
-      updateTaskStatus(
-        next.id,
-        "planning",
-        { ...CLEAN_STATE_RESET, scheduledAt: null },
-        { title: next.title, fromStatus: next.status },
-      );
-      appendTaskActivityLog(
-        next.id,
-        `[${nowIso}] [auto-queue] Advanced by project auto-queue mode`,
-      );
-      void notifyProjectBroadcast(project.id, "project:auto_queue_advanced", { taskId: next.id });
-      advanced += 1;
-      log.info(
-        { projectId: project.id, taskId: next.id, title: next.title, position: next.position },
-        "Auto-queue advanced next backlog task",
-      );
-    } catch (err) {
-      log.error({ projectId: project.id, taskId: next.id, err }, "Auto-queue advance failed");
+      const nowIso = new Date().toISOString();
+      try {
+        updateTaskStatus(
+          next.id,
+          "planning",
+          { ...CLEAN_STATE_RESET, scheduledAt: null },
+          { title: next.title, fromStatus: next.status },
+        );
+        appendTaskActivityLog(
+          next.id,
+          `[${nowIso}] [auto-queue] Advanced by project auto-queue mode (pool ${active + 1}/${limit})`,
+        );
+        void notifyProjectBroadcast(project.id, "project:auto_queue_advanced", {
+          taskId: next.id,
+        });
+        advanced += 1;
+        active += 1;
+        log.info(
+          {
+            projectId: project.id,
+            taskId: next.id,
+            title: next.title,
+            position: next.position,
+            poolDepth: `${active}/${limit}`,
+          },
+          "Auto-queue advanced next backlog task",
+        );
+      } catch (err) {
+        log.error({ projectId: project.id, taskId: next.id, err }, "Auto-queue advance failed");
+        // Bail out of this project's loop on error; try again next tick.
+        break;
+      }
     }
   }
 

@@ -777,6 +777,26 @@ export function claimTask(taskId: string, coordinatorId: string, lockDurationMs:
 }
 
 /** Check if any task in a project is currently locked (active, non-expired). */
+/**
+ * Count tasks the auto-queue must consider "still in flight" before advancing
+ * the next backlog item. Includes blocked_external so retry-cycles don't
+ * cause the pool to overshoot. Excludes terminal (done/verified) and the
+ * source state (backlog).
+ */
+export function countActivePipelineTasksForProject(projectId: string): number {
+  const row = getDb()
+    .select({ cnt: count() })
+    .from(tasks)
+    .where(
+      and(
+        eq(tasks.projectId, projectId),
+        inArray(tasks.status, ["planning", "plan_ready", "implementing", "review", "blocked_external"]),
+      ),
+    )
+    .get();
+  return row?.cnt ?? 0;
+}
+
 export function hasActiveLockedTaskForProject(projectId: string): boolean {
   const nowIso = new Date().toISOString();
   const row = getDb()

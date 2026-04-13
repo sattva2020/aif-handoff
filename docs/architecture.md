@@ -186,19 +186,34 @@ automatically after `scheduledAt` is cleared.
 ### Auto-Queue Mode
 
 Projects expose an `autoQueueMode` flag (default `false`). When `true`,
-`processAutoQueueAdvance()` runs every poll cycle and for each such project:
+`processAutoQueueAdvance()` runs every poll cycle and for each such project
+fills the pipeline up to a **pool depth**:
 
-1. Skips the project if any task is locked/active (reuses the sequential
-   guarantee from `hasActiveLockedTaskForProject`).
-2. Picks the next backlog task by ascending `position` (skipping paused tasks
-   and tasks whose `scheduledAt` is still in the future — those belong to the
-   scheduler).
-3. Fires the task into `planning` via the same patch as the scheduler trigger.
-4. Appends an `[auto-queue]` activity-log entry and broadcasts
-   `project:auto_queue_advanced` with the fired task id.
+- **Sequential project** (`parallelEnabled = false`): pool depth = `1`. The
+  next backlog task fires into `planning` only after the previous one
+  reaches a terminal status (`done` / `verified`). "In-flight" is counted by
+  pipeline status, not by lock — so transitions between stages do not open a
+  window for early advance.
+- **Parallel project** (`parallelEnabled = true`): pool depth =
+  `COORDINATOR_MAX_CONCURRENT_TASKS`. Auto-queue keeps that many tasks in
+  flight, advancing as soon as room frees up.
+
+The advance step:
+
+1. Compute `limit = parallelEnabled ? COORDINATOR_MAX_CONCURRENT_TASKS : 1`.
+2. Read `active = countActivePipelineTasksForProject(project)` — counts tasks
+   in `planning`, `plan_ready`, `implementing`, `review`, or `blocked_external`.
+   Backlog (source) and `done`/`verified` (terminal) do not count.
+3. While `active < limit`, pick the next backlog task by ascending `position`
+   (skipping paused tasks and tasks with future `scheduledAt`), fire it into
+   `planning`, append an `[auto-queue]` activity-log entry, and broadcast
+   `project:auto_queue_advanced` with the new task id.
+4. The fill loop runs in a single tick so a parallel project can start its
+   full pool without waiting for additional poll cycles.
 
 Auto-queue and scheduled execution compose cleanly: a due scheduled task fires
-first; if none is due, auto-queue advances the next backlog item.
+first; if none is due, auto-queue advances the next backlog item up to the
+project's pool depth.
 
 ## Roadmap Import
 
