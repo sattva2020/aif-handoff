@@ -350,6 +350,11 @@ describe("roadmapGeneration", () => {
 
       const stored = findTasksByRoadmapAlias(projectId, "sprint-1");
       expect(stored).toHaveLength(2);
+      // Every generated task must have skipReview=true so the auto-pipeline
+      // doesn't pause on review for roadmap imports.
+      for (const task of stored) {
+        expect(task.skipReview).toBe(true);
+      }
     });
 
     it("should skip duplicates by normalized title", () => {

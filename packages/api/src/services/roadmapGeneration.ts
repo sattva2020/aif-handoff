@@ -518,6 +518,7 @@ export function importGeneratedTasks(
       roadmapAlias: alias,
       tags,
       planPath,
+      skipReview: true,
       useSubagents: getEnv().AGENT_USE_SUBAGENTS,
     });
 
