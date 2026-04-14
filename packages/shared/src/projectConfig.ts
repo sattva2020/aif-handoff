@@ -42,10 +42,29 @@ export interface AifProjectGit {
   skip_push_after_commit: boolean;
 }
 
+export interface AifProjectLanguage {
+  /** Locale for UI prompts (currently informational; reserved for future UI). */
+  ui: string;
+  /**
+   * Locale in which AI should produce artifacts: task descriptions, plans,
+   * review notes, commit messages, roadmap items, chat replies.
+   * BCP-47-ish language code, lowercased. "en" (default) means no directive is
+   * injected and the model picks its native default.
+   */
+  artifacts: string;
+  /**
+   * Policy for technical tokens (identifiers, API names, file paths, CLI flags,
+   * code snippets). "keep" — leave them in English even when artifacts language
+   * is non-English. "translate" — translate alongside the rest.
+   */
+  technical_terms: "keep" | "translate";
+}
+
 export interface AifProjectConfig {
   paths: AifProjectPaths;
   workflow: AifProjectWorkflow;
   git: AifProjectGit;
+  language: AifProjectLanguage;
 }
 
 const DEFAULT_PATHS: AifProjectPaths = {
@@ -83,6 +102,25 @@ const DEFAULT_GIT: AifProjectGit = {
   skip_push_after_commit: false,
 };
 
+const DEFAULT_LANGUAGE: AifProjectLanguage = {
+  ui: "en",
+  artifacts: "en",
+  technical_terms: "keep",
+};
+
+function normalizeLanguage(raw: unknown): AifProjectLanguage {
+  const obj = (raw ?? {}) as Partial<AifProjectLanguage>;
+  const ui =
+    typeof obj.ui === "string" && obj.ui.trim() ? obj.ui.trim().toLowerCase() : DEFAULT_LANGUAGE.ui;
+  const artifacts =
+    typeof obj.artifacts === "string" && obj.artifacts.trim()
+      ? obj.artifacts.trim().toLowerCase()
+      : DEFAULT_LANGUAGE.artifacts;
+  const technicalTerms =
+    obj.technical_terms === "translate" ? "translate" : DEFAULT_LANGUAGE.technical_terms;
+  return { ui, artifacts, technical_terms: technicalTerms };
+}
+
 /** Cached configs keyed by projectRoot to avoid re-reading on every call */
 const configCache = new Map<string, { config: AifProjectConfig; mtimeMs: number }>();
 
@@ -99,6 +137,7 @@ export function getProjectConfig(projectRoot: string): AifProjectConfig {
       paths: { ...DEFAULT_PATHS },
       workflow: { ...DEFAULT_WORKFLOW },
       git: { ...DEFAULT_GIT },
+      language: { ...DEFAULT_LANGUAGE },
     };
   }
 
@@ -119,6 +158,7 @@ export function getProjectConfig(projectRoot: string): AifProjectConfig {
     paths: { ...DEFAULT_PATHS, ...yamlPaths },
     workflow: { ...DEFAULT_WORKFLOW, ...yamlWorkflow },
     git: { ...DEFAULT_GIT, ...yamlGit },
+    language: normalizeLanguage(parsed?.language),
   };
 
   configCache.set(projectRoot, { config, mtimeMs: stat.mtimeMs });
