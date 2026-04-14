@@ -80,6 +80,48 @@ describe("getProjectConfig", () => {
     expect(config.workflow.verify_mode).toBe("normal");
   });
 
+  it("returns default git section when config.yaml does not exist", () => {
+    const config = getProjectConfig(projectRoot);
+    expect(config.git.enabled).toBe(true);
+    expect(config.git.base_branch).toBe("main");
+    expect(config.git.create_branches).toBe(true);
+    expect(config.git.branch_prefix).toBe("feature/");
+    expect(config.git.skip_push_after_commit).toBe(false);
+  });
+
+  it("overrides git.skip_push_after_commit=true from config.yaml", () => {
+    writeFileSync(
+      join(projectRoot, ".ai-factory", "config.yaml"),
+      "git:\n  skip_push_after_commit: true\n",
+    );
+    const config = getProjectConfig(projectRoot);
+    expect(config.git.skip_push_after_commit).toBe(true);
+    // Other git defaults preserved
+    expect(config.git.enabled).toBe(true);
+    expect(config.git.base_branch).toBe("main");
+  });
+
+  it("overrides full git section from config.yaml", () => {
+    writeFileSync(
+      join(projectRoot, ".ai-factory", "config.yaml"),
+      [
+        "git:",
+        "  enabled: false",
+        "  base_branch: develop",
+        "  create_branches: false",
+        "  branch_prefix: feat/",
+        "  skip_push_after_commit: true",
+        "",
+      ].join("\n"),
+    );
+    const config = getProjectConfig(projectRoot);
+    expect(config.git.enabled).toBe(false);
+    expect(config.git.base_branch).toBe("develop");
+    expect(config.git.create_branches).toBe(false);
+    expect(config.git.branch_prefix).toBe("feat/");
+    expect(config.git.skip_push_after_commit).toBe(true);
+  });
+
   it("clearProjectConfigCache invalidates cache", () => {
     writeFileSync(join(projectRoot, ".ai-factory", "config.yaml"), "paths:\n  plan: v1/PLAN.md\n");
     const first = getProjectConfig(projectRoot);

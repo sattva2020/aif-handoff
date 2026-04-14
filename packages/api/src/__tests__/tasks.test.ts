@@ -1415,7 +1415,49 @@ describe("tasks API", () => {
       expect(mockRunApiRuntimeOneShot).toHaveBeenCalled();
       const callArgs =
         mockRunApiRuntimeOneShot.mock.calls[mockRunApiRuntimeOneShot.mock.calls.length - 1][0];
-      expect(callArgs.prompt).toBe("/aif-commit");
+      expect(callArgs.workflowKind).toBe("commit");
+      expect(callArgs.fallbackSlashCommand).toBe("/aif-commit");
+      expect(callArgs.prompt).toContain("git add -A");
+
+      const { broadcast } = await import("../ws.js");
+      const types = (
+        broadcast as unknown as { mock: { calls: Array<[{ type: string }]> } }
+      ).mock.calls.map((c) => c[0].type);
+      expect(types).toContain("task:commit_started");
+      expect(types).toContain("task:commit_done");
+    });
+
+    it("should broadcast task:commit_failed when runtime throws", async () => {
+      const db = testDb.current;
+      insertTestProject(db);
+      db.insert(tasks)
+        .values({
+          id: "ev-commit-fail",
+          projectId: "test-project",
+          title: "Done commit fail",
+          status: "done",
+        })
+        .run();
+
+      mockRunApiRuntimeOneShot.mockClear();
+      mockRunApiRuntimeOneShot.mockRejectedValueOnce(new Error("runtime boom"));
+      const { broadcast } = await import("../ws.js");
+      (broadcast as unknown as { mockClear: () => void }).mockClear();
+
+      const res = await app.request("/tasks/ev-commit-fail/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event: "approve_done", commitOnApprove: true }),
+      });
+      expect(res.status).toBe(200);
+      await new Promise((r) => setTimeout(r, 200));
+
+      const calls = (
+        broadcast as unknown as { mock: { calls: Array<[{ type: string; payload: unknown }]> } }
+      ).mock.calls;
+      const failed = calls.find((c) => c[0].type === "task:commit_failed");
+      expect(failed).toBeDefined();
+      expect((failed![0].payload as { error?: string }).error).toBe("runtime boom");
     });
 
     it("should not fire /aif-commit query when commitOnApprove is not set", async () => {

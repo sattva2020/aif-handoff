@@ -25,6 +25,7 @@ export {
   type WsEvent,
   type RoadmapCompletePayload,
   type RoadmapErrorPayload,
+  type TaskCommitPayload,
   type ChatMessage,
   type ChatMessageAttachment,
   type ChatAttachment,

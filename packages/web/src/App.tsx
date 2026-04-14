@@ -5,6 +5,7 @@ import { Board } from "./components/kanban/Board";
 import { TaskDetail } from "./components/task/TaskDetail";
 import { CommandPalette } from "./components/layout/CommandPalette";
 import { useWebSocket } from "./hooks/useWebSocket";
+import { useCommitToasts } from "./hooks/useCommitToasts";
 import { useProjects } from "./hooks/useProjects";
 import { useTasks } from "./hooks/useTasks";
 import { useTheme } from "./hooks/useTheme";
@@ -30,6 +31,7 @@ const queryClient = new QueryClient({
 
 function AppContent() {
   useWebSocket();
+  useCommitToasts();
   const { theme, toggleTheme } = useTheme();
   const { data: projects } = useProjects();
   const [project, setProject] = useState<Project | null>(null);
