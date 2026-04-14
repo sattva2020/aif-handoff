@@ -258,7 +258,10 @@ export type WsEventType =
   | "task:activity"
   | "task:scheduled_fired"
   | "project:auto_queue_mode_changed"
-  | "project:auto_queue_advanced";
+  | "project:auto_queue_advanced"
+  | "task:commit_started"
+  | "task:commit_done"
+  | "task:commit_failed";
 
 export interface RoadmapCompletePayload {
   projectId: string;
@@ -276,6 +279,18 @@ export interface RoadmapErrorPayload {
   code: string;
 }
 
+/**
+ * Emitted when the "create commit" checkbox is used on approve-done, to
+ * surface the lifecycle of the fire-and-forget `/aif-commit` run to the UI.
+ * `status` is redundant with `type` but makes the payload self-describing.
+ */
+export interface TaskCommitPayload {
+  taskId: string;
+  projectId: string;
+  status: "started" | "done" | "failed";
+  error?: string;
+}
+
 export interface WsEvent {
   type: WsEventType;
   payload:
@@ -287,7 +302,8 @@ export interface WsEvent {
     | ChatStreamTokenPayload
     | ChatDonePayload
     | ChatErrorPayload
-    | ChatSession;
+    | ChatSession
+    | TaskCommitPayload;
 }
 
 export const RuntimeTransport = {

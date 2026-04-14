@@ -133,6 +133,7 @@ export {
   type AifProjectConfig,
   type AifProjectPaths,
   type AifProjectWorkflow,
+  type AifProjectGit,
 } from "./projectConfig.js";
 
 // Telegram notifications

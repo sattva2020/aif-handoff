@@ -436,10 +436,34 @@ tasksRouter.post("/:id/events", jsonValidator(taskEventSchema), async (c) => {
       broadcast({ type: "agent:wake", payload: { id: handled.task.id } });
     }
 
-    // Fire-and-forget: run /aif-commit when approved with commit checkbox
+    // Fire-and-forget: run /aif-commit when approved with commit checkbox.
+    // Broadcast lifecycle over WS so the UI can show a spinner/toast and the
+    // approve modal does not close without feedback.
     if (event === "approve_done" && commitOnApprove) {
-      const { runCommitQuery } = await import("../services/commitGeneration.js");
-      void runCommitQuery(handled.task.projectId);
+      const taskId = handled.task.id;
+      const projectId = handled.task.projectId;
+      log.info({ taskId, projectId }, "Approve-done commit flow started");
+      broadcast({
+        type: "task:commit_started",
+        payload: { taskId, projectId, status: "started" },
+      });
+      void (async () => {
+        const { runCommitQuery } = await import("../services/commitGeneration.js");
+        const result = await runCommitQuery({ projectId, taskId });
+        if (result.ok) {
+          log.info({ taskId, projectId }, "Approve-done commit flow succeeded");
+          broadcast({
+            type: "task:commit_done",
+            payload: { taskId, projectId, status: "done" },
+          });
+        } else {
+          log.error({ taskId, projectId, error: result.error }, "Approve-done commit flow failed");
+          broadcast({
+            type: "task:commit_failed",
+            payload: { taskId, projectId, status: "failed", error: result.error },
+          });
+        }
+      })();
     }
 
     return c.json(toTaskRouteResponse(handled.task));

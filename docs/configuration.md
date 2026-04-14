@@ -360,13 +360,27 @@ The config is editable via the **Global Settings** dialog in the web UI (gear ic
 
 **`git`** — git-aware workflow settings:
 
-| Key                      | Default    | Description                        |
-| ------------------------ | ---------- | ---------------------------------- |
-| `enabled`                | `true`     | Use git-aware workflows            |
-| `base_branch`            | `main`     | Default branch for diff/review     |
-| `create_branches`        | `true`     | Auto-create feature branches       |
-| `branch_prefix`          | `feature/` | Prefix for branch names            |
-| `skip_push_after_commit` | `false`    | Skip push prompt after /aif-commit |
+| Key                      | Default    | Description                    |
+| ------------------------ | ---------- | ------------------------------ |
+| `enabled`                | `true`     | Use git-aware workflows        |
+| `base_branch`            | `main`     | Default branch for diff/review |
+| `create_branches`        | `true`     | Auto-create feature branches   |
+| `branch_prefix`          | `feature/` | Prefix for branch names        |
+| `skip_push_after_commit` | `false`    | Skip push after /aif-commit    |
+
+#### `skip_push_after_commit` semantics
+
+Controls whether the approve-done auto-commit flow (and any other `/aif-commit` run originating from the API) performs `git push` after creating the commit:
+
+- **`false` (default):** the runtime is instructed to stage everything with `git add -A`, create one conventional commit, and then run `git push` on the current branch.
+- **`true`:** the runtime creates the commit but MUST NOT push — useful when you want to review the commit locally or rely on an external push step.
+
+The setting is editable from the web UI (`Global Settings → Project config`). Because it's written into `.ai-factory/config.yaml`, it is read on every commit run — no restart required.
+
+The commit lifecycle is surfaced over WebSocket as `task:commit_started`, `task:commit_done`, and `task:commit_failed` events. The web UI subscribes to these and:
+
+- shows a toast for each event (`Creating commit…`, `Commit created`, `Commit failed: <error>`);
+- keeps the "Approve done" modal open with an inline spinner until the commit is acknowledged, so the user knows whether the commit actually ran.
 
 ### API Endpoints
 

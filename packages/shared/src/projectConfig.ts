@@ -29,9 +29,23 @@ export interface AifProjectWorkflow {
   verify_mode: "strict" | "normal" | "lenient";
 }
 
+export interface AifProjectGit {
+  enabled: boolean;
+  base_branch: string;
+  create_branches: boolean;
+  branch_prefix: string;
+  /**
+   * When true, `/aif-commit` (and approve-done auto-commit flow) must create a
+   * commit but NOT push. When false (default), also push to the current branch
+   * after committing. Surfaced in the web settings UI.
+   */
+  skip_push_after_commit: boolean;
+}
+
 export interface AifProjectConfig {
   paths: AifProjectPaths;
   workflow: AifProjectWorkflow;
+  git: AifProjectGit;
 }
 
 const DEFAULT_PATHS: AifProjectPaths = {
@@ -61,6 +75,14 @@ const DEFAULT_WORKFLOW: AifProjectWorkflow = {
   verify_mode: "normal",
 };
 
+const DEFAULT_GIT: AifProjectGit = {
+  enabled: true,
+  base_branch: "main",
+  create_branches: true,
+  branch_prefix: "feature/",
+  skip_push_after_commit: false,
+};
+
 /** Cached configs keyed by projectRoot to avoid re-reading on every call */
 const configCache = new Map<string, { config: AifProjectConfig; mtimeMs: number }>();
 
@@ -73,7 +95,11 @@ export function getProjectConfig(projectRoot: string): AifProjectConfig {
   const configPath = join(projectRoot, ".ai-factory", "config.yaml");
 
   if (!existsSync(configPath)) {
-    return { paths: { ...DEFAULT_PATHS }, workflow: { ...DEFAULT_WORKFLOW } };
+    return {
+      paths: { ...DEFAULT_PATHS },
+      workflow: { ...DEFAULT_WORKFLOW },
+      git: { ...DEFAULT_GIT },
+    };
   }
 
   const stat = statSync(configPath);
@@ -87,10 +113,12 @@ export function getProjectConfig(projectRoot: string): AifProjectConfig {
 
   const yamlPaths = (parsed?.paths ?? {}) as Partial<AifProjectPaths>;
   const yamlWorkflow = (parsed?.workflow ?? {}) as Partial<AifProjectWorkflow>;
+  const yamlGit = (parsed?.git ?? {}) as Partial<AifProjectGit>;
 
   const config: AifProjectConfig = {
     paths: { ...DEFAULT_PATHS, ...yamlPaths },
     workflow: { ...DEFAULT_WORKFLOW, ...yamlWorkflow },
+    git: { ...DEFAULT_GIT, ...yamlGit },
   };
 
   configCache.set(projectRoot, { config, mtimeMs: stat.mtimeMs });

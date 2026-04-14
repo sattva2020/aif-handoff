@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Task } from "@aif/shared/browser";
 
@@ -334,21 +334,72 @@ describe("TaskDetail", () => {
     expect(screen.getByText("MANUAL REVIEW")).toBeDefined();
   });
 
-  it("should confirm approve_done and send deletePlanFile=false by default", () => {
+  it("confirms approve_done without commit closes the modal immediately", () => {
     const onClose = vi.fn();
     render(<TaskDetail taskId="detail-done" onClose={onClose} />, { wrapper: Wrapper });
 
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
     expect(screen.getByText("Approve done task?")).toBeDefined();
+
+    // Uncheck the commit box so the modal closes synchronously (legacy path).
+    const checkboxes = screen.getAllByRole("checkbox");
+    fireEvent.click(checkboxes[1]); // commit checkbox
     fireEvent.click(screen.getAllByRole("button", { name: "Approve" })[1]);
 
     expect(mutateTaskEvent).toHaveBeenCalledWith({
       id: "detail-done",
       event: "approve_done",
       deletePlanFile: false,
-      commitOnApprove: true,
+      commitOnApprove: false,
     });
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("keeps modal open while commit is pending and closes on WS commit_done", () => {
+    const onClose = vi.fn();
+    render(<TaskDetail taskId="detail-done" onClose={onClose} />, { wrapper: Wrapper });
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Approve" })[1]);
+
+    // Mutation fires with commit=true (default).
+    expect(mutateTaskEvent).toHaveBeenCalledWith({
+      id: "detail-done",
+      event: "approve_done",
+      deletePlanFile: false,
+      commitOnApprove: true,
+    });
+    // Modal stays open; onClose not called yet.
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByText(/Running \/aif-commit/)).toBeDefined();
+
+    // Simulate WS ack for this task → modal closes.
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("task:commit_done", {
+          detail: { taskId: "detail-done", projectId: "p1", status: "done" },
+        }),
+      );
+    });
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("keeps modal open on WS commit_failed so user can see the error", () => {
+    const onClose = vi.fn();
+    render(<TaskDetail taskId="detail-done" onClose={onClose} />, { wrapper: Wrapper });
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Approve" })[1]);
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("task:commit_failed", {
+          detail: { taskId: "detail-done", projectId: "p1", status: "failed", error: "nope" },
+        }),
+      );
+    });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Running \/aif-commit/)).toBeNull();
   });
 
   it("should send deletePlanFile=true when checkbox is selected in approve confirmation", () => {
@@ -359,13 +410,14 @@ describe("TaskDetail", () => {
     expect(screen.getByText("Delete plan file (FIX_PLAN.md)")).toBeDefined();
     const checkboxes = screen.getAllByRole("checkbox");
     fireEvent.click(checkboxes[0]); // delete plan file checkbox
+    fireEvent.click(checkboxes[1]); // commit checkbox (uncheck) to close modal synchronously
     fireEvent.click(screen.getAllByRole("button", { name: "Approve" })[1]);
 
     expect(mutateTaskEvent).toHaveBeenCalledWith({
       id: "detail-done-fix",
       event: "approve_done",
       deletePlanFile: true,
-      commitOnApprove: true,
+      commitOnApprove: false,
     });
     expect(onClose).toHaveBeenCalled();
   });
