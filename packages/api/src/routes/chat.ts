@@ -12,6 +12,7 @@ import {
   type RuntimeAdapter,
   type RuntimeEvent,
   type RuntimeRunInput,
+  type RuntimeToolQuestionPayload,
 } from "@aif/runtime";
 import {
   logger,
@@ -60,6 +61,59 @@ const PROJECT_SCOPE_SYSTEM_APPEND =
   "Do not inspect or modify files in the orchestrator monorepo or in parent/sibling directories " +
   "unless the user explicitly asks for that path. Avoid broad discovery outside the current project root.";
 
+const CHAT_ASKUSERQUESTION_HINT =
+  "Chat interaction rule: the AIF chat UI renders AskUserQuestion tool calls as a markdown block " +
+  "with the question, header, and numbered options — use the tool normally when you need structured " +
+  "input. The user's next chat message is their answer and the session resumes with that answer in " +
+  "history; never wait silently.";
+
+const NOISY_TOOL_NAMES = new Set(["Read", "Glob", "Grep", "LS", "NotebookRead"]);
+
+type NormalizedQuestion = {
+  question: string;
+  header?: string;
+  options: Array<{ label: string; description?: string }>;
+};
+
+function renderQuestionBlock(entry: NormalizedQuestion): string[] {
+  const lines: string[] = [];
+  if (entry.header) lines.push(`**${entry.header}**`);
+  if (entry.question) lines.push(`**❓ ${entry.question}**`);
+  if (entry.options.length > 0) {
+    lines.push("");
+    entry.options.forEach((option, index) => {
+      const description =
+        option.description && option.description.trim().length > 0
+          ? ` — ${option.description.trim()}`
+          : "";
+      lines.push(`${index + 1}. ${option.label}${description}`);
+    });
+  }
+  return lines;
+}
+
+function formatToolQuestion(payload: RuntimeToolQuestionPayload): string | null {
+  const blocks = payload.questions
+    .map((entry) =>
+      renderQuestionBlock({
+        question: entry.question,
+        header: entry.header,
+        options: entry.options ?? [],
+      }),
+    )
+    .filter((block) => block.length > 0);
+  if (blocks.length === 0) return null;
+  const lines: string[] = ["", ""];
+  blocks.forEach((block, index) => {
+    if (index > 0) lines.push("", "---", "");
+    lines.push(...block);
+  });
+  lines.push("");
+  lines.push("_Answer by number or free text in the next message._");
+  lines.push("", "");
+  return lines.join("\n");
+}
+
 const CHAT_ACTIONS_PROMPT = `
 Identity: You are AIFer.
 
@@ -88,7 +142,7 @@ interface VirtualRuntimeSessionRef {
 }
 
 function buildContextAppend(projectName: string, task: Task | null): string {
-  const parts = [PROJECT_SCOPE_SYSTEM_APPEND];
+  const parts = [PROJECT_SCOPE_SYSTEM_APPEND, CHAT_ASKUSERQUESTION_HINT];
 
   parts.push(`\nCurrent project: "${projectName}"`);
 
@@ -828,6 +882,8 @@ chatRouter.post("/", jsonValidator(chatRequestSchema), async (c) => {
       sendToClient(clientId, tokenEvent);
     };
 
+    let lastToolPromptId: string | null = null;
+
     const onRuntimeEvent = (event: RuntimeEvent) => {
       if (event.type === "stream:text" && event.message) {
         hasStreamedTokens = true;
@@ -838,6 +894,49 @@ chatRouter.post("/", jsonValidator(chatRequestSchema), async (c) => {
 
       if (event.type === "tool:summary" && event.message) {
         sendToken(`\n\n> ${event.message}\n\n`);
+        return;
+      }
+
+      if (event.type === "tool:question") {
+        const payload = event.data as unknown as RuntimeToolQuestionPayload | undefined;
+        if (!payload) return;
+        if (payload.toolUseId && payload.toolUseId === lastToolPromptId) return;
+        const rendered = formatToolQuestion(payload);
+        if (rendered) {
+          log.debug(
+            {
+              tool: payload.toolName,
+              conversationId: chatConversationId,
+              questionCount: payload.questions.length,
+            },
+            "DEBUG [chat] tool:question rendered",
+          );
+          sendToken(rendered);
+          if (payload.toolUseId) lastToolPromptId = payload.toolUseId;
+        }
+        return;
+      }
+
+      if (event.type === "tool:use") {
+        const data = (event.data ?? {}) as Record<string, unknown>;
+        const toolName = typeof data.name === "string" ? data.name : null;
+        if (!toolName) return;
+        if (toolName === "AskUserQuestion") {
+          // Rendered via the adapter-normalized tool:question event — skip.
+          return;
+        }
+        if (NOISY_TOOL_NAMES.has(toolName) || toolName.startsWith("mcp__handoff__")) {
+          log.debug(
+            { tool: toolName, conversationId: chatConversationId },
+            "DEBUG [chat] tool:use suppressed (noisy)",
+          );
+          return;
+        }
+        log.debug(
+          { tool: toolName, conversationId: chatConversationId, hasQuestion: false },
+          "DEBUG [chat] tool:use forwarded",
+        );
+        sendToken(`\n\n> 🔧 ${toolName}\n\n`);
       }
     };
 

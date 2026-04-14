@@ -242,6 +242,59 @@ describe("Claude runtime adapter", () => {
     });
   });
 
+  it("emits tool:use and tool:question events when SDK stream yields AskUserQuestion", async () => {
+    queryMock.mockImplementation(async function* () {
+      yield { type: "system", subtype: "init", session_id: "runtime-session-q" };
+      yield {
+        type: "assistant",
+        session_id: "runtime-session-q",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "tool-xyz",
+              name: "AskUserQuestion",
+              input: {
+                questions: [
+                  {
+                    question: "Choose path",
+                    options: [{ label: "A" }, { label: "B" }],
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      };
+      yield {
+        type: "result",
+        subtype: "success",
+        result: "",
+        session_id: "runtime-session-q",
+        usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+        total_cost_usd: 0,
+      };
+    });
+
+    const onEvent = vi.fn();
+    const adapter = createClaudeRuntimeAdapter();
+    await adapter.run(
+      createRunInput({
+        execution: { startTimeoutMs: 10, startRetryDelayMs: 0, onEvent },
+      }),
+    );
+
+    const events = onEvent.mock.calls.map(
+      (call) => call[0] as { type: string; data?: { toolUseId?: string; questions?: unknown[] } },
+    );
+    const toolUseEvent = events.find((e) => e.type === "tool:use");
+    const toolQuestion = events.find((e) => e.type === "tool:question");
+    expect(toolUseEvent).toBeTruthy();
+    expect(toolQuestion).toBeTruthy();
+    expect(toolQuestion?.data?.toolUseId).toBe("tool-xyz");
+    expect(toolQuestion?.data?.questions).toHaveLength(1);
+  });
+
   it("retries once when first message exceeds query_start_timeout", async () => {
     queryMock
       .mockImplementationOnce(delayedSuccess(50, "late-first"))

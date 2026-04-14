@@ -249,6 +249,12 @@ Set `AGENT_BYPASS_PERMISSIONS=false`. Each adapter then falls back to its safer 
 
 - **Codex:** `approval_policy=on-request` + `sandbox_mode=workspace-write` — the agent runs inside the workspace with network access disabled and escalates unknown actions for approval. Per-profile overrides (`options.approvalPolicy`, `options.sandboxMode`) always take precedence.
 
+### Chat mode specifics (issue #74)
+
+The chat route honours the same `AGENT_BYPASS_PERMISSIONS` flag. When it is off, Claude may request permission on sensitive files (e.g. creating `mcp.json` during `/aif` bootstrap). The permission prompt is issued inside the Claude process and cannot be rendered in the chat UI — the conversation appears to pause. Set `AGENT_BYPASS_PERMISSIONS=true` if you run `/aif`-style bootstrap flows from chat.
+
+Slash commands invoked from chat (e.g. `/aif`, `/aif-improve`) may call Claude's `AskUserQuestion` tool. The chat route renders the question and its options as a markdown message; the user's next chat message is treated as the answer and the session resumes with that answer in history. No interactive buttons yet — this is a follow-up (see phase 2 in the related plan).
+
 ## Parallel Execution (Experimental)
 
 By default, the coordinator processes one task at a time per project. Parallel execution allows multiple tasks to run concurrently for projects that opt in.

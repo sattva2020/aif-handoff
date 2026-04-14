@@ -586,4 +586,113 @@ describe("chat API", () => {
       }),
     );
   });
+
+  it("renders tool:question events as a markdown prompt with header, question, and numbered options", async () => {
+    mockAdapterRun.mockImplementation(async (input: RuntimeRunInput) => {
+      const onEvent = input.execution?.onEvent as
+        | ((event: Record<string, unknown>) => void)
+        | undefined;
+      onEvent?.({
+        type: "tool:question",
+        data: {
+          toolUseId: "tool-1",
+          toolName: "AskUserQuestion",
+          questions: [
+            {
+              question: "Which planner mode?",
+              header: "Planning",
+              options: [{ label: "Fast", description: "quick" }, { label: "Full" }],
+            },
+          ],
+        },
+      });
+      return { outputText: "", sessionId: "runtime-session-1" };
+    });
+
+    const res = await app.request("/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId: "project-1",
+        message: "/aif",
+        clientId: "client-1",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const tokenCalls = mockSendToClient.mock.calls.filter((call) => call[1]?.type === "chat:token");
+    const combined = tokenCalls.map((call) => String(call[1].payload.token)).join("");
+    expect(combined).toContain("Planning");
+    expect(combined).toContain("Which planner mode?");
+    expect(combined).toContain("1. Fast");
+    expect(combined).toContain("quick");
+    expect(combined).toContain("2. Full");
+    expect(combined).toContain("Answer by number");
+  });
+
+  it("suppresses noisy tool:use events and forwards non-noisy tools as a system line", async () => {
+    mockAdapterRun.mockImplementation(async (input: RuntimeRunInput) => {
+      const onEvent = input.execution?.onEvent as
+        | ((event: Record<string, unknown>) => void)
+        | undefined;
+      onEvent?.({ type: "tool:use", data: { name: "Read", input: {} } });
+      onEvent?.({ type: "tool:use", data: { name: "Bash", input: { command: "ls" } } });
+      onEvent?.({
+        type: "tool:use",
+        data: { name: "AskUserQuestion", input: { question: "ignored via tool:use" } },
+      });
+      return { outputText: "", sessionId: "runtime-session-1" };
+    });
+
+    const res = await app.request("/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId: "project-1",
+        message: "noop",
+        clientId: "client-1",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const tokenCalls = mockSendToClient.mock.calls.filter((call) => call[1]?.type === "chat:token");
+    const combined = tokenCalls.map((call) => String(call[1].payload.token)).join("");
+    expect(combined).not.toContain("🔧 Read");
+    expect(combined).toContain("🔧 Bash");
+    // AskUserQuestion must NOT be surfaced via tool:use — it only renders via tool:question.
+    expect(combined).not.toContain("ignored via tool:use");
+  });
+
+  it("deduplicates repeated tool:question events with the same toolUseId", async () => {
+    mockAdapterRun.mockImplementation(async (input: RuntimeRunInput) => {
+      const onEvent = input.execution?.onEvent as
+        | ((event: Record<string, unknown>) => void)
+        | undefined;
+      const payload = {
+        toolUseId: "t-42",
+        toolName: "AskUserQuestion",
+        questions: [{ question: "Proceed?", options: [{ label: "Yes" }] }],
+      };
+      onEvent?.({ type: "tool:question", data: payload });
+      onEvent?.({ type: "tool:question", data: payload });
+      return { outputText: "", sessionId: "runtime-session-1" };
+    });
+
+    const res = await app.request("/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId: "project-1",
+        message: "go",
+        clientId: "client-1",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const tokenCalls = mockSendToClient.mock.calls.filter((call) => call[1]?.type === "chat:token");
+    const questionOccurrences = tokenCalls.filter((call) =>
+      String(call[1].payload.token).includes("Proceed?"),
+    );
+    expect(questionOccurrences.length).toBe(1);
+  });
 });

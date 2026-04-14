@@ -239,6 +239,27 @@ export interface RuntimeEvent {
   data?: Record<string, unknown>;
 }
 
+/**
+ * Runtime-neutral payload for interactive question events (`tool:question`).
+ * Adapters that expose a "ask the user something" tool (e.g. Claude's
+ * `AskUserQuestion`) parse their native shape into this before emitting, so
+ * consumers (chat UI, schedulers) render questions the same way regardless
+ * of which runtime produced them.
+ */
+export interface RuntimeToolQuestionPayload {
+  /** Adapter-native tool call id, when available — used to de-duplicate re-emits. */
+  toolUseId: string | null;
+  /** Original tool name as seen by the adapter (e.g. "AskUserQuestion"). */
+  toolName: string;
+  /** One or more questions bundled together. Most adapters send exactly one. */
+  questions: Array<{
+    question: string;
+    header?: string;
+    multiSelect?: boolean;
+    options: Array<{ label: string; description?: string }>;
+  }>;
+}
+
 export interface RuntimeUsage {
   inputTokens: number;
   outputTokens: number;
