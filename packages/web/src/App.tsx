@@ -11,12 +11,12 @@ import { useTheme } from "./hooks/useTheme";
 import { useKeyboardShortcut } from "./hooks/useKeyboardShortcut";
 import { ChatBubble } from "./components/chat/ChatBubble";
 import { ChatPanel } from "./components/chat/ChatPanel";
-import { Button } from "./components/ui/button";
 import { calculateTaskMetrics } from "./lib/taskMetrics";
 import { readStorage, writeStorage, removeStorage } from "./lib/storage";
 import { STORAGE_KEYS } from "./lib/storageKeys";
 import type { Project } from "@aif/shared/browser";
 import { ProjectRuntimeSettings } from "./components/project/ProjectRuntimeSettings";
+import { ProjectsOverview } from "./components/project/ProjectsOverview";
 import { ToastProvider } from "./components/ui/toast";
 
 const queryClient = new QueryClient({
@@ -176,25 +176,7 @@ function AppContent() {
             viewMode={viewMode}
           />
         ) : (
-          <div className="flex h-[64vh] items-center justify-center">
-            <div className="w-full max-w-xl border border-border bg-card/80 p-8 text-center">
-              <p className="text-base font-semibold tracking-tight">// no project selected</p>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Select or create a project to get started.
-              </p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Don&apos;t forget to configure runtime profiles in project settings.
-              </p>
-              <div className="mt-4 flex items-center justify-center gap-2">
-                <Button size="sm" onClick={() => setCommandOpen(true)}>
-                  Open command palette
-                </Button>
-                <Button size="sm" variant="outline" onClick={toggleDensity}>
-                  Toggle density
-                </Button>
-              </div>
-            </div>
-          </div>
+          <ProjectsOverview projects={projects ?? []} onSelectProject={handleSelectProject} />
         )}
       </main>
 
