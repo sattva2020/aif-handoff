@@ -681,4 +681,50 @@ describe("chat API", () => {
       ),
     ).toBe(true);
   });
+
+  it("persists the runtime session link on abort so the next turn can resume", async () => {
+    mockAdapterRun.mockImplementation(async (input: RuntimeRunInput) => {
+      // Runtime emits the session id before the abort fires.
+      input.execution?.onEvent?.({
+        type: "system:init",
+        timestamp: new Date().toISOString(),
+        data: { sessionId: "runtime-session-preserved" },
+      });
+      await new Promise<void>((_resolve, reject) => {
+        input.execution?.abortController?.signal.addEventListener("abort", () => {
+          const err = new Error("The operation was aborted");
+          (err as Error & { name: string }).name = "AbortError";
+          reject(err);
+        });
+      });
+      return { outputText: "", sessionId: "runtime-session-preserved" };
+    });
+
+    mockUpdateChatSession.mockClear();
+
+    const conversationId = crypto.randomUUID();
+    const chatPromise = app.request("/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId: "project-1",
+        message: "first turn",
+        clientId: "client-1",
+        conversationId,
+      }),
+    });
+
+    await new Promise((r) => setTimeout(r, 20));
+    await app.request(`/chat/${conversationId}/abort`, { method: "POST" });
+    const chatRes = await chatPromise;
+    expect(chatRes.status).toBe(409);
+
+    expect(
+      mockUpdateChatSession.mock.calls.some(
+        (call) =>
+          (call[1] as { runtimeSessionId?: string } | null)?.runtimeSessionId ===
+          "runtime-session-preserved",
+      ),
+    ).toBe(true);
+  });
 });

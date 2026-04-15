@@ -320,6 +320,18 @@ export function ChatPanel({
               </div>
             </div>
           )}
+          {chatErrorCode === "aborted" && (
+            <div className="px-3 pb-2">
+              <div className="rounded border border-muted-foreground/30 bg-muted/40 p-2">
+                <Badge variant="outline" className="border-muted-foreground/50">
+                  Stopped
+                </Badge>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Chat run was stopped. Any partial reply above has been saved.
+                </p>
+              </div>
+            </div>
+          )}
           {chatErrorCode === "CHAT_USAGE_LIMIT" && (
             <div className="px-3 pb-2">
               <div className="rounded border border-amber-500/50 bg-amber-500/15 p-2">

@@ -222,10 +222,18 @@ export function useChat(
       if (isCurrentStream(streamKey)) {
         setIsStreaming(false);
         setChatErrorCode(code ?? null);
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: message || "Chat request failed" },
-        ]);
+        // User-initiated aborts surface as a banner via chatErrorCode, not a
+        // phantom assistant bubble. The bubble was misleading because only
+        // partial streamed text (if any) is persisted to DB — the "Chat run
+        // aborted by user" text disappeared after reload, and the partial
+        // reply took its place. Any partial assistant content is already
+        // visible in the transcript via handleToken.
+        if (code !== "aborted") {
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content: message || "Chat request failed" },
+          ]);
+        }
       }
     };
 
@@ -436,7 +444,14 @@ export function useChat(
         sessionStreamsRef.current.delete(activeStreamKey);
         setIsStreaming(false);
         const wsHandled = handledErrorConversationsRef.current.has(newConversationId);
-        if (!errorHandled && !wsHandled) {
+        const isAbortedError =
+          err instanceof ApiError &&
+          err.status === 409 &&
+          (err.data as { code?: string } | null)?.code === "aborted";
+        if (isAbortedError) {
+          // Abort is surfaced via the banner only — no phantom bubble.
+          setChatErrorCode("aborted");
+        } else if (!errorHandled && !wsHandled) {
           const message =
             err instanceof Error ? err.message : "Failed to get a response. Please try again.";
           setChatErrorCode(null);
