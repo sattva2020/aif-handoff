@@ -22,10 +22,12 @@ import type {
 
 export class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  data?: unknown;
+  constructor(message: string, status: number, data?: unknown) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.data = data;
   }
 }
 
@@ -147,7 +149,7 @@ async function request<T>(
         message = firstFieldError[0] ?? null;
       }
     }
-    throw new ApiError(message ?? `HTTP ${res.status}`, res.status);
+    throw new ApiError(message ?? `HTTP ${res.status}`, res.status, body);
   }
 
   return res.json();

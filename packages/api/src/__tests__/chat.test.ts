@@ -628,10 +628,56 @@ describe("chat API", () => {
     expect(chatRes.status).toBe(409);
     const body = await chatRes.json();
     expect(body.code).toBe("aborted");
+    // The response must expose the server-resolved sessionId so the client
+    // can promote a fresh "new chat" that was stopped before the happy-path
+    // onSessionResolved handshake.
+    expect(typeof body.sessionId === "string" || body.sessionId === null).toBe(true);
+    expect(body.conversationId).toBe(conversationId);
 
     expect(
       mockSendToClient.mock.calls.some(
         (call) => call[1]?.type === "chat:error" && call[1].payload?.code === "aborted",
+      ),
+    ).toBe(true);
+  });
+
+  it("persists partial streamed output when a run is aborted mid-stream", async () => {
+    mockAdapterRun.mockImplementation(async (input: RuntimeRunInput) => {
+      input.execution?.onEvent?.({
+        type: "stream:text",
+        message: "Partial reply",
+        timestamp: new Date().toISOString(),
+      });
+      await new Promise<void>((_resolve, reject) => {
+        input.execution?.abortController?.signal.addEventListener("abort", () => {
+          const err = new Error("The operation was aborted");
+          (err as Error & { name: string }).name = "AbortError";
+          reject(err);
+        });
+      });
+      return { outputText: "", sessionId: "runtime-session-2" };
+    });
+
+    const conversationId = crypto.randomUUID();
+    const chatPromise = app.request("/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId: "project-1",
+        message: "long task",
+        clientId: "client-1",
+        conversationId,
+      }),
+    });
+
+    await new Promise((r) => setTimeout(r, 20));
+    await app.request(`/chat/${conversationId}/abort`, { method: "POST" });
+    const chatRes = await chatPromise;
+    expect(chatRes.status).toBe(409);
+
+    expect(
+      mockCreateChatMessage.mock.calls.some(
+        (call) => call[0]?.role === "assistant" && call[0].content === "Partial reply",
       ),
     ).toBe(true);
   });

@@ -796,6 +796,8 @@ chatRouter.post("/", jsonValidator(chatRequestSchema), async (c) => {
   const chatConversationId = conversationId ?? crypto.randomUUID();
   const abortController = new AbortController();
   activeChatRuns.set(chatConversationId, abortController);
+  // Hoisted so the abort branch can persist any partial streamed output.
+  let fullAssistantResponse = "";
   log.info(
     {
       projectId,
@@ -854,7 +856,6 @@ chatRouter.post("/", jsonValidator(chatRequestSchema), async (c) => {
     }
 
     const bypassPermissions = env.AGENT_BYPASS_PERMISSIONS;
-    let fullAssistantResponse = "";
     let hasStreamedTokens = false;
 
     const sendToken = (text: string) => {
@@ -1020,8 +1021,21 @@ chatRouter.post("/", jsonValidator(chatRequestSchema), async (c) => {
   } catch (err) {
     const aborted = abortController.signal.aborted || isAbortError(err);
     if (aborted) {
+      // Persist any tokens streamed before the abort so the partial assistant
+      // reply survives reload. Without this, a fresh session stopped mid-stream
+      // would lose visible output.
+      const partial = fullAssistantResponse.trim();
+      if (chatSessionId && partial) {
+        createChatMessage({ sessionId: chatSessionId, role: "assistant", content: partial });
+        updateChatSessionTimestamp(chatSessionId);
+      }
       log.info(
-        { runtimeId, runtimeProfileId, conversationId: chatConversationId },
+        {
+          runtimeId,
+          runtimeProfileId,
+          conversationId: chatConversationId,
+          partial: partial.length,
+        },
         "INFO [chat-route] Chat run aborted",
       );
       const abortedEvent: WsEvent = {
@@ -1040,7 +1054,15 @@ chatRouter.post("/", jsonValidator(chatRequestSchema), async (c) => {
         sendToClient(clientId, abortedEvent);
         sendToClient(clientId, doneEvent);
       }
-      return c.json({ error: "Chat run aborted by user", code: "aborted" }, 409);
+      return c.json(
+        {
+          error: "Chat run aborted by user",
+          code: "aborted",
+          conversationId: chatConversationId,
+          sessionId: chatSessionId,
+        },
+        409,
+      );
     }
 
     log.error(

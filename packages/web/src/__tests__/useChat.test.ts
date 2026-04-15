@@ -3,13 +3,27 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 
 const mockSendChatMessage = vi.fn();
 const mockGetChatSessionMessages = vi.fn();
+const mockAbortChat = vi.fn();
 const mockGetWsClientId = vi.fn();
 const WS_CLIENT_ID_WAIT_TIMEOUT_MS = 500;
 
+class ApiError extends Error {
+  status: number;
+  data?: unknown;
+  constructor(message: string, status: number, data?: unknown) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.data = data;
+  }
+}
+
 vi.mock("@/lib/api", () => ({
+  ApiError,
   api: {
     sendChatMessage: (...args: unknown[]) => mockSendChatMessage(...args),
     getChatSessionMessages: (...args: unknown[]) => mockGetChatSessionMessages(...args),
+    abortChat: (...args: unknown[]) => mockAbortChat(...args),
   },
 }));
 
@@ -23,6 +37,8 @@ describe("useChat", () => {
   beforeEach(() => {
     mockSendChatMessage.mockReset();
     mockGetChatSessionMessages.mockReset();
+    mockAbortChat.mockReset();
+    mockAbortChat.mockResolvedValue(undefined);
     mockGetWsClientId.mockReset();
     mockGetWsClientId.mockReturnValue("test-client-id");
     mockSendChatMessage.mockResolvedValue({ conversationId: "conv-1", sessionId: "sess-1" });
@@ -376,6 +392,90 @@ describe("useChat", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("abort targets the currently viewed session when multiple streams are in flight", async () => {
+    // Stream A: pending on session "sess-A"
+    let resolveA: ((v: { conversationId: string; sessionId: string }) => void) | null = null;
+    mockSendChatMessage.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveA = resolve;
+        }),
+    );
+    // Stream B: pending on session "sess-B"
+    let resolveB: ((v: { conversationId: string; sessionId: string }) => void) | null = null;
+    mockSendChatMessage.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveB = resolve;
+        }),
+    );
+
+    // Hook A bound to session A; Hook B to session B — they share the abort registry
+    // via activeStreamsRef only within one hook instance, so simulate the real scenario
+    // with a single hook switching its viewed session.
+    const { result, rerender } = renderHook(
+      ({ sid }: { sid: string | null }) => useChat("p-1", sid),
+      { initialProps: { sid: "sess-A" as string | null } },
+    );
+
+    // Start stream for session A
+    let sendAPromise: Promise<void>;
+    act(() => {
+      sendAPromise = result.current.sendMessage("A");
+    });
+    await waitFor(() => expect(mockSendChatMessage).toHaveBeenCalledTimes(1));
+    const convA = mockSendChatMessage.mock.calls[0][0].conversationId as string;
+
+    // Switch to session B — wait for the effect to clear isStreaming — then send
+    await act(async () => {
+      rerender({ sid: "sess-B" });
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    let sendBPromise: Promise<void>;
+    act(() => {
+      sendBPromise = result.current.sendMessage("B");
+    });
+    await waitFor(() => expect(mockSendChatMessage).toHaveBeenCalledTimes(2));
+    const convB = mockSendChatMessage.mock.calls[1][0].conversationId as string;
+
+    // Switch back to A and hit Stop — must abort A's conversation, not B's
+    rerender({ sid: "sess-A" });
+    await act(async () => {
+      await result.current.abortStream();
+    });
+
+    expect(mockAbortChat).toHaveBeenCalledTimes(1);
+    expect(mockAbortChat).toHaveBeenCalledWith(convA);
+    expect(convA).not.toBe(convB);
+
+    // Clean up pending promises
+    await act(async () => {
+      resolveA?.({ conversationId: convA, sessionId: "sess-A" });
+      resolveB?.({ conversationId: convB, sessionId: "sess-B" });
+      await sendAPromise;
+      await sendBPromise;
+    });
+  });
+
+  it("resolves the active session when aborting the first message in a new chat", async () => {
+    const handleSessionResolved = vi.fn();
+    mockSendChatMessage.mockRejectedValueOnce(
+      new ApiError("Chat run aborted by user", 409, {
+        code: "aborted",
+        sessionId: "sess-new-1",
+        conversationId: "conv-new-1",
+      }),
+    );
+
+    const { result } = renderHook(() => useChat("p-1", null, null, handleSessionResolved));
+
+    await act(async () => {
+      await result.current.sendMessage("Hello");
+    });
+
+    expect(handleSessionResolved).toHaveBeenCalledWith("sess-new-1");
   });
 
   it("toggles explore mode", () => {

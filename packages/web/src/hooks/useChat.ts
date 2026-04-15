@@ -7,7 +7,7 @@ import type {
   ChatDonePayload,
   ChatErrorPayload,
 } from "@aif/shared/browser";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { getWsClientId } from "./useWebSocket";
 
 interface SessionStreamState {
@@ -49,8 +49,6 @@ export function useChat(
   const [chatErrorCode, setChatErrorCode] = useState<string | null>(null);
   const currentSessionIdRef = useRef<string | null>(null);
 
-  // Conversation id of the most recently dispatched message — used by abortStream().
-  const currentConversationIdRef = useRef<string | null>(null);
   // Per-session streaming state: conversationId → streamKey (sessionId or conversationId)
   const activeStreamsRef = useRef<Map<string, string>>(new Map());
   // Per-session stream data: streamKey → state
@@ -277,7 +275,6 @@ export function useChat(
       const newMessages = forceNewSession ? [userMessage] : [...messages, userMessage];
 
       // Register active stream
-      currentConversationIdRef.current = newConversationId;
       if (!effectiveSessionId) {
         conversationIdForNoSession.current = newConversationId;
       }
@@ -410,6 +407,29 @@ export function useChat(
       } catch (err) {
         console.error("[useChat] Failed to send message:", err);
         clearConversationTimers(newConversationId);
+        // If the server aborted the run but already created a DB session, promote it
+        // so the fresh "new chat" doesn't lose its thread in the sidebar.
+        if (err instanceof ApiError && err.status === 409) {
+          const data = err.data as { code?: string; sessionId?: string | null } | null;
+          if (data?.code === "aborted" && data.sessionId) {
+            const resolvedId = data.sessionId;
+            currentSessionIdRef.current = resolvedId;
+            if (streamKey !== resolvedId) {
+              const state = sessionStreamsRef.current.get(streamKey);
+              if (state) {
+                sessionStreamsRef.current.delete(streamKey);
+                sessionStreamsRef.current.set(resolvedId, state);
+              }
+              activeStreamsRef.current.set(newConversationId, resolvedId);
+            }
+            if (resolvedId !== effectiveSessionId) {
+              onSessionResolved?.(resolvedId);
+            }
+            window.dispatchEvent(
+              new CustomEvent("chat:session_created", { detail: { id: resolvedId } }),
+            );
+          }
+        }
         const activeStreamKey = activeStreamsRef.current.get(newConversationId) ?? streamKey;
         activeStreamsRef.current.delete(newConversationId);
         const errorHandled = sessionStreamsRef.current.get(activeStreamKey)?.errorHandled ?? false;
@@ -438,9 +458,20 @@ export function useChat(
   );
 
   const abortStream = useCallback(async () => {
-    const conversationId = currentConversationIdRef.current;
+    // Pick the conversation whose streamKey matches the currently viewed session
+    // (or the pending new-chat conversation), so switching sessions while
+    // multiple runs are in flight doesn't abort the wrong one.
+    const targetKey = currentSessionIdRef.current ?? conversationIdForNoSession.current;
+    if (!targetKey) return;
+    let conversationId: string | null = null;
+    for (const [convId, streamKey] of activeStreamsRef.current) {
+      if (streamKey === targetKey) {
+        conversationId = convId;
+        break;
+      }
+    }
     if (!conversationId) return;
-    console.debug("[useChat] aborting conversation %s", conversationId);
+    console.debug("[useChat] aborting conversation %s (key=%s)", conversationId, targetKey);
     try {
       await api.abortChat(conversationId);
     } catch (err) {
