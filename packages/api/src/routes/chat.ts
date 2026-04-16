@@ -12,6 +12,7 @@ import {
   type RuntimeAdapter,
   type RuntimeEvent,
   type RuntimeRunInput,
+  type RuntimeToolQuestionPayload,
 } from "@aif/runtime";
 import {
   logger,
@@ -60,6 +61,83 @@ const PROJECT_SCOPE_SYSTEM_APPEND =
   "Do not inspect or modify files in the orchestrator monorepo or in parent/sibling directories " +
   "unless the user explicitly asks for that path. Avoid broad discovery outside the current project root.";
 
+const CHAT_ASKUSERQUESTION_HINT =
+  "Chat interaction rule: the AIF chat UI renders AskUserQuestion tool calls as a markdown block " +
+  "with the question, header, and numbered options — use the tool normally when you need structured " +
+  "input. The user's next chat message is their answer and the session resumes with that answer in " +
+  "history; never wait silently.";
+
+const NOISY_TOOL_NAMES = new Set(["Read", "Glob", "Grep", "LS", "NotebookRead"]);
+
+type NormalizedQuestion = {
+  question: string;
+  header?: string;
+  multiSelect?: boolean;
+  options: Array<{ label: string; description?: string }>;
+};
+
+function renderQuestionBlock(entry: NormalizedQuestion, showSelectionHint: boolean): string[] {
+  const lines: string[] = [];
+  if (entry.header) lines.push(`**${entry.header}**`);
+  if (entry.question) lines.push(`**❓ ${entry.question}**`);
+  if (showSelectionHint && entry.options.length > 0) {
+    lines.push(
+      entry.multiSelect
+        ? `_Select one or more (${entry.options.length} options)._`
+        : `_Select one._`,
+    );
+  }
+  if (entry.options.length > 0) {
+    lines.push("");
+    entry.options.forEach((option, index) => {
+      const description =
+        option.description && option.description.trim().length > 0
+          ? ` — ${option.description.trim()}`
+          : "";
+      lines.push(`${index + 1}. ${option.label}${description}`);
+    });
+  }
+  return lines;
+}
+
+function formatToolQuestion(payload: RuntimeToolQuestionPayload): string | null {
+  const multipleQuestions = payload.questions.length > 1;
+  const anyMultiSelect = payload.questions.some((q) => q.multiSelect === true);
+  const blocks = payload.questions
+    .map((entry) =>
+      renderQuestionBlock(
+        {
+          question: entry.question,
+          header: entry.header,
+          multiSelect: entry.multiSelect,
+          options: entry.options ?? [],
+        },
+        multipleQuestions || anyMultiSelect,
+      ),
+    )
+    .filter((block) => block.length > 0);
+  if (blocks.length === 0) return null;
+  const lines: string[] = ["", ""];
+  blocks.forEach((block, index) => {
+    if (index > 0) lines.push("", "---", "");
+    lines.push(...block);
+  });
+  lines.push("");
+  if (multipleQuestions) {
+    lines.push(
+      "_Answer each question in order — you can use numbers, comma-separated lists for multi-select, or free text._",
+    );
+  } else if (anyMultiSelect) {
+    lines.push(
+      "_You can select multiple options — list the numbers separated by commas, or answer in free text._",
+    );
+  } else {
+    lines.push("_Answer by number or free text in the next message._");
+  }
+  lines.push("", "");
+  return lines.join("\n");
+}
+
 const CHAT_ACTIONS_PROMPT = `
 Identity: You are AIFer.
 
@@ -87,8 +165,13 @@ interface VirtualRuntimeSessionRef {
   sessionId: string;
 }
 
-function buildContextAppend(projectName: string, task: Task | null): string {
+function buildContextAppend(
+  projectName: string,
+  task: Task | null,
+  options: { interactiveQuestions?: boolean } = {},
+): string {
   const parts = [PROJECT_SCOPE_SYSTEM_APPEND];
+  if (options.interactiveQuestions) parts.push(CHAT_ASKUSERQUESTION_HINT);
 
   parts.push(`\nCurrent project: "${projectName}"`);
 
@@ -239,11 +322,88 @@ function eventRole(event: RuntimeEvent): "user" | "assistant" | null {
 }
 
 function eventId(event: RuntimeEvent): string {
-  const raw =
-    event.data && typeof event.data === "object" && typeof event.data.id === "string"
-      ? event.data.id
-      : null;
-  return raw ?? crypto.randomUUID();
+  const data = event.data;
+  if (data && typeof data === "object") {
+    if (typeof data.id === "string" && data.id) {
+      return data.id;
+    }
+    // `tool:question` payloads don't carry a generic `id` field — fall back to
+    // the provider's `toolUseId` so the same question keeps a stable client id
+    // across fetches/reloads instead of churning on every refresh.
+    if (event.type === "tool:question" && typeof data.toolUseId === "string" && data.toolUseId) {
+      return `tool:question:${data.toolUseId}`;
+    }
+  }
+  return crypto.randomUUID();
+}
+
+type AssistantSegment = {
+  type: "text" | "question";
+  content: string;
+};
+
+function mergeAdjacentTextSegment(segments: AssistantSegment[], text: string): void {
+  if (!text) return;
+  const last = segments.at(-1);
+  if (last?.type === "text") {
+    last.content += text;
+    return;
+  }
+  segments.push({ type: "text", content: text });
+}
+
+function longestOverlapSuffixPrefix(left: string, right: string): number {
+  const max = Math.min(left.length, right.length);
+  for (let len = max; len > 0; len -= 1) {
+    if (left.endsWith(right.slice(0, len))) {
+      return len;
+    }
+  }
+  return 0;
+}
+
+function recoverMissingTextParts(
+  streamed: string,
+  outputText: string,
+): { prefix: string; suffix: string } {
+  if (!outputText) {
+    return { prefix: "", suffix: "" };
+  }
+
+  if (!streamed) {
+    return { prefix: outputText, suffix: "" };
+  }
+
+  if (outputText === streamed) {
+    return { prefix: "", suffix: "" };
+  }
+
+  const exactIndex = outputText.indexOf(streamed);
+  if (exactIndex !== -1) {
+    return {
+      prefix: outputText.slice(0, exactIndex),
+      suffix: outputText.slice(exactIndex + streamed.length),
+    };
+  }
+
+  if (outputText.startsWith(streamed)) {
+    return { prefix: "", suffix: outputText.slice(streamed.length) };
+  }
+
+  if (outputText.endsWith(streamed)) {
+    return { prefix: outputText.slice(0, outputText.length - streamed.length), suffix: "" };
+  }
+
+  const suffixOverlap = longestOverlapSuffixPrefix(streamed, outputText);
+  const appendCandidate = outputText.slice(suffixOverlap);
+  const prefixOverlap = longestOverlapSuffixPrefix(outputText, streamed);
+  const prependCandidate = outputText.slice(0, outputText.length - prefixOverlap);
+
+  if (appendCandidate.length <= prependCandidate.length) {
+    return { prefix: "", suffix: appendCandidate };
+  }
+
+  return { prefix: prependCandidate, suffix: "" };
 }
 
 /**
@@ -537,6 +697,19 @@ chatRouter.get("/sessions/:id/messages", async (c) => {
 
       const messages: ChatSessionMessage[] = runtimeEvents
         .map((event) => {
+          if (event.type === "tool:question") {
+            const payload = event.data as unknown as RuntimeToolQuestionPayload | undefined;
+            if (!payload) return null;
+            const rendered = formatToolQuestion(payload);
+            if (!rendered || !rendered.trim()) return null;
+            return {
+              id: eventId(event),
+              sessionId: id,
+              role: "assistant" as const,
+              content: rendered,
+              createdAt: event.timestamp,
+            } as ChatSessionMessage;
+          }
           const role = eventRole(event);
           const content = event.message ?? "";
           if (!role || !content.trim()) return null;
@@ -608,6 +781,19 @@ chatRouter.get("/sessions/:id/messages", async (c) => {
 
         const runtimeMessages: ChatSessionMessage[] = runtimeEvents
           .map((event) => {
+            if (event.type === "tool:question") {
+              const payload = event.data as unknown as RuntimeToolQuestionPayload | undefined;
+              if (!payload) return null;
+              const rendered = formatToolQuestion(payload);
+              if (!rendered || !rendered.trim()) return null;
+              return {
+                id: eventId(event),
+                sessionId: id,
+                role: "assistant" as const,
+                content: rendered,
+                createdAt: event.timestamp,
+              } as ChatSessionMessage;
+            }
             const role = eventRole(event);
             const rawContent = event.message ?? "";
             const content = extractMessageContent(rawContent, adapter);
@@ -768,13 +954,20 @@ chatRouter.post("/", jsonValidator(chatRequestSchema), async (c) => {
       if (row) currentTask = toTaskResponse(row);
     }
 
-    const systemAppend = buildContextAppend(project.name, currentTask);
-    const runtimeResolution = await resolveChatRuntimeAdapter(projectId, message, systemAppend);
+    const baseSystemAppend = buildContextAppend(project.name, currentTask);
+    const runtimeResolution = await resolveChatRuntimeAdapter(projectId, message, baseSystemAppend);
     const runtimeContext = runtimeResolution.context;
     const adapter = runtimeContext.adapter;
     runtimeId = runtimeContext.resolvedProfile.runtimeId;
     runtimeProfileId = runtimeContext.resolvedProfile.profileId;
     runtimeProviderId = runtimeContext.resolvedProfile.providerId;
+    const chatRuntimeCaps = resolveAdapterCapabilities(
+      adapter,
+      runtimeContext.resolvedProfile.transport,
+    );
+    const systemAppend = buildContextAppend(project.name, currentTask, {
+      interactiveQuestions: chatRuntimeCaps.supportsInteractiveQuestions === true,
+    });
 
     // Resolve or auto-create a chat session
     chatSessionId = inputSessionId ?? null;
@@ -876,7 +1069,19 @@ chatRouter.post("/", jsonValidator(chatRequestSchema), async (c) => {
     }
 
     const bypassPermissions = env.AGENT_BYPASS_PERMISSIONS;
-    let hasStreamedTokens = false;
+    // Preserve assistant-turn event order as text/question segments:
+    //   * question blocks are buffered and flushed before the next text delta
+    //     (or at turn end), so a stream like text→question→text stays ordered.
+    //   * recovery-path merges missing text from `result.outputText` with
+    //     streamed deltas via suffix/prefix overlap and flushes buffered
+    //     questions after recovered text, keeping intro-before-question.
+    //   * DB persistence writes each ordered segment as a separate assistant
+    //     row so replay shape matches runtime history (`session-message` +
+    //     per-question `tool:question`) and dedupe remains stable on reload.
+    let streamedText = "";
+    let streamedTextLength = 0;
+    const assistantSegments: AssistantSegment[] = [];
+    const pendingQuestionBlocks: string[] = [];
 
     const sendToken = (text: string) => {
       if (!clientId) return;
@@ -887,10 +1092,24 @@ chatRouter.post("/", jsonValidator(chatRequestSchema), async (c) => {
       sendToClient(clientId, tokenEvent);
     };
 
+    const seenToolPromptIds = new Set<string>();
+
+    const flushPendingQuestionBlocks = () => {
+      for (const block of pendingQuestionBlocks) {
+        sendToken(block);
+        assistantSegments.push({ type: "question", content: block });
+        fullAssistantResponse = assistantSegments.map((segment) => segment.content).join("");
+      }
+      pendingQuestionBlocks.length = 0;
+    };
+
     const onRuntimeEvent = (event: RuntimeEvent) => {
       if (event.type === "stream:text" && event.message) {
-        hasStreamedTokens = true;
-        fullAssistantResponse += event.message;
+        flushPendingQuestionBlocks();
+        streamedTextLength += event.message.length;
+        streamedText += event.message;
+        mergeAdjacentTextSegment(assistantSegments, event.message);
+        fullAssistantResponse = assistantSegments.map((segment) => segment.content).join("");
         sendToken(event.message);
         return;
       }
@@ -898,6 +1117,51 @@ chatRouter.post("/", jsonValidator(chatRequestSchema), async (c) => {
       if (event.type === "tool:summary" && event.message) {
         sendToken(`\n\n> ${event.message}\n\n`);
         return;
+      }
+
+      if (event.type === "tool:question") {
+        const payload = event.data as unknown as RuntimeToolQuestionPayload | undefined;
+        if (!payload) return;
+        if (payload.toolUseId && seenToolPromptIds.has(payload.toolUseId)) return;
+        const rendered = formatToolQuestion(payload);
+        if (rendered) {
+          log.debug(
+            {
+              tool: payload.toolName,
+              conversationId: chatConversationId,
+              questionCount: payload.questions.length,
+            },
+            "DEBUG [chat] tool:question rendered",
+          );
+          pendingQuestionBlocks.push(rendered);
+          if (payload.toolUseId) seenToolPromptIds.add(payload.toolUseId);
+        }
+        return;
+      }
+
+      if (event.type === "tool:use") {
+        const data = (event.data ?? {}) as Record<string, unknown>;
+        const toolName = typeof data.name === "string" ? data.name : null;
+        if (!toolName) return;
+        if (data.interactive === true) {
+          // Adapter will emit a correlated `tool:question` event for interactive
+          // tools — skip the raw tool:use so we don't render both a `> Tool` line
+          // and the question block. Runtime-neutral: branches on an event flag,
+          // not a provider-specific tool name.
+          return;
+        }
+        if (NOISY_TOOL_NAMES.has(toolName) || toolName.startsWith("mcp__handoff__")) {
+          log.debug(
+            { tool: toolName, conversationId: chatConversationId },
+            "DEBUG [chat] tool:use suppressed (noisy)",
+          );
+          return;
+        }
+        log.debug(
+          { tool: toolName, conversationId: chatConversationId, hasQuestion: false },
+          "DEBUG [chat] tool:use forwarded",
+        );
+        sendToken(`\n\n> 🔧 ${toolName}\n\n`);
       }
 
       // Capture the runtime session id as soon as the adapter emits it, so
@@ -1003,22 +1267,39 @@ chatRouter.post("/", jsonValidator(chatRequestSchema), async (c) => {
       );
     }
 
-    if (!hasStreamedTokens && result.outputText) {
-      fullAssistantResponse += result.outputText;
-      sendToken(result.outputText);
+    // Recover assistant text that never arrived as `stream:text` deltas.
+    // Claude CLI partial-messages can emit a mix where only part of assistant
+    // text arrives as deltas and the rest remains in `result.outputText`.
+    // Merge missing prefix/suffix fragments and emit them before any pending
+    // question blocks to keep intro-before-question ordering.
+    const recovered = recoverMissingTextParts(streamedText, result.outputText ?? "");
+    if (recovered.prefix) {
+      mergeAdjacentTextSegment(assistantSegments, recovered.prefix);
+      sendToken(recovered.prefix);
     }
+    if (recovered.suffix) {
+      mergeAdjacentTextSegment(assistantSegments, recovered.suffix);
+      sendToken(recovered.suffix);
+    }
+    if (streamedTextLength === 0 && !streamedText && result.outputText) {
+      streamedText = result.outputText;
+    }
+    flushPendingQuestionBlocks();
 
-    // Persist assistant response in local chat history for both fresh and resumed runtime sessions.
-    // Trim leading/trailing whitespace so the stored content matches what
-    // Claude's session-file parser returns (which does `.trim()`), keeping
-    // mergeRuntimeAndDbMessages dedupe consistent on page reload.
-    const persistedAssistantResponse = fullAssistantResponse.trim();
-    if (chatSessionId && persistedAssistantResponse) {
-      createChatMessage({
-        sessionId: chatSessionId,
-        role: "assistant",
-        content: persistedAssistantResponse,
-      });
+    fullAssistantResponse = assistantSegments.map((segment) => segment.content).join("");
+
+    // Persist each ordered assistant segment separately. Keeping the same
+    // split shape as runtime replay makes mergeRuntimeAndDbMessages stable.
+    if (chatSessionId) {
+      for (const segment of assistantSegments) {
+        const trimmed = segment.content.trim();
+        if (!trimmed) continue;
+        createChatMessage({
+          sessionId: chatSessionId,
+          role: "assistant",
+          content: trimmed,
+        });
+      }
     }
     if (chatSessionId) {
       updateChatSessionTimestamp(chatSessionId);
