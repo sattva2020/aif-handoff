@@ -146,12 +146,13 @@ Keys:
   of those tokens where a good equivalent exists.
 - `ui` — reserved for future UI-side localisation; currently informational only.
 
-The directive is appended to `execution.systemPromptAppend` — never to `prompt` — so resume
-sessions, slash commands, and agent definitions continue to work unchanged. Existing appends
-(project-scope, review-diff-scope) are preserved verbatim and placed BEFORE the language
-directive so scope rules keep their emphasis.
+Injection is uniform at the registry layer: the directive is written to
+`execution.systemPromptAppend` (never to `input.prompt`), so resume sessions, slash commands,
+and agent definitions continue to work unchanged. Existing appends (project-scope,
+review-diff-scope) are preserved verbatim and placed BEFORE the language directive so scope
+rules keep their emphasis.
 
-Transport delivery matrix (how each adapter surfaces `systemPromptAppend` to the model):
+How each adapter then delivers that append block to the model depends on the transport:
 
 | Adapter    | SDK                          | CLI                      | API            |
 | ---------- | ---------------------------- | ------------------------ | -------------- |
@@ -161,8 +162,10 @@ Transport delivery matrix (how each adapter surfaces `systemPromptAppend` to the
 | OpenCode   | n/a                          | n/a                      | system message |
 
 The Codex SDK/CLI paths do not expose a dedicated system-prompt slot, so the adapter prepends
-the append block to the user prompt separated by a blank line. This keeps the registry-level
-injection guaranteed to reach the model on every Codex transport, matching the API path.
+the append block to the user prompt separated by a blank line. That happens inside the
+adapter, after the registry has set `systemPromptAppend` — the caller and the registry never
+mutate `input.prompt` themselves. This keeps the registry-level injection guaranteed to reach
+the model on every Codex transport, matching the API path.
 
 To disable: leave `artifacts: en` (the default).
 
@@ -378,13 +381,13 @@ The config is editable via the **Global Settings** dialog in the web UI (gear ic
 
 ### Sections
 
-**`language`** — controls AI-generated content language:
+**`language`** — controls AI-generated content language. See [Project Language](#project-language) for the full directive contract, validation rules, and per-transport delivery matrix:
 
-| Key               | Default | Options                                                    |
-| ----------------- | ------- | ---------------------------------------------------------- |
-| `ui`              | `en`    | `en`, `ru`, `de`, `fr`, `es`, `zh`, `ja`, `ko`, `pt`, `it` |
-| `artifacts`       | `en`    | Same as `ui`                                               |
-| `technical_terms` | `keep`  | `keep`, `translate`                                        |
+| Key               | Default | Options                                                                                                                                                                                                                       |
+| ----------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ui`              | `en`    | Reserved for future UI localisation (currently informational).                                                                                                                                                                |
+| `artifacts`       | `en`    | BCP-47-ish tag, validated against `^[a-z]{2,3}(?:[-_][a-z0-9]{2,8})*$` after trim+lowercase. `-` and `_` are interchangeable separators (`en-US` == `en_GB`). Any `en*` primary subtag and invalid tags are treated as no-op. |
+| `technical_terms` | `keep`  | `keep`, `translate`                                                                                                                                                                                                           |
 
 **`paths`** — custom paths for AI Factory artifacts (relative to project root):
 

@@ -167,6 +167,38 @@ describe("codex cli transport", () => {
     await runPromise;
   });
 
+  it("skips stdin when {prompt} placeholder is embedded inside a composite arg", async () => {
+    // Guards against the edge case where `{prompt}` sits inside an arbitrary
+    // flag shape (e.g. `--payload=prefix {prompt} suffix`). The substitution
+    // consumes the literal `{prompt}` token, so the stdin suppressor must
+    // rely on a pre-substitution signal — otherwise the composed prompt would
+    // be delivered twice (once inside the arg, once via stdin).
+    const child = createMockChildProcess();
+    spawnMock.mockReturnValueOnce(child);
+
+    const runPromise = runCodexCli(
+      createRunInput({
+        execution: { systemPromptAppend: "Language policy: write in Russian." },
+        options: {
+          codexCliArgs: ["run", "--json", "--payload=prefix {prompt} suffix"],
+        },
+      }),
+    );
+
+    const { cliArgs: args } = getSpawnInvocation();
+    expect(args).toEqual([
+      "run",
+      "--json",
+      "--payload=prefix Language policy: write in Russian.\n\nImplement feature suffix",
+    ]);
+    expect(child.stdin.write).not.toHaveBeenCalled();
+
+    child.stdout.emit("data", "ok");
+    child.emit("close", 0);
+
+    await runPromise;
+  });
+
   it("uses exec resume subcommand when resume and sessionId are set", async () => {
     const child = createMockChildProcess();
     spawnMock.mockReturnValueOnce(child);

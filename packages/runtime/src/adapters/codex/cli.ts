@@ -127,11 +127,23 @@ function readStringArray(value: unknown): string[] | null {
   return parsed.length > 0 ? parsed : null;
 }
 
+interface NormalizedCliArgs {
+  args: string[];
+  /**
+   * True when the configured custom `codexCliArgs` embedded the prompt via a
+   * `{prompt}` placeholder anywhere in any arg (including composite shapes
+   * like `--payload=prefix {prompt} suffix`). Tracked pre-substitution — the
+   * literal `{prompt}` token is gone from `args` after `normalizeCliArgs()`
+   * returns, so the flag is the only reliable signal for the stdin suppressor.
+   */
+  usesPromptPlaceholder: boolean;
+}
+
 function normalizeCliArgs(
   input: RuntimeRunInput,
   effectivePrompt: string,
   logger?: CodexCliLogger,
-): string[] {
+): NormalizedCliArgs {
   const options = asRecord(input.options);
   const configured = readStringArray(options.codexCliArgs);
 
@@ -142,13 +154,18 @@ function normalizeCliArgs(
   // (and any other cross-cutting append) reaches the model via the
   // `{prompt}` placeholder too — not only through the default stdin path.
   if (configured) {
-    return configured.map((arg) => {
-      if (arg.includes("{prompt}")) return arg.replaceAll("{prompt}", effectivePrompt);
+    let usesPromptPlaceholder = false;
+    const args = configured.map((arg) => {
+      if (arg.includes("{prompt}")) {
+        usesPromptPlaceholder = true;
+        return arg.replaceAll("{prompt}", effectivePrompt);
+      }
       if (arg.includes("{model}")) return arg.replaceAll("{model}", input.model ?? "");
       if (arg.includes("{session_id}"))
         return arg.replaceAll("{session_id}", input.sessionId ?? "");
       return arg;
     });
+    return { args, usesPromptPlaceholder };
   }
 
   // Default args — resume session or fresh exec
@@ -185,7 +202,7 @@ function normalizeCliArgs(
   args.push("-c", `approval_policy="${approvalPolicy}"`);
   args.push("-c", `sandbox_mode="${sandboxMode}"`);
 
-  return args;
+  return { args, usesPromptPlaceholder: false };
 }
 
 const ALLOWED_ENV_PREFIXES = [
@@ -646,13 +663,19 @@ function composePrompt(input: RuntimeRunInput): string {
   return append ? `${append}\n\n${input.prompt}` : input.prompt;
 }
 
-function shouldWritePromptToStdin(args: string[], prompt: string): boolean {
-  if (prompt && args.includes(prompt)) {
-    return false;
-  }
-  return !args.some(
-    (arg) => arg.includes("{prompt}") || arg === "--prompt" || arg.startsWith("--prompt="),
-  );
+function shouldWritePromptToStdin(
+  args: string[],
+  prompt: string,
+  usesPromptPlaceholder: boolean,
+): boolean {
+  // Any custom arg that embedded `{prompt}` already carries the composed
+  // prompt after substitution — including composite shapes like
+  // `--payload=prefix {prompt} suffix` that neither the literal-equality nor
+  // `--prompt`/`--prompt=*` checks below would catch. `usesPromptPlaceholder`
+  // captures that signal pre-substitution, so we can suppress stdin uniformly.
+  if (usesPromptPlaceholder) return false;
+  if (prompt && args.includes(prompt)) return false;
+  return !args.some((arg) => arg === "--prompt" || arg.startsWith("--prompt="));
 }
 
 function spawnCodexProcess(
@@ -673,6 +696,7 @@ function runCodexCliAttempt(
   args: string[],
   env: Record<string, string>,
   composedPrompt: string,
+  usesPromptPlaceholder: boolean,
   logger?: CodexCliLogger,
 ): Promise<{ result: RuntimeRunResult; startTimedOut: boolean }> {
   const execution = input.execution;
@@ -735,7 +759,7 @@ function runCodexCliAttempt(
   // `codexCliArgs` embed the prompt via `{prompt}` or `--prompt`, the same
   // value was substituted into `args`, so `shouldWritePromptToStdin()` skips
   // stdin here to avoid sending the prompt twice.
-  if (shouldWritePromptToStdin(args, composedPrompt)) {
+  if (shouldWritePromptToStdin(args, composedPrompt, usesPromptPlaceholder)) {
     child.stdin!.write(composedPrompt);
   }
   child.stdin!.end();
@@ -805,7 +829,7 @@ export async function runCodexCli(
   // fallback — otherwise a custom `--prompt={prompt}` would silently drop
   // the language directive the registry attached via `systemPromptAppend`.
   const composedPrompt = composePrompt(input);
-  const args = normalizeCliArgs(input, composedPrompt, logger);
+  const { args, usesPromptPlaceholder } = normalizeCliArgs(input, composedPrompt, logger);
   const options = asRecord(input.options);
   const apiKeyEnvVar =
     typeof options.apiKeyEnvVar === "string" ? options.apiKeyEnvVar : "OPENAI_API_KEY";
@@ -851,6 +875,7 @@ export async function runCodexCli(
     args,
     env,
     composedPrompt,
+    usesPromptPlaceholder,
     logger,
   );
 
@@ -862,7 +887,15 @@ export async function runCodexCli(
     );
     await sleepMs(retryDelayMs);
 
-    const retry = await runCodexCliAttempt(input, cliPath, args, env, composedPrompt, logger);
+    const retry = await runCodexCliAttempt(
+      input,
+      cliPath,
+      args,
+      env,
+      composedPrompt,
+      usesPromptPlaceholder,
+      logger,
+    );
     if (retry.startTimedOut) {
       throw makeProcessStartTimeoutError(input.execution?.startTimeoutMs ?? 0);
     }
