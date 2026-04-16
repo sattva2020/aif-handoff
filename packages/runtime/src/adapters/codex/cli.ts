@@ -663,18 +663,19 @@ function composePrompt(input: RuntimeRunInput): string {
   return append ? `${append}\n\n${input.prompt}` : input.prompt;
 }
 
-function shouldWritePromptToStdin(
-  args: string[],
-  prompt: string,
-  usesPromptPlaceholder: boolean,
-): boolean {
+function shouldWritePromptToStdin(args: string[], usesPromptPlaceholder: boolean): boolean {
   // Any custom arg that embedded `{prompt}` already carries the composed
   // prompt after substitution — including composite shapes like
-  // `--payload=prefix {prompt} suffix` that neither the literal-equality nor
-  // `--prompt`/`--prompt=*` checks below would catch. `usesPromptPlaceholder`
-  // captures that signal pre-substitution, so we can suppress stdin uniformly.
+  // `--payload=prefix {prompt} suffix` that the `--prompt`/`--prompt=*` check
+  // below would not catch. `usesPromptPlaceholder` captures that signal
+  // pre-substitution, so we can suppress stdin uniformly.
+  //
+  // A prior `args.includes(prompt)` branch was intentionally removed: the
+  // default-path `args` always carry generic tokens like `exec`, `--json`, or
+  // the model id, so a user prompt that happens to equal one of those would
+  // be false-positive-matched and never delivered. The placeholder flag plus
+  // the explicit `--prompt` check cover every legitimate embed path already.
   if (usesPromptPlaceholder) return false;
-  if (prompt && args.includes(prompt)) return false;
   return !args.some((arg) => arg === "--prompt" || arg.startsWith("--prompt="));
 }
 
@@ -759,7 +760,7 @@ function runCodexCliAttempt(
   // `codexCliArgs` embed the prompt via `{prompt}` or `--prompt`, the same
   // value was substituted into `args`, so `shouldWritePromptToStdin()` skips
   // stdin here to avoid sending the prompt twice.
-  if (shouldWritePromptToStdin(args, composedPrompt, usesPromptPlaceholder)) {
+  if (shouldWritePromptToStdin(args, usesPromptPlaceholder)) {
     child.stdin!.write(composedPrompt);
   }
   child.stdin!.end();

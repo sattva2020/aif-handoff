@@ -167,6 +167,26 @@ describe("codex cli transport", () => {
     await runPromise;
   });
 
+  it("still writes prompt to stdin on default path when the prompt collides with a generic arg token", async () => {
+    // Regression: on the default path `args` always contain generic tokens
+    // like `exec`, `--json`, or the model id. A prompt that happens to equal
+    // one of those must NOT be treated as "already embedded" — otherwise the
+    // user's prompt would never reach the CLI. Only the explicit {prompt} /
+    // --prompt placeholder signals are allowed to suppress stdin.
+    const child = createMockChildProcess();
+    spawnMock.mockReturnValueOnce(child);
+
+    const runPromise = runCodexCli(createRunInput({ prompt: "exec" }));
+
+    const { cliArgs: args } = getSpawnInvocation();
+    expect(args).toContain("exec");
+    expect(child.stdin.write).toHaveBeenCalledWith("exec");
+
+    child.stdout.emit("data", "ok");
+    child.emit("close", 0);
+    await runPromise;
+  });
+
   it("skips stdin when {prompt} placeholder is embedded inside a composite arg", async () => {
     // Guards against the edge case where `{prompt}` sits inside an arbitrary
     // flag shape (e.g. `--payload=prefix {prompt} suffix`). The substitution
