@@ -603,6 +603,68 @@ describe("useChat", () => {
     );
   });
 
+  it("upgrades user message attachments when chat:error races ahead of the 409 abort body", async () => {
+    let rejectSend: ((reason?: unknown) => void) | null = null;
+    mockSendChatMessage.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectSend = reject;
+        }),
+    );
+
+    const { result } = renderHook(() => useChat("p-1"));
+
+    let sendPromise: Promise<void>;
+    act(() => {
+      sendPromise = result.current.sendMessage("take a look", [
+        { name: "plan.md", mimeType: "text/markdown", size: 12, content: "hello" },
+      ]);
+    });
+    await waitFor(() => expect(mockSendChatMessage).toHaveBeenCalledTimes(1));
+
+    const conversationId = mockSendChatMessage.mock.calls[0][0].conversationId as string;
+
+    // WS `chat:error` with code=aborted arrives first — this clears the
+    // in-flight stream state before the HTTP 409 lands.
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent("chat:error", {
+          detail: { conversationId, message: "Chat run aborted by user", code: "aborted" },
+        }),
+      );
+    });
+
+    // Then the HTTP request rejects with a 409 carrying server-resolved
+    // attachment paths. The bubble must still pick them up.
+    await act(async () => {
+      rejectSend!(
+        new ApiError("Chat run aborted by user", 409, {
+          code: "aborted",
+          sessionId: "sess-race-1",
+          conversationId,
+          attachments: [
+            {
+              name: "plan.md",
+              mimeType: "text/markdown",
+              size: 12,
+              path: "storage/chat/s1/plan.md",
+            },
+          ],
+        }),
+      );
+      await sendPromise;
+    });
+
+    const userMessage = result.current.messages.find((m) => m.role === "user");
+    expect(userMessage?.attachments?.[0]).toEqual(
+      expect.objectContaining({
+        name: "plan.md",
+        path: "storage/chat/s1/plan.md",
+      }),
+    );
+    expect(result.current.chatErrorCode).toBe("aborted");
+  });
+
   it("toggles explore mode", () => {
     const { result } = renderHook(() => useChat("p-1"));
 

@@ -491,20 +491,28 @@ export function useChat(
         // into React state for the viewed session.
         let patchedUserAttachments: ChatMessageAttachment[] | undefined;
         let appendedPartialAssistant: string | null = null;
-        if (isAbortedError && state) {
+        if (isAbortedError) {
           if (abortData?.attachments?.length) {
             const resolvedAttachments = abortData.attachments;
-            state.messages = state.messages.map((m) =>
-              m.role === "user" &&
-              m.content === userMessage.content &&
-              m.attachments &&
-              !m.attachments[0]?.path
-                ? { ...m, attachments: resolvedAttachments }
-                : m,
-            );
+            // Patch in-flight stream state only when it survived the WS race —
+            // needed so a later session switch restores the upgraded chips.
+            if (state) {
+              state.messages = state.messages.map((m) =>
+                m.role === "user" &&
+                m.content === userMessage.content &&
+                m.attachments &&
+                !m.attachments[0]?.path
+                  ? { ...m, attachments: resolvedAttachments }
+                  : m,
+              );
+            }
+            // Always mirror to React state: if WS `chat:error` raced ahead and
+            // cleared the stream state, the bubble would otherwise stay without
+            // its download link until the user reloads the session.
             patchedUserAttachments = resolvedAttachments;
           }
           if (
+            state &&
             !hasAccumulatedTokens &&
             typeof abortData?.assistantMessage === "string" &&
             abortData.assistantMessage.trim().length > 0
