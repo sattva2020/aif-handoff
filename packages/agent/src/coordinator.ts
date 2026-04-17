@@ -503,7 +503,7 @@ async function processOneTask(task: TaskRow, stage: StatusTransition): Promise<b
           task.id,
           "blocked_external",
           {
-            blockedReason: err instanceof Error ? err.message : String(err),
+            blockedReason: recovery.blockedReason,
             blockedFromStatus: stage.inProgress,
             retryAfter: recovery.retryAfter,
             retryCount: recovery.retryCount,

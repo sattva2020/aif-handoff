@@ -151,7 +151,11 @@ export function TaskDetailHeader({
           className="mb-3 flex flex-col gap-1 px-3 py-2 text-xs"
           icon={<AlertTriangle className="h-3.5 w-3.5" />}
         >
-          <span className="font-medium">Auto-paused by runtime limit.</span>
+          <span className="font-medium">
+            {runtimeLimitDisplay.isExpired
+              ? "Last runtime limit signal expired."
+              : "Auto-paused by runtime limit."}
+          </span>
           <span>{runtimeLimitDisplay.summary}</span>
           {runtimeLimitDisplay.resetText && <span>{runtimeLimitDisplay.resetText}</span>}
         </AlertBox>

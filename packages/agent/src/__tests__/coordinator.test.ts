@@ -429,9 +429,42 @@ describe("coordinator", () => {
     const task = db.select().from(tasks).where(eq(tasks.id, "task-ext-1")).get();
     expect(task!.status).toBe("blocked_external");
     expect(task!.blockedFromStatus).toBe("planning");
-    expect(task!.blockedReason).toContain("code 1");
+    expect(task!.blockedReason).toBe("Runtime request timed out. Task will retry automatically.");
     expect(task!.retryAfter).toBeTruthy();
     expect(task!.retryCount).toBe(1);
+  });
+
+  it("should redact raw upstream runtime bodies before persisting blocked task state", async () => {
+    const db = testDb.current;
+    db.insert(tasks)
+      .values({
+        id: "task-ext-redacted",
+        projectId: "test-project",
+        title: "External redaction",
+        status: "planning",
+      })
+      .run();
+
+    vi.mocked(runPlanner).mockRejectedValueOnce(
+      new RuntimeExecutionError(
+        'upstream leaked "token=abc123" <script>alert(1)</script>',
+        undefined,
+        "transport",
+      ),
+    );
+
+    await pollAndProcess();
+
+    const task = db.select().from(tasks).where(eq(tasks.id, "task-ext-redacted")).get();
+    expect(task!.status).toBe("blocked_external");
+    expect(task!.blockedReason).toBe("Runtime request failed. Task will retry automatically.");
+    expect(task!.blockedReason).not.toContain("abc123");
+    expect(task!.blockedReason).not.toContain("<script>");
+    expect(task!.agentActivityLog).toContain(
+      "Runtime request failed. Task will retry automatically.",
+    );
+    expect(task!.agentActivityLog).not.toContain("abc123");
+    expect(task!.agentActivityLog).not.toContain("<script>");
   });
 
   it("should use structured resetAt and persist task limit snapshot on quota exhaustion", async () => {

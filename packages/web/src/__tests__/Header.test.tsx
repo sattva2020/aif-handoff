@@ -110,7 +110,7 @@ describe("Header", () => {
           runtimeId: "claude",
           profileId: "profile-1",
           primaryScope: "requests",
-          resetAt: "2026-04-17T01:00:00.000Z",
+          resetAt: "2099-04-17T01:00:00.000Z",
           warningThreshold: 10,
           windows: [{ scope: "requests", percentRemaining: 8, warningThreshold: 10 }],
           providerMeta: null,
@@ -139,6 +139,55 @@ describe("Header", () => {
     expect(screen.getByText("LIMIT")).toBeDefined();
     expect(screen.getByLabelText("Runtime profiles").getAttribute("title")).toContain(
       "Request quota is at 8% remaining",
+    );
+  });
+
+  it("shows an expired badge after the persisted runtime limit reset window has passed", () => {
+    mockEffectiveChatRuntime = {
+      profile: {
+        id: "profile-1",
+        name: "Claude Team",
+        runtimeId: "claude",
+        providerId: "anthropic",
+        defaultModel: "claude-sonnet",
+        runtimeLimitSnapshot: {
+          source: "api_headers",
+          status: "blocked",
+          precision: "exact",
+          checkedAt: "2026-04-17T00:00:00.000Z",
+          providerId: "anthropic",
+          runtimeId: "claude",
+          profileId: "profile-1",
+          primaryScope: "requests",
+          resetAt: "2026-04-16T23:00:00.000Z",
+          warningThreshold: 10,
+          windows: [{ scope: "requests", percentRemaining: 0, warningThreshold: 10 }],
+          providerMeta: null,
+        },
+        runtimeLimitUpdatedAt: "2026-04-17T00:00:00.000Z",
+      },
+    };
+
+    render(
+      <Header
+        selectedProject={project}
+        onSelectProject={vi.fn()}
+        onDeselectProject={vi.fn()}
+        onOpenCommandPalette={vi.fn()}
+        density="comfortable"
+        onDensityChange={vi.fn()}
+        viewMode="kanban"
+        onViewModeChange={vi.fn()}
+        taskMetrics={metrics}
+        aggregateTotals={null}
+        runtimeProfilesOpen={false}
+        onToggleRuntimeProfiles={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("EXPIRED")).toBeDefined();
+    expect(screen.getByLabelText("Runtime profiles").getAttribute("title")).toContain(
+      "last runtime limit window has expired",
     );
   });
 });

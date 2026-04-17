@@ -181,6 +181,29 @@ describe("classifyStageError", () => {
     }
   });
 
+  it("redacts raw upstream error text from blocked reasons and activity logs", () => {
+    const err = new RuntimeExecutionError(
+      'upstream leaked "token=abc123" <script>alert(1)</script>',
+      undefined,
+      "transport",
+    );
+
+    const result = classifyStageError(makeInput({ err }));
+
+    expect(result.kind).toBe("blocked_external");
+    if (result.kind === "blocked_external") {
+      expect(result.blockedReason).toBe("Runtime request failed. Task will retry automatically.");
+      expect(result.blockedReason).not.toContain("abc123");
+      expect(result.blockedReason).not.toContain("<script>");
+    }
+
+    expect(appendTaskActivityLog).toHaveBeenCalledOnce();
+    const activityText = vi.mocked(appendTaskActivityLog).mock.calls[0][1];
+    expect(activityText).toContain("Runtime request failed. Task will retry automatically.");
+    expect(activityText).not.toContain("abc123");
+    expect(activityText).not.toContain("<script>");
+  });
+
   it("logs error with taskId, stage, retryAfter, and backoffMinutes for blocked_external", () => {
     const err = new RuntimeExecutionError("rate limit exceeded", undefined, "rate_limit");
     classifyStageError(makeInput({ err, taskId: "t-ext", stageLabel: "reviewer" }));

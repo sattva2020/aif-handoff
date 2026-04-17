@@ -73,7 +73,7 @@ describe("ProjectRuntimeSettings", () => {
           runtimeId: "claude",
           profileId: "profile-1",
           primaryScope: "requests",
-          resetAt: "2026-04-17T01:00:00.000Z",
+          resetAt: "2099-04-17T01:00:00.000Z",
           warningThreshold: 10,
           windows: [{ scope: "requests", percentRemaining: 5, warningThreshold: 10 }],
           providerMeta: null,

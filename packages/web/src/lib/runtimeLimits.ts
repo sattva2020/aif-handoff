@@ -8,6 +8,7 @@ export type RuntimeLimitTone = "success" | "warning" | "error" | "info";
 
 export interface RuntimeLimitDisplay {
   tone: RuntimeLimitTone;
+  isExpired: boolean;
   label: string;
   shortLabel: string;
   summary: string;
@@ -21,6 +22,7 @@ export interface RuntimeLimitDisplay {
 interface RuntimeLimitDisplayOptions {
   fallbackRetryAfter?: string | null;
   checkedAt?: string | null;
+  nowMs?: number;
 }
 
 const NUMBER_FORMAT = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 });
@@ -48,6 +50,12 @@ function formatTimestamp(value: string | null | undefined): string | null {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function parseTimestampMs(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function scopeLabel(scope: RuntimeLimitScope | null | undefined): string {
@@ -177,6 +185,29 @@ export function getRuntimeLimitDisplay(
   const resetAt = snapshot.resetAt ?? window?.resetAt ?? options.fallbackRetryAfter ?? null;
   const retryAfterSeconds = snapshot.retryAfterSeconds ?? window?.retryAfterSeconds ?? null;
   const checkedAt = options.checkedAt ?? snapshot.checkedAt ?? null;
+  const resetAtMs = parseTimestampMs(resetAt);
+  const isExpired =
+    (snapshot.status === "blocked" || snapshot.status === "warning") &&
+    resetAtMs != null &&
+    resetAtMs <= (options.nowMs ?? Date.now());
+
+  const resetLabel = formatTimestamp(resetAt);
+  const checkedLabel = formatTimestamp(checkedAt);
+
+  if (isExpired) {
+    return {
+      tone: "info",
+      isExpired: true,
+      label: "Expired",
+      shortLabel: "EXPIRED",
+      summary: "The last runtime limit window has expired. Waiting for a fresh provider update.",
+      detail: "This persisted provider signal is no longer treated as an active runtime block.",
+      resetAt,
+      resetText: resetLabel ? `Reset window elapsed ${resetLabel}.` : null,
+      checkedAt,
+      checkedText: checkedLabel ? `Checked ${checkedLabel}.` : null,
+    };
+  }
 
   const tone: RuntimeLimitTone =
     snapshot.status === "blocked"
@@ -202,11 +233,10 @@ export function getRuntimeLimitDisplay(
         : snapshot.status === "ok"
           ? "OK"
           : "UNKNOWN";
-  const resetLabel = formatTimestamp(resetAt);
-  const checkedLabel = formatTimestamp(checkedAt);
 
   return {
     tone,
+    isExpired: false,
     label,
     shortLabel,
     summary: summarizeWindow(snapshot, window),

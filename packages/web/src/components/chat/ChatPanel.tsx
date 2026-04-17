@@ -351,9 +351,11 @@ export function ChatPanel({
                   variant="outline"
                   className="border-amber-600/60 text-amber-700 dark:border-amber-400/50 dark:text-amber-300"
                 >
-                  {chatRuntimeLimitDisplay?.label === "Blocked"
-                    ? "Runtime Blocked"
-                    : "Usage Limit Reached"}
+                  {chatRuntimeLimitDisplay?.isExpired
+                    ? "Limit Window Expired"
+                    : chatRuntimeLimitDisplay?.label === "Blocked"
+                      ? "Runtime Blocked"
+                      : "Usage Limit Reached"}
                 </Badge>
                 <p className="mt-1 text-xs text-amber-700/90 dark:text-amber-200/90">
                   {chatRuntimeLimitDisplay?.summary ??

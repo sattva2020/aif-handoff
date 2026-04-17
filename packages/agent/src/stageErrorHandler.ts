@@ -23,6 +23,7 @@ export type ErrorRecovery =
   | { kind: "fast_retry" }
   | {
       kind: "blocked_external";
+      blockedReason: string;
       retryAfter: string;
       retryAfterSource: RetryAfterSource;
       retryCount: number;
@@ -36,6 +37,29 @@ interface StageErrorInput {
   sourceStatus: TaskStatus;
   retryCount: number;
   err: unknown;
+}
+
+function buildUserSafeExternalReason(err: unknown): string {
+  const runtimeError = findRuntimeExecutionError(err);
+  if (!runtimeError) {
+    return "Runtime capability check failed. Check the configured runtime profile for this stage.";
+  }
+
+  switch (runtimeError.category) {
+    case "rate_limit":
+      return "Runtime usage limit reached. Task auto-paused until the retry window.";
+    case "auth":
+      return "Runtime authentication failed. Check the configured runtime profile.";
+    case "permission":
+      return "Runtime permissions blocked this task. Check the configured runtime profile or approval mode.";
+    case "timeout":
+      return "Runtime request timed out. Task will retry automatically.";
+    case "stream":
+      return "Runtime stream failed. Task will retry automatically.";
+    case "transport":
+    default:
+      return "Runtime request failed. Task will retry automatically.";
+  }
 }
 
 function resolveRetryAfter(err: unknown): {
@@ -102,7 +126,20 @@ export function classifyStageError(input: StageErrorInput): ErrorRecovery {
   if (isExternalFailure(err)) {
     const { retryAfter, retryAfterSource, backoffMinutes, limitSnapshot } = resolveRetryAfter(err);
     const reason = err instanceof Error ? err.message : String(err);
+    const blockedReason = buildUserSafeExternalReason(err);
     const runtimeError = findRuntimeExecutionError(err);
+
+    if (reason.trim() && reason.trim() !== blockedReason) {
+      log.debug(
+        {
+          taskId,
+          stage: stageLabel,
+          safeReason: blockedReason,
+          rawReason: reason,
+        },
+        "[FIX] Redacted raw runtime error before persisting blocked task state",
+      );
+    }
 
     if (retryAfterSource === "random_backoff") {
       log.warn(
@@ -122,7 +159,7 @@ export function classifyStageError(input: StageErrorInput): ErrorRecovery {
     logActivity(
       taskId,
       "Agent",
-      `coordinator moved to blocked_external from ${sourceStatus} at ${stageLabel}; retryAfter=${retryAfter}; source=${retryAfterSource}; reason=${truncateReason(reason)}`,
+      `coordinator moved to blocked_external from ${sourceStatus} at ${stageLabel}; retryAfter=${retryAfter}; source=${retryAfterSource}; reason=${truncateReason(blockedReason)}`,
     );
 
     log.error(
@@ -144,6 +181,7 @@ export function classifyStageError(input: StageErrorInput): ErrorRecovery {
 
     return {
       kind: "blocked_external",
+      blockedReason,
       retryAfter,
       retryAfterSource,
       retryCount: (input.retryCount ?? 0) + 1,
