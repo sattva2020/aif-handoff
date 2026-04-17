@@ -41,6 +41,7 @@ const log = logger("api-runtime");
 let runtimeRegistryPromise: Promise<RuntimeRegistry> | null = null;
 let modelDiscoveryService: RuntimeModelDiscoveryService | null = null;
 const runtimeLimitStateCache = createRuntimeMemoryCache<string>({ defaultTtlMs: 30_000 });
+const runtimeLimitBroadcastCache = createRuntimeMemoryCache<string>({ defaultTtlMs: 30_000 });
 
 export async function getApiRuntimeRegistry(): Promise<RuntimeRegistry> {
   if (!runtimeRegistryPromise) {
@@ -168,10 +169,21 @@ function buildRuntimeLimitCacheSignature(
   return null;
 }
 
+function buildRuntimeLimitBroadcastCacheKey(input: {
+  projectId?: string | null;
+  taskId?: string | null;
+  runtimeProfileId: string;
+}): string | null {
+  const projectId = input.projectId ?? null;
+  if (!projectId) return null;
+  return `${projectId}:${input.runtimeProfileId}:${input.taskId ?? ""}`;
+}
+
 function broadcastRuntimeLimitUpdate(input: {
   projectId?: string | null;
   taskId?: string | null;
   runtimeProfileId: string;
+  signature: string;
 }): void {
   const projectId = input.projectId ?? null;
   if (!projectId) {
@@ -185,6 +197,24 @@ function broadcastRuntimeLimitUpdate(input: {
     return;
   }
 
+  const broadcastCacheKey = buildRuntimeLimitBroadcastCacheKey(input);
+  if (!broadcastCacheKey) {
+    return;
+  }
+
+  const cachedSignature = runtimeLimitBroadcastCache.get(broadcastCacheKey);
+  if (cachedSignature === input.signature) {
+    log.debug(
+      {
+        runtimeProfileId: input.runtimeProfileId,
+        projectId,
+        taskId: input.taskId ?? null,
+      },
+      "Skipped runtime limit WS broadcast because identical project/task state is still cached",
+    );
+    return;
+  }
+
   broadcast({
     type: "project:runtime_limit_updated",
     payload: {
@@ -193,6 +223,7 @@ function broadcastRuntimeLimitUpdate(input: {
       taskId: input.taskId ?? null,
     },
   });
+  runtimeLimitBroadcastCache.set(broadcastCacheKey, input.signature);
 }
 
 export function refreshRuntimeProfileLimitState(input: {
@@ -246,7 +277,8 @@ export function refreshRuntimeProfileLimitState(input: {
   }
 
   const cachedSignature = runtimeLimitStateCache.get(runtimeProfileId);
-  if (cachedSignature === signature) {
+  const shouldPersist = cachedSignature !== signature;
+  if (!shouldPersist) {
     log.debug(
       {
         runtimeProfileId,
@@ -258,39 +290,41 @@ export function refreshRuntimeProfileLimitState(input: {
         workflowKind: input.workflowKind ?? null,
         reason: input.reason,
       },
-      "Skipped runtime limit state refresh because identical state is still cached",
+      "[FIX] Skipping runtime limit DB write because identical profile state is still cached; project-scoped broadcast will still be evaluated",
     );
-    return;
   }
 
-  const persistedAt = new Date().toISOString();
-  log.debug(
-    {
-      runtimeProfileId,
-      runtimeId: input.runtimeId ?? input.snapshot?.runtimeId ?? null,
-      providerId: input.providerId ?? input.snapshot?.providerId ?? null,
-      taskId: input.taskId ?? null,
-      projectId: input.projectId ?? null,
-      conversationId: input.conversationId ?? null,
-      workflowKind: input.workflowKind ?? null,
-      reason: input.reason,
-      cacheHit: false,
-      action: input.snapshot ? "persist" : "clear",
-    },
-    "Refreshing runtime profile limit state",
-  );
-
   try {
-    if (input.snapshot) {
-      persistRuntimeProfileLimitSnapshot(runtimeProfileId, input.snapshot, persistedAt);
-    } else {
-      clearRuntimeProfileLimitSnapshot(runtimeProfileId, persistedAt);
+    if (shouldPersist) {
+      const persistedAt = new Date().toISOString();
+      log.debug(
+        {
+          runtimeProfileId,
+          runtimeId: input.runtimeId ?? input.snapshot?.runtimeId ?? null,
+          providerId: input.providerId ?? input.snapshot?.providerId ?? null,
+          taskId: input.taskId ?? null,
+          projectId: input.projectId ?? null,
+          conversationId: input.conversationId ?? null,
+          workflowKind: input.workflowKind ?? null,
+          reason: input.reason,
+          cacheHit: false,
+          action: input.snapshot ? "persist" : "clear",
+        },
+        "Refreshing runtime profile limit state",
+      );
+
+      if (input.snapshot) {
+        persistRuntimeProfileLimitSnapshot(runtimeProfileId, input.snapshot, persistedAt);
+      } else {
+        clearRuntimeProfileLimitSnapshot(runtimeProfileId, persistedAt);
+      }
+      runtimeLimitStateCache.set(runtimeProfileId, signature);
     }
-    runtimeLimitStateCache.set(runtimeProfileId, signature);
     broadcastRuntimeLimitUpdate({
       projectId: input.projectId ?? null,
       taskId: input.taskId ?? null,
       runtimeProfileId,
+      signature,
     });
   } catch (error) {
     log.warn(

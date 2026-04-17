@@ -34,6 +34,7 @@ describe("getRuntimeLimitDisplay", () => {
     });
 
     expect(display).toMatchObject({
+      state: "active",
       tone: "error",
       isExpired: false,
       label: "Blocked",
@@ -47,6 +48,7 @@ describe("getRuntimeLimitDisplay", () => {
     });
 
     expect(display).toMatchObject({
+      state: "expired",
       tone: "info",
       isExpired: true,
       label: "Expired",
@@ -67,10 +69,33 @@ describe("getRuntimeLimitDisplay", () => {
     );
 
     expect(display).toMatchObject({
+      state: "expired",
       tone: "info",
       isExpired: true,
       label: "Expired",
       shortLabel: "EXPIRED",
     });
+  });
+
+  it("degrades blocked snapshots without an active reset hint to a neutral inactive state", () => {
+    const display = getRuntimeLimitDisplay(
+      createSnapshot({
+        resetAt: null,
+        windows: [{ scope: "requests", percentRemaining: 5, warningThreshold: 10, resetAt: null }],
+      }),
+      {
+        nowMs: Date.parse("2026-04-17T00:30:00.000Z"),
+      },
+    );
+
+    expect(display).toMatchObject({
+      state: "stale",
+      tone: "info",
+      isExpired: false,
+      label: "Inactive",
+      shortLabel: "INACTIVE",
+    });
+    expect(display?.summary).toContain("no active reset hint");
+    expect(display?.resetText).toBeNull();
   });
 });

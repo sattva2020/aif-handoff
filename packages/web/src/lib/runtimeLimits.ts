@@ -5,8 +5,10 @@ import type {
 } from "@aif/shared/browser";
 
 export type RuntimeLimitTone = "success" | "warning" | "error" | "info";
+export type RuntimeLimitDisplayState = "active" | "expired" | "stale";
 
 export interface RuntimeLimitDisplay {
+  state: RuntimeLimitDisplayState;
   tone: RuntimeLimitTone;
   isExpired: boolean;
   label: string;
@@ -186,16 +188,23 @@ export function getRuntimeLimitDisplay(
   const retryAfterSeconds = snapshot.retryAfterSeconds ?? window?.retryAfterSeconds ?? null;
   const checkedAt = options.checkedAt ?? snapshot.checkedAt ?? null;
   const resetAtMs = parseTimestampMs(resetAt);
-  const isExpired =
-    (snapshot.status === "blocked" || snapshot.status === "warning") &&
-    resetAtMs != null &&
-    resetAtMs <= (options.nowMs ?? Date.now());
+  const nowMs = options.nowMs ?? Date.now();
+  const isActiveLimitSignal = snapshot.status === "blocked" || snapshot.status === "warning";
+  const hasFutureResetHint = resetAtMs != null && resetAtMs > nowMs;
+  const displayState: RuntimeLimitDisplayState = isActiveLimitSignal
+    ? hasFutureResetHint
+      ? "active"
+      : resetAtMs != null
+        ? "expired"
+        : "stale"
+    : "active";
 
   const resetLabel = formatTimestamp(resetAt);
   const checkedLabel = formatTimestamp(checkedAt);
 
-  if (isExpired) {
+  if (displayState === "expired") {
     return {
+      state: "expired",
       tone: "info",
       isExpired: true,
       label: "Expired",
@@ -204,6 +213,24 @@ export function getRuntimeLimitDisplay(
       detail: "This persisted provider signal is no longer treated as an active runtime block.",
       resetAt,
       resetText: resetLabel ? `Reset window elapsed ${resetLabel}.` : null,
+      checkedAt,
+      checkedText: checkedLabel ? `Checked ${checkedLabel}.` : null,
+    };
+  }
+
+  if (displayState === "stale") {
+    return {
+      state: "stale",
+      tone: "info",
+      isExpired: false,
+      label: "Inactive",
+      shortLabel: "INACTIVE",
+      summary:
+        "The last runtime limit signal has no active reset hint. Waiting for a fresh provider update.",
+      detail:
+        "This persisted provider signal is not treated as an active runtime block until the provider reports a future reset window.",
+      resetAt,
+      resetText: null,
       checkedAt,
       checkedText: checkedLabel ? `Checked ${checkedLabel}.` : null,
     };
@@ -235,6 +262,7 @@ export function getRuntimeLimitDisplay(
           : "UNKNOWN";
 
   return {
+    state: "active",
     tone,
     isExpired: false,
     label,

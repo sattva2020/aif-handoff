@@ -190,4 +190,53 @@ describe("Header", () => {
       "last runtime limit window has expired",
     );
   });
+
+  it("shows an inactive badge when the persisted runtime limit signal has no active reset hint", () => {
+    mockEffectiveChatRuntime = {
+      profile: {
+        id: "profile-1",
+        name: "Claude Team",
+        runtimeId: "claude",
+        providerId: "anthropic",
+        defaultModel: "claude-sonnet",
+        runtimeLimitSnapshot: {
+          source: "sdk_event",
+          status: "blocked",
+          precision: "heuristic",
+          checkedAt: "2026-04-17T00:00:00.000Z",
+          providerId: "anthropic",
+          runtimeId: "claude",
+          profileId: "profile-1",
+          primaryScope: "time",
+          resetAt: null,
+          warningThreshold: null,
+          windows: [{ scope: "time", percentRemaining: 4, resetAt: null }],
+          providerMeta: { status: "rejected" },
+        },
+        runtimeLimitUpdatedAt: "2026-04-17T00:00:00.000Z",
+      },
+    };
+
+    render(
+      <Header
+        selectedProject={project}
+        onSelectProject={vi.fn()}
+        onDeselectProject={vi.fn()}
+        onOpenCommandPalette={vi.fn()}
+        density="comfortable"
+        onDensityChange={vi.fn()}
+        viewMode="kanban"
+        onViewModeChange={vi.fn()}
+        taskMetrics={metrics}
+        aggregateTotals={null}
+        runtimeProfilesOpen={false}
+        onToggleRuntimeProfiles={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("INACTIVE")).toBeDefined();
+    expect(screen.getByLabelText("Runtime profiles").getAttribute("title")).toContain(
+      "no active reset hint",
+    );
+  });
 });

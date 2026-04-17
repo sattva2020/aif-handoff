@@ -705,4 +705,63 @@ describe("runtime service", () => {
     expect(mockPersistRuntimeProfileLimitSnapshot).toHaveBeenCalledTimes(1);
     expect(mockBroadcast).toHaveBeenCalledTimes(1);
   });
+
+  it("rebroadcasts identical runtime limit state for a different project context", async () => {
+    const runtimeService = await loadRuntimeService();
+    const adapter = createAdapter();
+    const snapshot = createLimitSnapshot({ profileId: "profile-global" });
+    adapter.run = vi.fn().mockResolvedValue({
+      outputText: "ok",
+      events: [
+        {
+          type: "runtime:limit",
+          timestamp: "2026-04-17T00:00:01.000Z",
+          data: { snapshot },
+        },
+      ],
+      usage: null,
+    });
+    mockRegistryResolveRuntime.mockReturnValue(adapter);
+    mockResolveRuntimeProfile.mockReturnValue(
+      createResolvedProfile({ profileId: "profile-global" }),
+    );
+    mockFindProjectById.mockImplementation((projectId: string) => ({
+      id: projectId,
+      rootPath: `/tmp/${projectId}`,
+    }));
+
+    await runtimeService.runApiRuntimeOneShot({
+      projectId: "proj-1",
+      projectRoot: "/tmp/proj-1",
+      prompt: "first",
+      workflowKind: "commit",
+      usageContext: { source: "test" },
+    });
+    await runtimeService.runApiRuntimeOneShot({
+      projectId: "proj-2",
+      projectRoot: "/tmp/proj-2",
+      prompt: "second",
+      workflowKind: "commit",
+      usageContext: { source: "test" },
+    });
+
+    expect(mockPersistRuntimeProfileLimitSnapshot).toHaveBeenCalledTimes(1);
+    expect(mockBroadcast).toHaveBeenCalledTimes(2);
+    expect(mockBroadcast).toHaveBeenNthCalledWith(1, {
+      type: "project:runtime_limit_updated",
+      payload: {
+        projectId: "proj-1",
+        runtimeProfileId: "profile-global",
+        taskId: null,
+      },
+    });
+    expect(mockBroadcast).toHaveBeenNthCalledWith(2, {
+      type: "project:runtime_limit_updated",
+      payload: {
+        projectId: "proj-2",
+        runtimeProfileId: "profile-global",
+        taskId: null,
+      },
+    });
+  });
 });

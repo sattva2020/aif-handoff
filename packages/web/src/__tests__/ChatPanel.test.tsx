@@ -254,6 +254,27 @@ describe("ChatPanel", () => {
     expect(screen.getByText(/Resets/)).toBeDefined();
   });
 
+  it("shows a neutral banner when the runtime limit signal has no active reset hint", () => {
+    mockChatErrorCode = "CHAT_USAGE_LIMIT";
+    mockChatRuntimeLimitSnapshot = {
+      source: "sdk_event",
+      status: "blocked",
+      precision: "heuristic",
+      checkedAt: "2026-04-17T00:00:00.000Z",
+      providerId: "anthropic",
+      runtimeId: "claude",
+      primaryScope: "time",
+      resetAt: null,
+      warningThreshold: null,
+      windows: [{ scope: "time", percentRemaining: 4, resetAt: null }],
+      providerMeta: { status: "rejected" },
+    };
+    renderPanel();
+    expect(screen.getByText("Limit Signal Inactive")).toBeDefined();
+    expect(screen.getByText(/no active reset hint/i)).toBeDefined();
+    expect(screen.queryByText(/Resets/)).toBeNull();
+  });
+
   it("calls onClose when close button is clicked", () => {
     renderPanel();
     const closeButton = screen.getByLabelText("Close chat");

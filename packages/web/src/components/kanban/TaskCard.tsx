@@ -197,7 +197,9 @@ export function TaskCard({
       {task.status === "blocked_external" && runtimeLimitDisplay && (
         <div className="mt-2 ml-2 border border-red-500/30 bg-red-500/10 px-2 py-1 text-3xs text-red-300">
           <div className="font-medium">
-            {runtimeLimitDisplay.isExpired ? "Last runtime limit signal" : "Runtime auto-pause"}
+            {runtimeLimitDisplay.state === "active"
+              ? "Runtime auto-pause"
+              : "Last runtime limit signal"}
           </div>
           <div className="line-clamp-2">{runtimeLimitDisplay.summary}</div>
           {runtimeLimitDisplay.resetText && (
