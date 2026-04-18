@@ -337,6 +337,16 @@ export async function runClaudeQueryAttempt(
   }
 
   if (providerIdentity.quotaSource === "zai_monitor" && authToken) {
+    logger?.debug?.(
+      {
+        runtimeId: input.runtimeId,
+        providerId: input.providerId ?? "anthropic",
+        profileId: input.profileId ?? null,
+        quotaAuthEnvVar: providerIdentity.apiKeyEnvVar,
+        providerFamily: providerIdentity.providerFamily,
+      },
+      "[FIX] Refreshing Z.AI coding quota snapshot with resolved Claude auth identity",
+    );
     try {
       const providerSnapshot = await fetchZaiClaudeQuotaSnapshot({
         runtimeId: input.runtimeId,

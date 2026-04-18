@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ClaudeProviderFamily,
+  resolveClaudeProviderAuth,
   resolveClaudeProviderIdentity,
 } from "../adapters/claude/providerIdentity.js";
 
@@ -54,5 +55,52 @@ describe("resolveClaudeProviderIdentity", () => {
       baseOrigin: "https://api.anthropic.com",
     });
     expect(identity.accountFingerprint).toHaveLength(16);
+  });
+
+  it("prefers local Claude auth tokens for Z.AI sdk quota refresh over resolved API keys", () => {
+    const localSettings = {
+      baseUrl: "https://api.z.ai/api/anthropic",
+      authToken: "glm-local-auth-token",
+    };
+
+    const resolved = resolveClaudeProviderAuth({
+      providerId: "anthropic",
+      transport: "sdk",
+      baseUrl: "https://api.z.ai/api/anthropic",
+      apiKeyEnvVar: "ANTHROPIC_API_KEY",
+      apiKey: "sk-resolved-api-key",
+      localSettingsOverride: localSettings,
+    });
+
+    expect(resolved.authToken).toBe("glm-local-auth-token");
+    expect(resolved.identity).toMatchObject({
+      providerFamily: ClaudeProviderFamily.ZAI_GLM_CODING,
+      providerLabel: "Z.AI GLM Coding Plan",
+      quotaSource: "zai_monitor",
+      baseOrigin: "https://api.z.ai",
+      apiKeyEnvVar: "ANTHROPIC_AUTH_TOKEN",
+    });
+    expect(resolved.identity.accountFingerprint).toHaveLength(16);
+  });
+
+  it("keeps explicit API keys for Z.AI API transport", () => {
+    const resolved = resolveClaudeProviderAuth({
+      providerId: "anthropic",
+      transport: "api",
+      baseUrl: "https://api.z.ai/api/anthropic",
+      apiKeyEnvVar: "ZAI_API_KEY",
+      apiKey: "zai-api-key",
+      localSettingsOverride: {
+        baseUrl: "https://api.z.ai/api/anthropic",
+        authToken: "glm-local-auth-token",
+      },
+    });
+
+    expect(resolved.authToken).toBe("zai-api-key");
+    expect(resolved.identity).toMatchObject({
+      providerFamily: ClaudeProviderFamily.ZAI_GLM_CODING,
+      quotaSource: "zai_monitor",
+      apiKeyEnvVar: "ZAI_API_KEY",
+    });
   });
 });

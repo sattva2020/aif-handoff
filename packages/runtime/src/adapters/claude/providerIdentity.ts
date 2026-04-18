@@ -39,6 +39,7 @@ export interface ResolveClaudeProviderIdentityInput {
   apiKey?: string | null;
   env?: Record<string, string | undefined>;
   defaultModel?: string | null;
+  localSettingsOverride?: ClaudeLocalSettingsIdentity | null;
 }
 
 interface ResolvedAuthContext {
@@ -134,11 +135,55 @@ function readClaudeLocalSettings(): ClaudeLocalSettingsIdentity | null {
   };
 }
 
+function resolveLocalSettingsIdentity(
+  input: ResolveClaudeProviderIdentityInput,
+): ClaudeLocalSettingsIdentity | null {
+  if (input.localSettingsOverride !== undefined) {
+    return input.localSettingsOverride;
+  }
+
+  if (input.transport === "sdk" || input.transport === "cli") {
+    return readClaudeLocalSettings();
+  }
+
+  return null;
+}
+
+function shouldPreferLocalSettingsAuthToken(
+  input: ResolveClaudeProviderIdentityInput,
+  localSettings: ClaudeLocalSettingsIdentity | null,
+  resolvedBaseUrl: string | null,
+): boolean {
+  if (!localSettings?.authToken) {
+    return false;
+  }
+
+  const transport = readString(input.transport);
+  if (transport !== "sdk" && transport !== "cli") {
+    return false;
+  }
+
+  const family = resolveProviderFamily(
+    resolvedBaseUrl ?? localSettings.baseUrl ?? null,
+    input.providerId ?? null,
+    localSettings.authToken,
+  );
+
+  return family === ClaudeProviderFamily.ZAI_GLM_CODING;
+}
+
 function resolveConfiguredApiKey(
   input: ResolveClaudeProviderIdentityInput,
   localSettings: ClaudeLocalSettingsIdentity | null,
   resolvedBaseUrl: string | null,
 ): { apiKey: string | null; apiKeyEnvVar: string | null } {
+  if (shouldPreferLocalSettingsAuthToken(input, localSettings, resolvedBaseUrl)) {
+    return {
+      apiKey: localSettings?.authToken ?? null,
+      apiKeyEnvVar: "ANTHROPIC_AUTH_TOKEN",
+    };
+  }
+
   if (input.apiKey) {
     return {
       apiKey: readString(input.apiKey),
@@ -265,8 +310,7 @@ function resolveQuotaSource(
 }
 
 function resolveAuthContext(input: ResolveClaudeProviderIdentityInput): ResolvedAuthContext {
-  const localSettings =
-    input.transport === "sdk" || input.transport === "cli" ? readClaudeLocalSettings() : null;
+  const localSettings = resolveLocalSettingsIdentity(input);
   const explicitBaseUrl = normalizeBaseUrl(input.baseUrl);
   const localBaseUrl = localSettings?.baseUrl ?? null;
   const baseUrl = explicitBaseUrl ?? localBaseUrl;
