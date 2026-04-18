@@ -7,6 +7,7 @@ import {
   type RuntimeLimitSnapshot,
   type RuntimeLimitWindow,
 } from "../../types.js";
+import type { ClaudeProviderIdentity } from "./providerIdentity.js";
 
 type ClaudeRateLimitStatus = "allowed" | "allowed_warning" | "rejected";
 type ClaudeRateLimitType =
@@ -34,6 +35,7 @@ interface NormalizeClaudeLimitSnapshotInput {
   providerId: string;
   profileId?: string | null;
   checkedAt?: string;
+  providerIdentity?: ClaudeProviderIdentity | null;
 }
 
 const MAX_VALID_DATE_MS = 8_640_000_000_000_000;
@@ -187,6 +189,11 @@ export function normalizeClaudeLimitSnapshot(
     warningThreshold: null,
     windows: [window],
     providerMeta: {
+      providerFamily: input.providerIdentity?.providerFamily ?? null,
+      providerLabel: input.providerIdentity?.providerLabel ?? null,
+      quotaSource: input.providerIdentity?.quotaSource ?? null,
+      accountFingerprint: input.providerIdentity?.accountFingerprint ?? null,
+      accountLabel: input.providerIdentity?.accountLabel ?? null,
       rateLimitType,
       status: info.status ?? null,
       overageStatus: info.overageStatus ?? null,

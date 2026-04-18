@@ -5,6 +5,7 @@ import {
   getCodexAuthIdentity,
   isValidEnvVarName,
   redactResolvedRuntimeProfile,
+  resolveClaudeProviderIdentity,
   resolveRuntimeProfile,
 } from "@aif/runtime";
 import { getEnv, logger } from "@aif/shared";
@@ -104,6 +105,10 @@ function isLocalCodexProfile(profile: { runtimeId: string; transport?: string | 
   );
 }
 
+function isClaudeProfile(profile: { runtimeId: string }): boolean {
+  return profile.runtimeId === "claude";
+}
+
 function readProviderMetaString(
   providerMeta: Record<string, unknown> | null | undefined,
   key: string,
@@ -115,6 +120,18 @@ function readProviderMetaString(
 interface LocalCodexAccountProfileLike {
   runtimeId: string;
   transport?: string | null;
+  runtimeLimitSnapshot?: {
+    providerMeta?: Record<string, unknown> | null;
+  } | null;
+}
+
+interface ClaudeIdentityProfileLike {
+  runtimeId: string;
+  providerId: string;
+  transport?: string | null;
+  baseUrl?: string | null;
+  apiKeyEnvVar?: string | null;
+  defaultModel?: string | null;
   runtimeLimitSnapshot?: {
     providerMeta?: Record<string, unknown> | null;
   } | null;
@@ -165,6 +182,60 @@ async function enrichProfilesWithCodexIdentity<T extends LocalCodexAccountProfil
   }
 
   return profiles.map((profile) => enrichProfileWithCodexIdentity(profile, identity));
+}
+
+async function enrichProfileWithClaudeIdentity<T extends ClaudeIdentityProfileLike>(
+  profile: T,
+): Promise<T> {
+  if (!isClaudeProfile(profile) || !profile.runtimeLimitSnapshot) {
+    return profile;
+  }
+
+  const identity = await resolveClaudeProviderIdentity({
+    providerId: profile.providerId,
+    transport: profile.transport ?? null,
+    baseUrl: profile.baseUrl ?? null,
+    apiKeyEnvVar: profile.apiKeyEnvVar ?? null,
+    defaultModel: profile.defaultModel ?? null,
+    env: process.env,
+  });
+  const snapshot = profile.runtimeLimitSnapshot;
+  const providerMeta = isObjectRecord(snapshot.providerMeta) ? snapshot.providerMeta : {};
+  const nextProviderMeta = {
+    ...providerMeta,
+    ...(readProviderMetaString(providerMeta, "providerFamily")
+      ? {}
+      : { providerFamily: identity.providerFamily }),
+    ...(readProviderMetaString(providerMeta, "providerLabel")
+      ? {}
+      : { providerLabel: identity.providerLabel }),
+    ...(readProviderMetaString(providerMeta, "quotaSource")
+      ? {}
+      : { quotaSource: identity.quotaSource }),
+    ...(readProviderMetaString(providerMeta, "accountFingerprint")
+      ? {}
+      : { accountFingerprint: identity.accountFingerprint }),
+    ...(readProviderMetaString(providerMeta, "accountLabel")
+      ? {}
+      : { accountLabel: identity.accountLabel }),
+  };
+
+  return {
+    ...profile,
+    runtimeLimitSnapshot: {
+      ...snapshot,
+      providerMeta: nextProviderMeta,
+    },
+  };
+}
+
+async function enrichProfilesWithProviderIdentity<
+  T extends LocalCodexAccountProfileLike & ClaudeIdentityProfileLike,
+>(profiles: T[]): Promise<T[]> {
+  const withCodexIdentity = await enrichProfilesWithCodexIdentity(profiles);
+  return await Promise.all(
+    withCodexIdentity.map((profile) => enrichProfileWithClaudeIdentity(profile)),
+  );
 }
 
 function resolveValidationProfile(input: {
@@ -268,7 +339,7 @@ runtimeProfilesRouter.get("/", async (c) => {
     "DEBUG [runtime-profile-route] List request",
   );
   const profiles = listRuntimeProfileResponses({ projectId, includeGlobal, enabledOnly });
-  return c.json(await enrichProfilesWithCodexIdentity(profiles));
+  return c.json(await enrichProfilesWithProviderIdentity(profiles));
 });
 
 // GET /runtime-profiles/:id
@@ -276,7 +347,7 @@ runtimeProfilesRouter.get("/:id", async (c) => {
   const { id } = c.req.param();
   const profile = getRuntimeProfileResponseById(id);
   if (!profile) return c.json({ error: "Runtime profile not found" }, 404);
-  return c.json((await enrichProfilesWithCodexIdentity([profile]))[0]);
+  return c.json((await enrichProfilesWithProviderIdentity([profile]))[0]);
 });
 
 // POST /runtime-profiles
@@ -370,7 +441,7 @@ runtimeProfilesRouter.get("/effective/task/:taskId", async (c) => {
   return c.json({
     source: effective.source,
     profile: effective.profile
-      ? (await enrichProfilesWithCodexIdentity([effective.profile]))[0]
+      ? (await enrichProfilesWithProviderIdentity([effective.profile]))[0]
       : effective.profile,
     taskRuntimeProfileId: effective.taskRuntimeProfileId,
     projectRuntimeProfileId: effective.projectRuntimeProfileId,
@@ -406,7 +477,7 @@ runtimeProfilesRouter.get("/effective/chat/:projectId", async (c) => {
   return c.json({
     source: effective.source,
     profile: effective.profile
-      ? (await enrichProfilesWithCodexIdentity([effective.profile]))[0]
+      ? (await enrichProfilesWithProviderIdentity([effective.profile]))[0]
       : effective.profile,
     taskRuntimeProfileId: effective.taskRuntimeProfileId,
     projectRuntimeProfileId: effective.projectRuntimeProfileId,

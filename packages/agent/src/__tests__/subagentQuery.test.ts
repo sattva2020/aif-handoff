@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const queryMock = vi.fn();
 const logActivityMock = vi.fn();
@@ -178,6 +178,14 @@ function makeSuccessWithSession(sessionId: string, result: string) {
 
 describe("executeSubagentQuery attribution", () => {
   beforeEach(() => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        json: vi.fn().mockResolvedValue({}),
+      }),
+    );
     (globalThis as { __AIF_CLAUDE_QUERY_MOCK__?: typeof queryMock }).__AIF_CLAUDE_QUERY_MOCK__ =
       queryMock;
     queryMock.mockReset();
@@ -204,6 +212,10 @@ describe("executeSubagentQuery attribution", () => {
       projectRuntimeProfileId: null,
       systemRuntimeProfileId: null,
     });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("passes empty attribution to suppress Co-Authored-By trailers", async () => {
@@ -244,6 +256,14 @@ describe("executeSubagentQuery query_start_timeout retry", () => {
   };
 
   beforeEach(() => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        json: vi.fn().mockResolvedValue({}),
+      }),
+    );
     (globalThis as { __AIF_CLAUDE_QUERY_MOCK__?: typeof queryMock }).__AIF_CLAUDE_QUERY_MOCK__ =
       queryMock;
     queryMock.mockReset();
@@ -270,6 +290,10 @@ describe("executeSubagentQuery query_start_timeout retry", () => {
       projectRuntimeProfileId: null,
       systemRuntimeProfileId: null,
     });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("retries once after query_start_timeout and succeeds on second attempt", async () => {
@@ -295,6 +319,14 @@ describe("executeSubagentQuery query_start_timeout retry", () => {
 
 describe("executeSubagentQuery session persistence policy", () => {
   beforeEach(() => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        json: vi.fn().mockResolvedValue({}),
+      }),
+    );
     (globalThis as { __AIF_CLAUDE_QUERY_MOCK__?: typeof queryMock }).__AIF_CLAUDE_QUERY_MOCK__ =
       queryMock;
     queryMock.mockReset();
@@ -321,6 +353,10 @@ describe("executeSubagentQuery session persistence policy", () => {
       projectRuntimeProfileId: null,
       systemRuntimeProfileId: null,
     });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("persists runtime session for resume_if_available workflows", async () => {
@@ -360,6 +396,14 @@ describe("executeSubagentQuery session persistence policy", () => {
 
 describe("executeSubagentQuery runtime limit state refresh", () => {
   beforeEach(() => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        json: vi.fn().mockResolvedValue({}),
+      }),
+    );
     (globalThis as { __AIF_CLAUDE_QUERY_MOCK__?: typeof queryMock }).__AIF_CLAUDE_QUERY_MOCK__ =
       queryMock;
     queryMock.mockReset();
@@ -391,6 +435,10 @@ describe("executeSubagentQuery runtime limit state refresh", () => {
       projectRuntimeProfileId: "profile-1",
       systemRuntimeProfileId: null,
     });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("persists runtime profile limit snapshots from Claude rate_limit_event", async () => {
@@ -466,6 +514,14 @@ describe("executeSubagentQuery runtime limit state refresh", () => {
 
 describe("executeSubagentQuery model fallback policy", () => {
   beforeEach(() => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        json: vi.fn().mockResolvedValue({}),
+      }),
+    );
     (globalThis as { __AIF_CLAUDE_QUERY_MOCK__?: typeof queryMock }).__AIF_CLAUDE_QUERY_MOCK__ =
       queryMock;
     queryMock.mockReset();
@@ -496,6 +552,10 @@ describe("executeSubagentQuery model fallback policy", () => {
       projectRuntimeProfileId: null,
       systemRuntimeProfileId: null,
     });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("uses task modelOverride as highest priority", async () => {
@@ -589,6 +649,14 @@ describe("executeSubagentQuery model fallback policy", () => {
 
 describe("executeSubagentQuery first-activity watchdog", () => {
   beforeEach(() => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        json: vi.fn().mockResolvedValue({}),
+      }),
+    );
     (globalThis as { __AIF_CLAUDE_QUERY_MOCK__?: typeof queryMock }).__AIF_CLAUDE_QUERY_MOCK__ =
       queryMock;
     queryMock.mockReset();
@@ -609,6 +677,10 @@ describe("executeSubagentQuery first-activity watchdog", () => {
       projectRuntimeProfileId: null,
       systemRuntimeProfileId: null,
     });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("retries and eventually throws when agent stalls on all attempts", async () => {

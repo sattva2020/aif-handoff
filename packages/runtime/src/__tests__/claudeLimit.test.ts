@@ -137,4 +137,36 @@ describe("normalizeClaudeLimitSnapshot", () => {
       resetAt: null,
     });
   });
+
+  it("merges normalized provider identity metadata into Claude limit snapshots", () => {
+    const snapshot = normalizeClaudeLimitSnapshot({
+      info: {
+        status: "allowed_warning",
+        rateLimitType: "five_hour",
+        utilization: 42,
+      },
+      runtimeId: "claude",
+      providerId: "anthropic",
+      checkedAt: "2026-04-17T00:00:00.000Z",
+      providerIdentity: {
+        providerFamily: "zai-glm-coding",
+        providerLabel: "Z.AI GLM Coding Plan",
+        quotaSource: "zai_monitor",
+        baseUrl: "https://api.z.ai/api/anthropic",
+        baseOrigin: "https://api.z.ai",
+        apiKeyEnvVar: "ANTHROPIC_AUTH_TOKEN",
+        accountFingerprint: "glm-account-1",
+        accountLabel: null,
+      },
+    });
+
+    expect(snapshot?.providerMeta).toEqual(
+      expect.objectContaining({
+        providerFamily: "zai-glm-coding",
+        providerLabel: "Z.AI GLM Coding Plan",
+        quotaSource: "zai_monitor",
+        accountFingerprint: "glm-account-1",
+      }),
+    );
+  });
 });

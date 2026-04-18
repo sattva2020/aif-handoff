@@ -9,6 +9,7 @@ const mockValidateConnection = vi.fn();
 const mockListModels = vi.fn();
 const mockListRuntimes = vi.fn();
 const mockGetCodexAuthIdentity = vi.fn();
+const mockResolveClaudeProviderIdentity = vi.fn();
 
 vi.mock("@aif/shared/server", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@aif/shared/server")>();
@@ -23,6 +24,8 @@ vi.mock("@aif/runtime", async (importOriginal) => {
   return {
     ...actual,
     getCodexAuthIdentity: (...args: unknown[]) => mockGetCodexAuthIdentity(...args),
+    resolveClaudeProviderIdentity: (...args: unknown[]) =>
+      mockResolveClaudeProviderIdentity(...args),
   };
 });
 
@@ -56,7 +59,18 @@ describe("runtimeProfiles API", () => {
     mockListModels.mockReset();
     mockListRuntimes.mockReset();
     mockGetCodexAuthIdentity.mockReset();
+    mockResolveClaudeProviderIdentity.mockReset();
     mockGetCodexAuthIdentity.mockResolvedValue(null);
+    mockResolveClaudeProviderIdentity.mockResolvedValue({
+      providerFamily: "anthropic-native",
+      providerLabel: "Anthropic",
+      quotaSource: "sdk_event",
+      baseUrl: null,
+      baseOrigin: "https://api.anthropic.com",
+      apiKeyEnvVar: "ANTHROPIC_API_KEY",
+      accountFingerprint: null,
+      accountLabel: null,
+    });
     mockValidateConnection.mockResolvedValue({
       ok: true,
       message: "validation ok",
@@ -340,6 +354,68 @@ describe("runtimeProfiles API", () => {
         accountEmail: "ichi.chaik@gmail.com",
         planType: "pro",
         limitId: "codex",
+      }),
+    );
+  });
+
+  it("enriches Claude quota snapshots with provider-family identity when persisted metadata is stale", async () => {
+    mockResolveClaudeProviderIdentity.mockResolvedValue({
+      providerFamily: "zai-glm-coding",
+      providerLabel: "Z.A.I GLM Coding Plan",
+      quotaSource: "zai_monitor",
+      baseUrl: "https://api.z.ai/api/anthropic",
+      baseOrigin: "https://api.z.ai",
+      apiKeyEnvVar: "ANTHROPIC_AUTH_TOKEN",
+      accountFingerprint: "glm-account-1",
+      accountLabel: null,
+    });
+
+    const db = testDb.current;
+    db.insert(runtimeProfiles)
+      .values({
+        id: "profile-claude-zai",
+        projectId: "project-1",
+        name: "Claude GLM",
+        runtimeId: "claude",
+        providerId: "anthropic",
+        transport: "sdk",
+        enabled: true,
+        runtimeLimitSnapshotJson: JSON.stringify({
+          source: "provider_api",
+          status: "ok",
+          precision: "exact",
+          checkedAt: "2026-04-18T09:00:00.000Z",
+          providerId: "anthropic",
+          runtimeId: "claude",
+          profileId: "profile-claude-zai",
+          primaryScope: "tokens",
+          resetAt: null,
+          warningThreshold: 10,
+          windows: [
+            {
+              scope: "tokens",
+              name: "5h",
+              percentRemaining: 100,
+            },
+          ],
+          providerMeta: {
+            planType: "pro",
+          },
+        }),
+        runtimeLimitUpdatedAt: "2026-04-18T09:00:00.000Z",
+      })
+      .run();
+
+    const res = await app.request("/runtime-profiles?projectId=project-1&includeGlobal=true");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body[0].runtimeLimitSnapshot.providerMeta).toEqual(
+      expect.objectContaining({
+        providerFamily: "zai-glm-coding",
+        providerLabel: "Z.A.I GLM Coding Plan",
+        quotaSource: "zai_monitor",
+        accountFingerprint: "glm-account-1",
+        planType: "pro",
       }),
     );
   });

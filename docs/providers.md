@@ -81,6 +81,15 @@ Auto-pause semantics follow the precision:
 - `heuristic` snapshots only proactively gate when the provider reports the runtime as blocked.
 - When a provider exposes `resetAt` / `retryAfterSeconds`, the agent uses those values instead of random quota backoff.
 
+For Claude-family profiles, the runtime now distinguishes the backend by resolved endpoint identity, not just `runtimeId/providerId/model`:
+
+- Native Anthropic uses SDK `rate_limit_event` (SDK/CLI) or Anthropic headers (API).
+- Z.AI / GLM Coding Plan is detected from Anthropic-compatible endpoints such as `https://api.z.ai/api/anthropic` and refreshes quota from the provider monitor endpoint (`/api/monitor/usage/quota/limit`) when headers are insufficient.
+- Alibaba Coding Plan Anthropic-compatible endpoints are tracked as a separate family, but remain `partial` for quota visibility because no official provider-side polling API is integrated yet.
+- Other Anthropic-compatible endpoints fall back to headers for API transport and SDK events for SDK/CLI transport when available.
+
+UI grouping for Claude runtime usage should use the normalized backend family plus the server-side account fingerprint (derived from endpoint origin + resolved auth secret), so native Anthropic, Z.AI GLM, and other compatible backends do not collapse into one card.
+
 ### Usage reporting contract
 
 Every adapter must declare a `usageReporting` value in its `RuntimeCapabilities`. The registry wrapper reads this field for every run and enforces the contract — a new adapter cannot silently skip token accounting:

@@ -1,6 +1,47 @@
 import { existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
+
+function normalizePathValue(path: string | null | undefined): string | undefined {
+  if (!path) return undefined;
+  const normalized = path.trim().replace(/^"(.*)"$/, "$1");
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function isWindowsClaudeWrapperBasename(name: string): boolean {
+  const normalized = name.toLowerCase();
+  return (
+    normalized === "claude" ||
+    normalized === "claude.cmd" ||
+    normalized === "claude.ps1" ||
+    normalized === "claude.bat"
+  );
+}
+
+export function resolveClaudeSdkExecutablePath(
+  path: string | null | undefined,
+  platform = process.platform,
+): string | undefined {
+  const normalizedPath = normalizePathValue(path);
+  if (!normalizedPath) return undefined;
+  if (platform !== "win32") {
+    return normalizedPath;
+  }
+
+  const fileName = basename(normalizedPath).toLowerCase();
+  if (fileName === "claude.exe") {
+    return normalizedPath;
+  }
+  if (!isWindowsClaudeWrapperBasename(fileName)) {
+    return normalizedPath;
+  }
+
+  const nativeExecutablePath = resolve(
+    dirname(normalizedPath),
+    "node_modules/@anthropic-ai/claude-code/bin/claude.exe",
+  );
+  return existsSync(nativeExecutablePath) ? nativeExecutablePath : undefined;
+}
 
 /** Find the Claude CLI executable path from common install locations. */
 export function findClaudePath(): string | undefined {

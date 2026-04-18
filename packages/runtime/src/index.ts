@@ -172,6 +172,15 @@ export type {
 } from "./adapters/codex/index.js";
 
 export { getCodexAuthIdentity, type CodexAuthIdentity } from "./adapters/codex/sessions.js";
+export {
+  ClaudeProviderFamily,
+  resolveClaudeProviderAuth,
+  resolveClaudeProviderIdentity,
+  type ClaudeLocalSettingsIdentity,
+  type ClaudeProviderFamily as ClaudeProviderFamilyType,
+  type ClaudeProviderIdentity,
+  type ResolveClaudeProviderIdentityInput,
+} from "./adapters/claude/providerIdentity.js";
 
 export type {
   CreateOpenCodeRuntimeAdapterOptions,

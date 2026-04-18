@@ -329,6 +329,45 @@ describe("Header", () => {
     expect(screen.getByText("$0.12")).toBeDefined();
   });
 
+  it("derives a Claude-compatible provider label from baseUrl when only usage is available", () => {
+    mockRuntimeProfiles = [
+      {
+        id: "profile-claude-glm",
+        projectId: "project-1",
+        name: "Claude",
+        runtimeId: "claude",
+        providerId: "anthropic",
+        transport: "sdk",
+        baseUrl: "https://api.z.ai/api/anthropic",
+        apiKeyEnvVar: "ANTHROPIC_API_KEY",
+        defaultModel: "GLM-5-Turbo",
+        headers: {},
+        options: {},
+        enabled: true,
+        runtimeLimitSnapshot: null,
+        runtimeLimitUpdatedAt: null,
+        lastUsage: {
+          inputTokens: 25869,
+          outputTokens: 82,
+          totalTokens: 25951,
+          costUsd: 0.08,
+        },
+        lastUsageAt: "2026-04-18T15:33:00.000Z",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ];
+
+    renderHeader();
+
+    fireEvent.click(screen.getByRole("button", { name: "Runtime usage" }));
+
+    expect(screen.getByText("Z.AI GLM Coding Plan claude/anthropic sdk")).toBeDefined();
+    expect(screen.getByText("Profile: Claude")).toBeDefined();
+    expect(screen.getByText("USAGE ONLY")).toBeDefined();
+    expect(screen.getByText("25,951")).toBeDefined();
+  });
+
   it("merges local Codex profiles that share the same account quota", () => {
     mockRuntimeProfiles = [
       {

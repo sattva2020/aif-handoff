@@ -19,6 +19,9 @@ import { normalizeClaudeLimitSnapshot } from "./limit.js";
 import { normalizeClaudeEffort } from "./options.js";
 import { buildToolUseEvents } from "../../toolEvents.js";
 import { parseClaudeAskUserQuestion } from "./questions.js";
+import type { ClaudeProviderIdentity } from "./providerIdentity.js";
+import { resolveClaudeProviderAuth } from "./providerIdentity.js";
+import { fetchZaiClaudeQuotaSnapshot } from "./zaiQuota.js";
 
 const IS_WINDOWS = process.platform === "win32";
 
@@ -348,6 +351,7 @@ function processStreamJsonLine(
   line: string,
   state: ClaudeCliStreamState,
   input: RuntimeRunInput,
+  providerIdentity: ClaudeProviderIdentity,
   logger?: ClaudeCliLogger,
 ): void {
   const execution = input.execution;
@@ -390,6 +394,7 @@ function processStreamJsonLine(
       providerId: input.providerId ?? "anthropic",
       profileId: input.profileId ?? null,
       checkedAt: nowIso,
+      providerIdentity,
     });
 
     if (!snapshot) {
@@ -562,6 +567,8 @@ function runCliAttempt(
   cliPath: string,
   args: string[],
   env: Record<string, string>,
+  providerIdentity: ClaudeProviderIdentity,
+  authToken: string | null,
   logger?: ClaudeCliLogger,
 ): Promise<{ result: RuntimeRunResult; startTimedOut: boolean }> {
   const execution = input.execution;
@@ -582,7 +589,7 @@ function runCliAttempt(
     while (newlineIdx !== -1) {
       const line = stdoutBuffer.slice(0, newlineIdx);
       stdoutBuffer = stdoutBuffer.slice(newlineIdx + 1);
-      processStreamJsonLine(line, state, input, logger);
+      processStreamJsonLine(line, state, input, providerIdentity, logger);
       newlineIdx = stdoutBuffer.indexOf("\n");
     }
   };
@@ -643,7 +650,7 @@ function runCliAttempt(
       // Flush any trailing buffer content as a final line.
       if (stdoutBuffer.length > 0) {
         try {
-          processStreamJsonLine(stdoutBuffer, state, input, logger);
+          processStreamJsonLine(stdoutBuffer, state, input, providerIdentity, logger);
         } catch {
           /* ignore tail processing errors */
         }
@@ -691,6 +698,33 @@ function runCliAttempt(
         return;
       }
 
+      if (providerIdentity.quotaSource === "zai_monitor" && authToken) {
+        try {
+          const providerSnapshot = await fetchZaiClaudeQuotaSnapshot({
+            runtimeId: input.runtimeId,
+            providerId: input.providerId ?? "anthropic",
+            profileId: input.profileId ?? null,
+            identity: providerIdentity,
+            authToken,
+            logger,
+          });
+          if (providerSnapshot) {
+            state.latestLimitSnapshot = providerSnapshot;
+            emitEvent(state, execution, buildRuntimeLimitEvent(providerSnapshot, "zai_monitor"));
+          }
+        } catch (error) {
+          logger?.warn?.(
+            {
+              runtimeId: input.runtimeId,
+              providerId: input.providerId ?? "anthropic",
+              profileId: input.profileId ?? null,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            "Failed to refresh Z.AI coding quota snapshot after Claude CLI run",
+          );
+        }
+      }
+
       resolve({
         result: finalizeCliResult(state, input.sessionId ?? null),
         startTimedOut: false,
@@ -708,6 +742,13 @@ export async function runClaudeCli(
   const args = buildCliArgs(input);
   const execution = input.execution;
   const options = asRecord(input.options);
+  const { identity: providerIdentity, authToken } = resolveClaudeProviderAuth({
+    providerId: input.providerId ?? "anthropic",
+    transport: "cli",
+    baseUrl: typeof options.baseUrl === "string" ? options.baseUrl : null,
+    apiKeyEnvVar: typeof options.apiKeyEnvVar === "string" ? options.apiKeyEnvVar : null,
+    apiKey: typeof options.apiKey === "string" ? options.apiKey : null,
+  });
   const apiKeyEnvVar =
     typeof options.apiKeyEnvVar === "string" ? options.apiKeyEnvVar : "ANTHROPIC_API_KEY";
   const env = buildCuratedEnv(apiKeyEnvVar, execution?.environment);
@@ -725,7 +766,15 @@ export async function runClaudeCli(
     "Starting Claude CLI run",
   );
 
-  const { result, startTimedOut } = await runCliAttempt(input, cliPath, args, env, logger);
+  const { result, startTimedOut } = await runCliAttempt(
+    input,
+    cliPath,
+    args,
+    env,
+    providerIdentity,
+    authToken,
+    logger,
+  );
 
   if (startTimedOut) {
     // Single retry after start timeout
@@ -736,7 +785,15 @@ export async function runClaudeCli(
     );
     await sleepMs(retryDelayMs);
 
-    const retry = await runCliAttempt(input, cliPath, args, env, logger);
+    const retry = await runCliAttempt(
+      input,
+      cliPath,
+      args,
+      env,
+      providerIdentity,
+      authToken,
+      logger,
+    );
     if (retry.startTimedOut) {
       throw makeProcessStartTimeoutError(execution?.startTimeoutMs ?? 0);
     }

@@ -13,6 +13,8 @@ import { buildClaudeQueryOptions } from "./options.js";
 import { buildToolUseEvents } from "../../toolEvents.js";
 import { normalizeClaudeLimitSnapshot } from "./limit.js";
 import { parseClaudeAskUserQuestion } from "./questions.js";
+import { resolveClaudeProviderAuth } from "./providerIdentity.js";
+import { fetchZaiClaudeQuotaSnapshot } from "./zaiQuota.js";
 
 const QUERY_START_TIMEOUT_CODE = "query_start_timeout";
 
@@ -184,6 +186,14 @@ export async function runClaudeQueryAttempt(
   execution: ClaudeRuntimeExecutionOptions,
   logger?: ClaudeOptionsLogger,
 ): Promise<ClaudeQueryAttemptResult> {
+  const { identity: providerIdentity, authToken } = resolveClaudeProviderAuth({
+    providerId: input.providerId ?? "anthropic",
+    transport: input.transport ?? "sdk",
+    baseUrl: typeof input.options?.baseUrl === "string" ? input.options.baseUrl : null,
+    apiKeyEnvVar:
+      typeof input.options?.apiKeyEnvVar === "string" ? input.options.apiKeyEnvVar : null,
+    apiKey: typeof input.options?.apiKey === "string" ? input.options.apiKey : null,
+  });
   const options = buildClaudeQueryOptions(input, execution, logger);
   const queryImpl = resolveQueryImplementation();
   const stream = queryImpl({ prompt: input.prompt, options });
@@ -226,6 +236,7 @@ export async function runClaudeQueryAttempt(
         providerId: input.providerId ?? "anthropic",
         profileId: input.profileId ?? null,
         checkedAt: new Date().toISOString(),
+        providerIdentity,
       });
 
       if (!snapshot) {
@@ -323,6 +334,35 @@ export async function runClaudeQueryAttempt(
 
   for await (const value of iterator) {
     processMessage(value);
+  }
+
+  if (providerIdentity.quotaSource === "zai_monitor" && authToken) {
+    try {
+      const providerSnapshot = await fetchZaiClaudeQuotaSnapshot({
+        runtimeId: input.runtimeId,
+        providerId: input.providerId ?? "anthropic",
+        profileId: input.profileId ?? null,
+        identity: providerIdentity,
+        authToken,
+        logger,
+      });
+      if (providerSnapshot) {
+        latestLimitSnapshot = providerSnapshot;
+        const providerLimitEvent = buildRuntimeLimitEvent(providerSnapshot, "zai_monitor");
+        events.push(providerLimitEvent);
+        execution.onEvent?.(providerLimitEvent);
+      }
+    } catch (error) {
+      logger?.warn?.(
+        {
+          runtimeId: input.runtimeId,
+          providerId: input.providerId ?? "anthropic",
+          profileId: input.profileId ?? null,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Failed to refresh Z.AI coding quota snapshot after Claude runtime run",
+      );
+    }
   }
 
   if (terminalErrorSubtype) {

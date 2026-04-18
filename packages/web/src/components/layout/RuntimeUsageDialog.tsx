@@ -196,6 +196,66 @@ function readProviderMetaString(
   return typeof rawValue === "string" && rawValue.trim().length > 0 ? rawValue.trim() : null;
 }
 
+function parseUrlSafe(value: string | null | undefined): URL | null {
+  if (!value) return null;
+  try {
+    return new URL(value);
+  } catch {
+    return null;
+  }
+}
+
+function formatHostLabel(hostname: string | null): string {
+  if (!hostname) return "Anthropic-compatible";
+  return hostname
+    .replace(/^www\./, "")
+    .split(".")
+    .filter((segment) => segment.length > 0)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(".");
+}
+
+function deriveClaudeProviderLabel(entry: RuntimeUsageEntry): string | null {
+  const parsedBaseUrl = parseUrlSafe(entry.baseUrl);
+  const hostname = parsedBaseUrl?.hostname.toLowerCase() ?? null;
+  const pathname = parsedBaseUrl?.pathname.replace(/\/+$/, "").toLowerCase() ?? "";
+
+  if (
+    hostname === "api.z.ai" ||
+    hostname === "open.bigmodel.cn" ||
+    hostname === "dev.bigmodel.cn"
+  ) {
+    return "Z.AI GLM Coding Plan";
+  }
+
+  if (hostname?.includes("coding.dashscope.aliyuncs.com") && pathname.includes("/apps/anthropic")) {
+    return "Alibaba Coding Plan";
+  }
+
+  if (hostname === "api.anthropic.com" || hostname?.endsWith(".anthropic.com")) {
+    return "Anthropic";
+  }
+
+  if (entry.defaultModels.some((model) => /^glm[-_]/i.test(model))) {
+    return "GLM-compatible";
+  }
+
+  return hostname ? formatHostLabel(hostname) : null;
+}
+
+function resolveEntryProviderLabel(entry: RuntimeUsageEntry): string | null {
+  const snapshotLabel = readProviderMetaString(entry.snapshot, "providerLabel");
+  if (snapshotLabel) {
+    return snapshotLabel;
+  }
+
+  if (entry.runtimeId === "claude") {
+    return deriveClaudeProviderLabel(entry);
+  }
+
+  return null;
+}
+
 function appendUnique(target: string[], value: string | null | undefined): void {
   if (!value) {
     return;
@@ -212,11 +272,18 @@ function identityGroupKey(profile: RuntimeProfile): string {
     return `${profile.runtimeId}|${profile.providerId}|account|${accountId}`;
   }
 
+  const accountFingerprint = readProviderMetaString(snapshot, "accountFingerprint");
+  if (accountFingerprint) {
+    const providerFamily = readProviderMetaString(snapshot, "providerFamily") ?? "default";
+    return `${profile.runtimeId}|${profile.providerId}|account-fingerprint|${providerFamily}|${accountFingerprint}`;
+  }
+
   const isLocalAccountRuntime =
     (profile.runtimeId === "codex" || profile.runtimeId === "claude") &&
     (profile.transport === "sdk" || profile.transport === "cli");
   if (isLocalAccountRuntime) {
-    return `${profile.runtimeId}|${profile.providerId}|local-account|${profile.baseUrl ?? "default"}`;
+    const providerFamily = readProviderMetaString(snapshot, "providerFamily") ?? "default";
+    return `${profile.runtimeId}|${profile.providerId}|local-account|${providerFamily}|${profile.baseUrl ?? "default"}`;
   }
 
   return `profile|${profile.id}`;
@@ -266,13 +333,18 @@ function formatTransportSummary(entry: RuntimeUsageEntry): string | null {
 function formatEntryHeading(entry: RuntimeUsageEntry): string {
   const accountLabel =
     readProviderMetaString(entry.snapshot, "accountName") ??
-    readProviderMetaString(entry.snapshot, "accountEmail");
+    readProviderMetaString(entry.snapshot, "accountEmail") ??
+    readProviderMetaString(entry.snapshot, "accountLabel");
+  const providerLabel = resolveEntryProviderLabel(entry);
   const planLabel = formatPlanLabel(readProviderMetaString(entry.snapshot, "planType"));
   const transportLabel = formatTransportSummary(entry);
+  const prefixLabel =
+    accountLabel ??
+    (entry.runtimeId === "claude" || isLocalAccountEntry(entry) ? providerLabel : null);
 
   const parts = [
-    isLocalAccountEntry(entry) ? accountLabel : null,
-    isLocalAccountEntry(entry) ? planLabel : null,
+    prefixLabel,
+    entry.runtimeId === "claude" || isLocalAccountEntry(entry) ? planLabel : null,
     `${entry.runtimeId}/${entry.providerId}`,
     transportLabel,
   ].filter((value): value is string => typeof value === "string" && value.length > 0);
