@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { basename, dirname, join, resolve } from "node:path";
+import { join, resolve, win32 as pathWin32 } from "node:path";
 
 function normalizePathValue(path: string | null | undefined): string | undefined {
   if (!path) return undefined;
@@ -28,7 +28,7 @@ export function resolveClaudeSdkExecutablePath(
     return normalizedPath;
   }
 
-  const fileName = basename(normalizedPath).toLowerCase();
+  const fileName = pathWin32.basename(normalizedPath).toLowerCase();
   if (fileName === "claude.exe") {
     return normalizedPath;
   }
@@ -36,9 +36,13 @@ export function resolveClaudeSdkExecutablePath(
     return normalizedPath;
   }
 
-  const nativeExecutablePath = resolve(
-    dirname(normalizedPath),
-    "node_modules/@anthropic-ai/claude-code/bin/claude.exe",
+  const nativeExecutablePath = pathWin32.resolve(
+    pathWin32.dirname(normalizedPath),
+    "node_modules",
+    "@anthropic-ai",
+    "claude-code",
+    "bin",
+    "claude.exe",
   );
   return existsSync(nativeExecutablePath) ? nativeExecutablePath : undefined;
 }
