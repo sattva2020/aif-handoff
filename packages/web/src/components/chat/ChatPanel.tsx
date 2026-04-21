@@ -17,7 +17,6 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Paperclip,
-  AlertTriangle,
   Square,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -32,6 +31,7 @@ import { useChatSessions } from "@/hooks/useChatSessions";
 import { useTask } from "@/hooks/useTasks";
 import { useEffectiveChatRuntime, useRuntimeProfiles } from "@/hooks/useRuntimeProfiles";
 import { toAttachmentPayload } from "@/components/task/useTaskDetailActions";
+import { formatRuntimeProfileName } from "@/lib/runtimeProfiles";
 import { SessionList } from "./SessionList";
 import { MessageBubble } from "./MessageBubble";
 import { TypingIndicator } from "./TypingIndicator";
@@ -110,12 +110,9 @@ export function ChatPanel({
 
   const handleSend = () => {
     if (!input.trim() || isStreaming) return;
-    const forceNew = runtimeMismatch;
-    if (!forceNew) {
-      pinActiveSession();
-    }
+    pinActiveSession();
     const files = pendingFiles.length > 0 ? pendingFiles : undefined;
-    void sendMessage(input, files, forceNew);
+    void sendMessage(input, files, false);
     setInput("");
     setPendingFiles([]);
   };
@@ -175,14 +172,7 @@ export function ChatPanel({
   // Find active session title
   const activeSession = sessions.find((s) => s.id === activeSessionId);
 
-  // Detect runtime mismatch: session was created with a different runtime profile
-  const currentProfileId = effectiveChatRuntime?.profile?.id ?? null;
   const sessionProfileId = activeSession?.runtimeProfileId ?? null;
-  const runtimeMismatch =
-    Boolean(activeSession) &&
-    Boolean(sessionProfileId) &&
-    Boolean(currentProfileId) &&
-    sessionProfileId !== currentProfileId;
 
   // Show the session's own runtime when it has one, otherwise show the project effective runtime
   const sessionProfile = sessionProfileId
@@ -190,8 +180,14 @@ export function ChatPanel({
     : null;
   const displayProfile = sessionProfile ?? effectiveChatRuntime?.profile ?? null;
   const activeRuntimeProfileName =
-    displayProfile?.name ??
-    (effectiveChatRuntime?.source === "none" ? "Default runtime" : "Unnamed profile");
+    (displayProfile ? formatRuntimeProfileName(displayProfile) : null) ??
+    (effectiveChatRuntime?.source === "system_default"
+      ? "App default"
+      : effectiveChatRuntime?.source === "project_default"
+        ? "Project default"
+        : effectiveChatRuntime?.source === "none"
+          ? "Env fallback"
+          : "Unnamed profile");
   const activeRuntimeEngine = displayProfile
     ? `${displayProfile.runtimeId}/${displayProfile.providerId}`
     : effectiveChatRuntime?.resolved
@@ -313,16 +309,6 @@ export function ChatPanel({
 
         {/* Messages area */}
         <div className="flex-1 overflow-y-auto overscroll-contain py-2">
-          {runtimeMismatch && (
-            <div className="px-3 pb-2">
-              <div className="flex items-center gap-1.5 rounded border border-amber-500/50 bg-amber-500/15 px-2.5 py-1.5">
-                <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
-                <span className="text-xs text-amber-700/90 dark:text-amber-200/90">
-                  Runtime changed — next message will start a new session
-                </span>
-              </div>
-            </div>
-          )}
           {chatErrorCode === "aborted" && (
             <div className="px-3 pb-2">
               <div className="rounded border border-muted-foreground/30 bg-muted/40 p-2">

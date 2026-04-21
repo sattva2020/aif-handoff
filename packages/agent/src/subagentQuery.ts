@@ -1,6 +1,7 @@
 import {
   createDbUsageSink,
   findTaskById,
+  getAppDefaultRuntimeProfileId,
   getTaskSessionId,
   renewTaskClaim,
   resolveEffectiveRuntimeProfile,
@@ -194,17 +195,20 @@ async function getRuntimeRegistry(): Promise<RuntimeRegistry> {
 /**
  * Resolve the RuntimeAdapter that would handle a given task.
  * Useful for reading adapter metadata (e.g. lightModel) without running a query.
+ * This helper is intentionally limited to task-stage modes; chat resolution
+ * goes through the API runtime service instead.
  */
 export async function resolveAdapterForTask(
   taskId: string,
   mode: "task" | "plan" | "review" = "task",
 ): Promise<RuntimeAdapter> {
   const task = findTaskById(taskId);
+  const systemDefaultRuntimeProfileId = getAppDefaultRuntimeProfileId(mode);
   const effective = resolveEffectiveRuntimeProfile({
     taskId,
     projectId: task?.projectId,
     mode,
-    systemDefaultRuntimeProfileId: null,
+    systemDefaultRuntimeProfileId,
   });
   const resolved = resolveRuntimeProfile({
     source: effective.source,
@@ -247,11 +251,13 @@ async function resolveExecutionContext(options: SubagentQueryOptions): Promise<{
   canResume: boolean;
 }> {
   const task = findTaskById(options.taskId);
+  const profileMode = options.profileMode ?? "task";
+  const systemDefaultRuntimeProfileId = getAppDefaultRuntimeProfileId(profileMode);
   const effective = resolveEffectiveRuntimeProfile({
     taskId: options.taskId,
     projectId: task?.projectId,
-    mode: options.profileMode ?? "task",
-    systemDefaultRuntimeProfileId: null,
+    mode: profileMode,
+    systemDefaultRuntimeProfileId,
   });
   const workflow = buildWorkflowSpec(options);
   const runtimeOptionsOverride = parseRuntimeOptions(task?.runtimeOptionsJson);
