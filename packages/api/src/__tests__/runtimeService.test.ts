@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { RuntimeLimitSnapshot } from "@aif/runtime";
 
 const mockLog = {
   debug: vi.fn(),
@@ -153,7 +154,7 @@ function createResolvedProfile(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function createLimitSnapshot(overrides: Record<string, unknown> = {}) {
+function createLimitSnapshot(overrides: Partial<RuntimeLimitSnapshot> = {}): RuntimeLimitSnapshot {
   return {
     source: "sdk_event",
     status: "warning",
