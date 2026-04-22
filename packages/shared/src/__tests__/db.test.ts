@@ -324,6 +324,9 @@ describe("db", () => {
       const taskColumns = migratedSqlite.prepare(`PRAGMA table_info(tasks)`).all() as Array<{
         name: string;
       }>;
+      const runtimeProfileColumns = migratedSqlite
+        .prepare(`PRAGMA table_info(runtime_profiles)`)
+        .all() as Array<{ name: string }>;
       const userVersion = migratedSqlite.pragma("user_version", { simple: true }) as number;
       migratedSqlite.close();
 
@@ -335,9 +338,17 @@ describe("db", () => {
         expect.arrayContaining(["token_input", "token_output", "token_total", "cost_usd"]),
       );
       expect(taskColumns.map((column) => column.name)).toEqual(
-        expect.arrayContaining(["manual_review_required", "auto_review_state_json"]),
+        expect.arrayContaining([
+          "manual_review_required",
+          "auto_review_state_json",
+          "runtime_limit_snapshot_json",
+          "runtime_limit_updated_at",
+        ]),
       );
-      expect(userVersion).toBe(13);
+      expect(runtimeProfileColumns.map((column) => column.name)).toEqual(
+        expect.arrayContaining(["runtime_limit_snapshot_json", "runtime_limit_updated_at"]),
+      );
+      expect(userVersion).toBe(14);
     } finally {
       closeDb();
       removeSqliteArtifacts(dbPath);
