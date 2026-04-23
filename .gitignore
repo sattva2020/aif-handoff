@@ -46,6 +46,10 @@ coverage/
 
 # Playwright
 .playwright-mcp/
+playwright-report/
+test-results/
+/packages/web/playwright-report/
+/packages/web/test-results/
 
 # Claude Code
 .claude/*
