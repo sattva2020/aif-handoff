@@ -1,7 +1,9 @@
+import { createReadStream } from "node:fs";
 import type { Dirent } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { createInterface } from "node:readline";
 import type {
   RuntimeLimitSnapshot,
   RuntimeLimitStatus,
@@ -71,15 +73,21 @@ export interface CodexAuthIdentity {
 const DEFAULT_WARNING_THRESHOLD = 10;
 const MAX_VALID_DATE_MS = 8_640_000_000_000_000;
 const DEFAULT_CODEX_LIMIT_ID = "codex";
-const SESSION_CACHE_TTL_MS = 5_000;
+const SESSION_META_CACHE_TTL_MS = 30_000;
+const SESSION_LIMIT_SNAPSHOT_CACHE_TTL_MS = 60_000;
+const LIMIT_SNAPSHOT_SESSION_SCAN_LIMIT = 50;
 
 const sessionMetasCache = createRuntimeMemoryCache<CodexSessionMeta[]>({
-  defaultTtlMs: SESSION_CACHE_TTL_MS,
+  defaultTtlMs: SESSION_META_CACHE_TTL_MS,
   maxSize: 1,
 });
 const sessionLimitSnapshotsCache = createRuntimeMemoryCache<RuntimeLimitSnapshot[]>({
-  defaultTtlMs: SESSION_CACHE_TTL_MS,
+  defaultTtlMs: SESSION_LIMIT_SNAPSHOT_CACHE_TTL_MS,
   maxSize: 512,
+});
+const latestLimitSnapshotsCache = createRuntimeMemoryCache<RuntimeLimitSnapshot[]>({
+  defaultTtlMs: SESSION_LIMIT_SNAPSHOT_CACHE_TTL_MS,
+  maxSize: 64,
 });
 
 function toIso(value: string | number | undefined): string {
@@ -269,7 +277,10 @@ function formatWindowName(windowMinutes: number | null): string | null {
 }
 
 function buildRateLimitWindow(rawWindow: unknown) {
-  const window = asRecord(rawWindow) as CodexSessionRateLimitWindow;
+  const window = asRecord(rawWindow) as CodexSessionRateLimitWindow | null;
+  if (!window) {
+    return null;
+  }
   const percentUsed = readFiniteNumber(window.used_percent);
   const percentRemaining = toPercentRemaining(percentUsed);
   const windowMinutes = readFiniteNumber(window.window_minutes);
@@ -332,7 +343,10 @@ function buildCodexLimitSnapshot(
     authIdentity?: CodexAuthIdentity | null;
   },
 ): RuntimeLimitSnapshot | null {
-  const rateLimits = asRecord(rateLimitsRaw) as CodexSessionRateLimits;
+  const rateLimits = asRecord(rateLimitsRaw) as CodexSessionRateLimits | null;
+  if (!rateLimits) {
+    return null;
+  }
   const windows = [
     buildRateLimitWindow(rateLimits.primary),
     buildRateLimitWindow(rateLimits.secondary),
@@ -419,58 +433,73 @@ async function listSessionFiles(dir: string): Promise<string[]> {
   return files;
 }
 
+// Cap streamed-meta reads: session_meta/turn_context sit on the first handful
+// of lines, and the first user_message typically follows within a few KB. Stop
+// reading once we've found what meta consumers need — large sessions otherwise
+// force megabytes of needless I/O when just rendering the sessions list.
+const SESSION_META_MAX_BYTES = 64 * 1024;
+
 async function readSessionMetaFromFile(filePath: string): Promise<CodexSessionMeta | null> {
   const fallbackId = sessionIdFromFilePath(filePath);
   if (!fallbackId) return null;
 
   const info = await stat(filePath);
-  let raw = "";
-  try {
-    raw = await readFile(filePath, "utf-8");
-  } catch {
-    return {
-      id: fallbackId,
-      createdAt: info.birthtime.toISOString(),
-      updatedAt: info.mtime.toISOString(),
-      filePath,
-    };
-  }
-
   let resolvedId = fallbackId;
   let createdAt = info.birthtime.toISOString();
   let model: string | undefined;
   let prompt: string | undefined;
   let cwd: string | undefined;
 
-  for (const line of raw.split("\n")) {
-    const entry = parseJsonLine(line);
-    if (!entry) continue;
+  let stream: ReturnType<typeof createReadStream> | null = null;
+  try {
+    stream = createReadStream(filePath, {
+      encoding: "utf-8",
+      end: SESSION_META_MAX_BYTES - 1,
+    });
+    const reader = createInterface({ input: stream, crlfDelay: Infinity });
+    try {
+      for await (const line of reader) {
+        const entry = parseJsonLine(line);
+        if (!entry) continue;
 
-    if (readString(entry.type) === "session_meta") {
-      const payload = asRecord(entry.payload);
-      resolvedId = readString(payload?.id) ?? resolvedId;
-      createdAt = toIso(
-        (payload?.timestamp as string | number | undefined) ??
-          (entry.timestamp as string | number | undefined),
-      );
-      cwd = readString(payload?.cwd) ?? cwd;
-      model = readModelIdentifier(payload) ?? model;
-      continue;
-    }
+        if (readString(entry.type) === "session_meta") {
+          const payload = asRecord(entry.payload);
+          resolvedId = readString(payload?.id) ?? resolvedId;
+          createdAt = toIso(
+            (payload?.timestamp as string | number | undefined) ??
+              (entry.timestamp as string | number | undefined),
+          );
+          cwd = readString(payload?.cwd) ?? cwd;
+          model = readModelIdentifier(payload) ?? model;
+          continue;
+        }
 
-    if (readString(entry.type) === "turn_context") {
-      const payload = asRecord(entry.payload);
-      model = readModelIdentifier(payload) ?? model;
-      continue;
-    }
+        if (readString(entry.type) === "turn_context") {
+          const payload = asRecord(entry.payload);
+          model = readModelIdentifier(payload) ?? model;
+          continue;
+        }
 
-    if (readString(entry.type) === "event_msg") {
-      const payload = asRecord(entry.payload);
-      if (readString(payload?.type) === "user_message") {
-        prompt = readString(payload?.message) ?? prompt;
-        if (prompt && model) break;
+        if (readString(entry.type) === "event_msg") {
+          const payload = asRecord(entry.payload);
+          if (readString(payload?.type) === "user_message") {
+            prompt = readString(payload?.message) ?? prompt;
+            if (prompt && model) break;
+          }
+        }
       }
+    } finally {
+      reader.close();
     }
+  } catch {
+    return {
+      id: fallbackId,
+      createdAt,
+      updatedAt: info.mtime.toISOString(),
+      filePath,
+    };
+  } finally {
+    stream?.destroy();
   }
 
   return {
@@ -682,10 +711,23 @@ export async function listLatestCodexLimitSnapshots(input: {
   profileId?: string | null;
 }): Promise<RuntimeLimitSnapshot[]> {
   const normalizedProjectRoot = normalizePath(input.projectRoot ?? undefined);
+  // Result-level cache: the underlying scan walks up to N session files every
+  // call; holding the aggregated result keeps repeated API polls off the disk.
+  // Cache key intentionally excludes profileId so concurrent profiles share it;
+  // profileId is reapplied below via applySnapshotProfileId.
+  const cacheKey = `${input.runtimeId}|${input.providerId}|${normalizedProjectRoot ?? "__global__"}`;
+  const cached = latestLimitSnapshotsCache.get(cacheKey);
+  if (cached) {
+    return cached.map((snapshot) => applySnapshotProfileId(snapshot, input.profileId));
+  }
   const sessions = await readSessionMetas();
-  const candidates = normalizedProjectRoot
+  const matching = normalizedProjectRoot
     ? sessions.filter((session) => normalizePath(session.cwd) === normalizedProjectRoot)
     : sessions;
+  // readSessionMetas returns sessions sorted by updatedAt desc; rate_limits are
+  // point-in-time data carried by the most recent token_count events — old
+  // sessions contribute stale or duplicate pool entries, so cap the scan.
+  const candidates = matching.slice(0, LIMIT_SNAPSHOT_SESSION_SCAN_LIMIT);
 
   const latestSnapshotsByLimitId = new Map<string, RuntimeLimitSnapshot>();
   let latestUnknownSnapshot: RuntimeLimitSnapshot | null = null;
@@ -716,7 +758,9 @@ export async function listLatestCodexLimitSnapshots(input: {
   latestSnapshots.sort(
     (left, right) => parseTimestampMs(right.checkedAt) - parseTimestampMs(left.checkedAt),
   );
-  return latestSnapshots;
+  const normalizedSnapshots = latestSnapshots.map((snapshot) => ({ ...snapshot, profileId: null }));
+  latestLimitSnapshotsCache.set(cacheKey, normalizedSnapshots);
+  return normalizedSnapshots.map((snapshot) => applySnapshotProfileId(snapshot, input.profileId));
 }
 
 export function selectPreferredCodexLimitSnapshot(input: {

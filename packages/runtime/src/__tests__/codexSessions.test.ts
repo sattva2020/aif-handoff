@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Readable } from "node:stream";
 import { join } from "node:path";
 
 const readdirMock = vi.fn();
@@ -14,6 +15,24 @@ vi.mock("node:fs/promises", () => ({
   readFile: (...args: unknown[]) => readFileMock(...args),
   stat: (...args: unknown[]) => statMock(...args),
 }));
+
+vi.mock("node:fs", async () => {
+  const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
+  return {
+    ...actual,
+    createReadStream: (path: string) => {
+      // Reuse readFile mock so each test only configures one source of
+      // session-file content; stream reads just yield the full payload.
+      const stream = Readable.from(
+        (async function* () {
+          const data = await readFileMock(path, "utf-8");
+          yield typeof data === "string" ? data : String(data ?? "");
+        })(),
+      );
+      return stream as unknown as ReturnType<typeof import("node:fs").createReadStream>;
+    },
+  };
+});
 
 function dirEntry(name: string) {
   return {
@@ -478,5 +497,135 @@ describe("Codex SDK session store parsing", () => {
 
     expect(sparkSnapshot?.providerMeta?.limitId).toBe("codex_bengalfox");
     expect(mainSnapshot?.providerMeta?.limitId).toBe("codex");
+  });
+
+  it("caps the session scan to avoid reading thousands of rollouts when many match", async () => {
+    const bulkFiles = Array.from({ length: 120 }, (_, index) => {
+      const id = `019d6e2c-e143-7642-8917-${index.toString(16).padStart(12, "0")}`;
+      return {
+        id,
+        file: `rollout-2026-04-08T22-38-48-${id}.jsonl`,
+        fullPath: join(aprilDir, `rollout-2026-04-08T22-38-48-${id}.jsonl`),
+        mtime: new Date(`2026-04-08T17:${(index % 60).toString().padStart(2, "0")}:48.271Z`),
+      };
+    });
+
+    readdirMock.mockImplementation(async (target: string) => {
+      switch (target) {
+        case sessionsRoot:
+          return [dirEntry("2026")];
+        case join(sessionsRoot, "2026"):
+          return [dirEntry("04")];
+        case join(sessionsRoot, "2026", "04"):
+          return [dirEntry("08")];
+        case aprilDir:
+          return bulkFiles.map((f) => fileEntry(f.file));
+        default:
+          return [];
+      }
+    });
+
+    statMock.mockImplementation(async (target: string) => {
+      const match = bulkFiles.find((f) => f.fullPath === target);
+      if (!match) throw new Error(`Unexpected stat path: ${target}`);
+      return { birthtime: match.mtime, mtime: match.mtime };
+    });
+
+    const limitPayload = (id: string) =>
+      JSON.stringify({
+        timestamp: "2026-04-08T17:39:09.000Z",
+        type: "event_msg",
+        payload: {
+          type: "token_count",
+          rate_limits: {
+            limit_id: id,
+            primary: { used_percent: 10, window_minutes: 300, resets_at: 4080085200 },
+          },
+        },
+      });
+
+    const metaLine = (id: string) =>
+      JSON.stringify({
+        timestamp: "2026-04-08T17:38:54.517Z",
+        type: "session_meta",
+        payload: { id, cwd: "C:/projects/current" },
+      });
+
+    const readCalls: string[] = [];
+    readFileMock.mockImplementation(async (target: string) => {
+      readCalls.push(target);
+      if (target === authFile) {
+        return JSON.stringify({
+          tokens: {
+            id_token: null,
+            access_token: null,
+            refresh_token: null,
+            account_id: null,
+          },
+        });
+      }
+      const match = bulkFiles.find((f) => f.fullPath === target);
+      if (!match) return "";
+      return [metaLine(match.id), limitPayload(match.id)].join("\n");
+    });
+
+    await sessionsModule.listLatestCodexLimitSnapshots({
+      runtimeId: "codex",
+      providerId: "openai",
+      profileId: "profile-1",
+      projectRoot: "C:/projects/current",
+    });
+
+    const sessionReads = readCalls.filter((path) => path !== authFile);
+    // 120 meta reads (readSessionMetas scans all) + up to 50 limit-snapshot reads (capped).
+    expect(sessionReads.length).toBeLessThanOrEqual(120 + 50);
+    expect(sessionReads.length).toBeGreaterThanOrEqual(120);
+  });
+
+  it("does not crash when a token_count event omits rate_limits", async () => {
+    readFileMock.mockImplementation(async (target: string) => {
+      if (target === newerFile) {
+        return [
+          JSON.stringify({
+            timestamp: "2026-04-08T17:38:54.517Z",
+            type: "session_meta",
+            payload: {
+              id: newerSessionId,
+              timestamp: "2026-04-08T17:38:48.271Z",
+              cwd: "C:/projects/current",
+            },
+          }),
+          JSON.stringify({
+            timestamp: "2026-04-08T17:39:09.000Z",
+            type: "event_msg",
+            payload: {
+              type: "token_count",
+              info: { total_token_usage: { total_tokens: 100 } },
+              rate_limits: null,
+            },
+          }),
+        ].join("\n");
+      }
+      if (target === authFile) {
+        return JSON.stringify({
+          tokens: {
+            id_token: null,
+            access_token: null,
+            refresh_token: null,
+            account_id: null,
+          },
+        });
+      }
+      return "";
+    });
+
+    const snapshot = await sessionsModule.getCodexSessionLimitSnapshot({
+      sessionId: newerSessionId,
+      runtimeId: "codex",
+      providerId: "openai",
+      profileId: "profile-1",
+    });
+
+    expect(snapshot).toBeNull();
   });
 });

@@ -483,6 +483,17 @@ const MIGRATIONS: Migration[] = [
        END`,
     ],
   },
+  {
+    version: 15,
+    description:
+      "Re-apply runtime limit snapshot columns for DBs that skipped v13 due to branch-merge re-ordering",
+    sql: `
+      ALTER TABLE runtime_profiles ADD COLUMN runtime_limit_snapshot_json TEXT;
+      ALTER TABLE runtime_profiles ADD COLUMN runtime_limit_updated_at TEXT;
+      ALTER TABLE tasks ADD COLUMN runtime_limit_snapshot_json TEXT;
+      ALTER TABLE tasks ADD COLUMN runtime_limit_updated_at TEXT;
+    `,
+  },
 ];
 
 function splitSqlStatements(sqlText: string): string[] {
