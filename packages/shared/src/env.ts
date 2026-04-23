@@ -114,6 +114,16 @@ const envSchema = z.object({
       return value;
     }, z.boolean())
     .default(false),
+  AIF_USAGE_LIMITS_ENABLED: z
+    .preprocess((value) => {
+      if (typeof value === "string") {
+        const normalized = value.trim().toLowerCase();
+        if (BOOLEAN_TRUE_VALUES.has(normalized)) return true;
+        if (BOOLEAN_FALSE_VALUES.has(normalized)) return false;
+      }
+      return value;
+    }, z.boolean())
+    .default(true),
   AIF_ENABLE_CODEX_LOGIN_PROXY: z
     .preprocess((value) => {
       if (typeof value === "string") {
@@ -209,4 +219,13 @@ export function getEnv(): Env {
 /** Validate env without caching — useful for testing */
 export function validateEnv(env: Record<string, string | undefined> = process.env): Env {
   return envSchema.parse(env);
+}
+
+/**
+ * Drop the cached env so the next `getEnv()` re-parses `process.env`. Intended
+ * for tests that toggle feature flags at runtime — never call in production
+ * code paths, which assume env is a stable compile-time constant.
+ */
+export function resetEnvCache(): void {
+  _env = null;
 }

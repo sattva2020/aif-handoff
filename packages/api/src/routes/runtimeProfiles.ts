@@ -265,6 +265,13 @@ async function refreshProfileWithLiveCodexLimit<T extends LocalCodexAccountProfi
   selectedProjectId?: string | null,
   snapshotLookup = createCodexLiveSnapshotLookup(),
 ): Promise<T> {
+  // Usage-limits feature is the expensive-I/O path (Codex session scan,
+  // Claude identity network call). Gate here so a deployment can opt out
+  // via AIF_USAGE_LIMITS_ENABLED=false and skip all associated work.
+  if (!getEnv().AIF_USAGE_LIMITS_ENABLED) {
+    return profile;
+  }
+
   if (!isLocalCodexProfile(profile)) {
     return profile;
   }
@@ -323,6 +330,9 @@ async function refreshProfilesWithLiveCodexLimits<T extends LocalCodexAccountPro
   profiles: T[],
   selectedProjectId?: string | null,
 ): Promise<T[]> {
+  if (!getEnv().AIF_USAGE_LIMITS_ENABLED) {
+    return profiles;
+  }
   const snapshotLookup = createCodexLiveSnapshotLookup();
   return await Promise.all(
     profiles.map((profile) =>
@@ -334,6 +344,9 @@ async function refreshProfilesWithLiveCodexLimits<T extends LocalCodexAccountPro
 async function enrichProfileWithClaudeIdentity<T extends ClaudeIdentityProfileLike>(
   profile: T,
 ): Promise<T> {
+  if (!getEnv().AIF_USAGE_LIMITS_ENABLED) {
+    return profile;
+  }
   if (!isClaudeProfile(profile) || !profile.runtimeLimitSnapshot) {
     return profile;
   }
@@ -379,6 +392,9 @@ async function enrichProfileWithClaudeIdentity<T extends ClaudeIdentityProfileLi
 async function enrichProfilesWithProviderIdentity<
   T extends LocalCodexAccountProfileLike & ClaudeIdentityProfileLike,
 >(profiles: T[]): Promise<T[]> {
+  if (!getEnv().AIF_USAGE_LIMITS_ENABLED) {
+    return profiles;
+  }
   const withCodexIdentity = await enrichProfilesWithCodexIdentity(profiles);
   return await Promise.all(
     withCodexIdentity.map((profile) => enrichProfileWithClaudeIdentity(profile)),

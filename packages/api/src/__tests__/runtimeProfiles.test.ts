@@ -2,7 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
 import { createTestDb } from "@aif/shared/server";
-import { appSettings, projects, runtimeProfiles, tasks, usageEvents } from "@aif/shared";
+import {
+  appSettings,
+  projects,
+  resetEnvCache,
+  runtimeProfiles,
+  tasks,
+  usageEvents,
+} from "@aif/shared";
 
 const testDb = { current: createTestDb() };
 
@@ -150,6 +157,39 @@ describe("runtimeProfiles API", () => {
 
     const missingRes = await app.request(`/runtime-profiles/${created.id}`);
     expect(missingRes.status).toBe(404);
+  });
+
+  it("skips the Codex session scan when AIF_USAGE_LIMITS_ENABLED=false", async () => {
+    const previous = process.env.AIF_USAGE_LIMITS_ENABLED;
+    process.env.AIF_USAGE_LIMITS_ENABLED = "false";
+    resetEnvCache();
+    try {
+      // Create a Codex profile so the route actually reaches the refresh path.
+      const createRes = await app.request("/runtime-profiles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Local Codex",
+          runtimeId: "codex",
+          providerId: "openai",
+          transport: "sdk",
+          defaultModel: "gpt-5.4",
+        }),
+      });
+      expect(createRes.status).toBe(201);
+
+      const listRes = await app.request("/runtime-profiles?includeGlobal=true&enabledOnly=false");
+      expect(listRes.status).toBe(200);
+      expect(mockListLatestCodexLimitSnapshots).not.toHaveBeenCalled();
+      expect(mockResolveClaudeProviderIdentity).not.toHaveBeenCalled();
+    } finally {
+      if (previous === undefined) {
+        delete process.env.AIF_USAGE_LIMITS_ENABLED;
+      } else {
+        process.env.AIF_USAGE_LIMITS_ENABLED = previous;
+      }
+      resetEnvCache();
+    }
   });
 
   it("rejects create/update requests with sensitive-looking header keys", async () => {
