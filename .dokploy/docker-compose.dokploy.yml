@@ -73,6 +73,10 @@ services:
       - /tmp:noexec,nosuid,size=100m
       - /var/cache/angie:size=50m
       - /run:size=10m
+    entrypoint:
+      - /bin/sh
+      - -c
+      - mkdir -p /run/angie && exec angie -g 'daemon off;'
     security_opt:
       - no-new-privileges:true
     deploy:
